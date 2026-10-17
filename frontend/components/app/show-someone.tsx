@@ -30,7 +30,7 @@ export function ShowSomeone({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="inline-flex h-12 items-center gap-2 rounded-full border border-border px-5 text-base font-semibold hover:bg-muted"
+            className="inline-flex min-h-12 items-center gap-2 rounded-full border border-border px-5 text-base font-semibold hover:bg-muted"
           >
             <X className="size-5" aria-hidden="true" />
             Close
@@ -49,7 +49,7 @@ export function ShowSomeone({
           <button
             type="button"
             onClick={() => say(text)}
-            className="inline-flex h-16 items-center gap-3 rounded-full bg-primary px-8 text-lg font-semibold text-primary-foreground hover:bg-primary/90"
+            className="inline-flex min-h-16 items-center gap-3 rounded-full bg-primary px-8 text-lg font-semibold text-primary-foreground hover:bg-primary/90"
           >
             <Volume2 className="size-6" aria-hidden="true" />
             Speak aloud

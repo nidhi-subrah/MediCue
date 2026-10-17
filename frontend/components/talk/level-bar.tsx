@@ -49,20 +49,20 @@ export function LevelBar({
       </div>
       <div className="flex flex-wrap items-center gap-1">
         <button type="button" onClick={() => onLevel((level + 1) as CommunicationLevel)} disabled={level >= 4}
-                className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted disabled:opacity-40">
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted disabled:opacity-40">
           <Plus className="size-4" aria-hidden="true" /> Make it easier
         </button>
         <button type="button" onClick={() => onLevel((level - 1) as CommunicationLevel)} disabled={level <= 1}
-                className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted disabled:opacity-40">
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted disabled:opacity-40">
           <Minus className="size-4" aria-hidden="true" /> More choices
         </button>
         <button type="button" role="switch" aria-checked={comm.audio_enabled} onClick={() => onAudio(!comm.audio_enabled)}
-                className={cn('inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold',
+                className={cn('inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold',
                               comm.audio_enabled ? 'bg-primary-soft text-primary' : 'hover:bg-muted')}>
           {comm.audio_enabled ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
           Read aloud
         </button>
-        <label className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted">
+        <label className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted">
           <Languages className="size-4" aria-hidden="true" />
           <span className="sr-only">Language</span>
           <select value={comm.language} onChange={(e) => onLanguage(e.target.value)}

@@ -110,7 +110,7 @@ export function SettingsView() {
         <button
           type="button"
           onClick={s.resetAll}
-          className="inline-flex h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
         >
           <RotateCcw className="size-4" aria-hidden="true" /> Reset to defaults
         </button>
@@ -126,10 +126,9 @@ export function SettingsView() {
             value={s.textSize}
             onChange={(v) => s.update({ textSize: v })}
             levels={[
-              { value: 'md', label: 'Default' },
+              { value: 'md', label: 'Standard' },
               { value: 'lg', label: 'Large' },
-              { value: 'xl', label: 'Larger' },
-              { value: 'xxl', label: 'Largest' },
+              { value: 'xl', label: 'Extra large' },
             ]}
           />
         </Row>
@@ -139,9 +138,9 @@ export function SettingsView() {
             value={s.buttonSize}
             onChange={(v) => s.update({ buttonSize: v })}
             levels={[
-              { value: 'regular', label: 'Regular' },
-              { value: 'large', label: 'Large' },
-              { value: 'xl', label: 'Extra large' },
+              { value: 'regular', label: 'Standard' },
+              { value: 'large', label: 'Comfortable' },
+              { value: 'xl', label: 'Spacious' },
             ]}
           />
         </Row>
@@ -196,7 +195,7 @@ export function SettingsView() {
             <button
               type="button"
               onClick={() => say('This is how I will sound.')}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
             >
               <Volume2 className="size-4" aria-hidden="true" /> Test
             </button>

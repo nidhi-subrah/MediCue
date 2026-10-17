@@ -261,7 +261,7 @@ function PatientCard({ patient: p, open, level, trend }: {
       <footer className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-4">
         <Link
           href={`/profile/${p.id}`}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
         >
           <NotebookPen className="size-4" aria-hidden="true" />
           Notes and profile
@@ -270,7 +270,7 @@ function PatientCard({ patient: p, open, level, trend }: {
           <Link
             key={person.id}
             href={`/family/${person.id}`}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold hover:border-primary/40"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold hover:border-primary/40"
           >
             <Users className="size-4" aria-hidden="true" />
             {person.name.split(' ')[0]}, {person.relation}

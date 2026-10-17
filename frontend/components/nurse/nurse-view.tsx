@@ -76,7 +76,7 @@ export function NurseView() {
               <button
                 type="button"
                 onClick={() => setShowSummary(true)}
-                className="ml-3 inline-flex h-9 items-center rounded-full border border-border bg-card px-3 text-sm font-semibold text-foreground hover:border-primary/40"
+                className="ml-3 inline-flex min-h-9 items-center rounded-full border border-border bg-card px-3 text-sm font-semibold text-foreground hover:border-primary/40"
               >
                 Shift summary
               </button>

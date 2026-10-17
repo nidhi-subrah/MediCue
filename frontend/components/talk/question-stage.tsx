@@ -166,7 +166,7 @@ export function QuestionStage({
                   onSignal?.('read_aloud')
                   readAll()
                 }}
-                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
               >
                 <Volume2 className="size-5" aria-hidden="true" />
                 {t('replay', 'Read again')}
@@ -179,7 +179,7 @@ export function QuestionStage({
                   stop()
                   onUndo()
                 }}
-                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
               >
                 <ArrowLeft className="size-5" aria-hidden="true" />
                 {t('back', 'Back')}

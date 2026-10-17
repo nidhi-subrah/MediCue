@@ -220,7 +220,7 @@ function SbarCompare({ record }: { record: CaseRecord }) {
   const shown = view === 'template' ? record.sbar_template : g.sbar
   const option = (value: 'template' | 'gemini', label: string) => (
     <button type="button" aria-pressed={view === value} onClick={() => setView(value)}
-            className={cn('h-11 rounded-xl border-2 px-4 text-base font-semibold',
+            className={cn('min-h-11 rounded-xl border-2 px-4 text-base font-semibold',
                           view === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>
       {label}
     </button>
@@ -371,7 +371,7 @@ export function CasePacketCard({ alert }: { alert: Alert }) {
 function Verdict({ helpful, onHelpful }: { helpful: boolean | null; onHelpful: (v: boolean | null) => void }) {
   const option = (value: boolean, label: string, Icon: typeof ThumbsUp) => (
     <button type="button" aria-pressed={helpful === value} onClick={() => onHelpful(helpful === value ? null : value)}
-            className={cn('inline-flex h-10 items-center gap-1.5 rounded-full border-2 px-3 text-sm font-semibold',
+            className={cn('inline-flex min-h-10 items-center gap-1.5 rounded-full border-2 px-3 text-sm font-semibold',
                           helpful === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>
       <Icon className="size-4" aria-hidden="true" />{label}
     </button>
@@ -423,7 +423,7 @@ export function CaseSummary({ alert, helpful, onHelpful, initiallyOpen = false }
           </p>
         </div>
         <button type="button" onClick={() => setOpen(true)}
-                className="h-11 shrink-0 rounded-xl border-2 border-primary bg-card px-4 text-base font-semibold text-primary">
+                className="min-h-11 shrink-0 rounded-xl border-2 border-primary bg-card px-4 text-base font-semibold text-primary">
           Open case packet
         </button>
       </div>

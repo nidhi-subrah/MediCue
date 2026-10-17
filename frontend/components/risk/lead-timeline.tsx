@@ -127,7 +127,7 @@ export function LeadTimeline() {
         <label className="flex flex-col gap-1 text-sm text-muted-foreground">
           <span className="sr-only">Storyline</span>
           <select value={patientId ?? ''} onChange={(e) => setPatientId(e.target.value)}
-                  className="h-11 max-w-full rounded-xl border border-input bg-card px-3 text-base text-foreground">
+                  className="min-h-11 max-w-full rounded-xl border border-input bg-card px-3 text-base text-foreground">
             {cases.map((c) => (
               <option key={c.patient_id} value={c.patient_id}>
                 {c.name} · {c.label} · {SPLIT[c.split]} · {c.lead_days === null ? 'no flag' : `${c.lead_days.toFixed(1)} d`}

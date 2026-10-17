@@ -63,7 +63,7 @@ export function LoginView() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="min-h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               placeholder="you@medicue.demo"
             />
           </div>
@@ -80,7 +80,7 @@ export function LoginView() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="min-h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               placeholder="••••••••"
             />
           </div>
@@ -94,7 +94,7 @@ export function LoginView() {
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex h-12 items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
             {busy ? 'Signing in…' : 'Sign in'}
           </button>

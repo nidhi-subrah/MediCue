@@ -122,7 +122,7 @@ export function Toggle<T extends string | number>({
           aria-checked={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'h-9 rounded-full px-3.5 text-sm font-semibold transition-colors',
+            'min-h-9 rounded-full px-3.5 text-sm font-semibold transition-colors',
             o.value === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
           )}
         >
