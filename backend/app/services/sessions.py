@@ -20,7 +20,7 @@ from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
 from ..engine.personal import PersonalModel
 from ..sim.learning import learning_curve
-from .case_packet import build_case_packet, template_case_sbar
+from .case_packet import build_case_packet, case_feedback, template_case_sbar
 from .gemini import Gemini, template_sbar
 from .hub import Hub
 from .research import prior_multipliers
@@ -370,7 +370,7 @@ class SessionService:
             "seconds_to_alert": round(time.time() - first_tap, 1),
             "reason": s.decision.reason if s.decision else "",
             "profile": self._profile_items(s.patient["id"]), "nurse_note": None,
-            "case_packet": None, "case_sbar": None, "case_sbar_source": None,
+            "case": None,
         }
         alert["sbar"] = self._labelled(alert, template_sbar(ctx))
         s.alert_id = alert["id"]
@@ -402,9 +402,10 @@ class SessionService:
             await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
 
     async def _attach_case_packet(self, alert_id: str, s: Session):
-        """Clinician copilot: once the alert is with the nurse, add a case packet if the request ended without
-        a confident answer. The template SBAR goes out at once; Gemini's wording replaces it only if it passes
-        every check (services/case_packet.py). Failures are logged and never touch the alert itself."""
+        """Clinician copilot: once the alert is with the nurse, attach a case record: a full packet if the
+        request ended without a confident answer, a light one for a safety-floor escalation. It is pushed as a
+        `case` message, stored, and later updated with Gemini's checked wording and the nurse's feedback.
+        Failures are logged and never touch the alert itself."""
         try:
             alert = self.alerts.get(alert_id)
             if not alert:
@@ -415,25 +416,34 @@ class SessionService:
                 decision=s.decision, status=s.status, chart=s.patient.get("chart"),
                 consult=self.consults.get(s.consult_id or "")).public()
             if pkt["stop_reason"]["code"] == "RESOLVED":
-                if alert.get("case_packet"):   # a later tap made it clear
-                    alert["case_packet"] = alert["case_sbar"] = alert["case_sbar_source"] = None
+                if alert.get("case"):   # a later tap made it clear
+                    alert["case"] = None
                     await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
                 return
-            alert["case_packet"] = pkt
-            alert["case_sbar"], alert["case_sbar_source"] = template_case_sbar(pkt, s.patient), "template"
-            await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
-            await self._event(s, "case_packet", {"alert_id": alert_id, "stop_reason": pkt["stop_reason"]["code"],
+            record = {"id": alert_id, "alert_id": alert_id, "patient_id": s.patient["id"], "session_id": s.id,
+                      "created_at": alert["created_at"], "packet": pkt,
+                      "sbar": template_case_sbar(pkt, s.patient), "sbar_source": "template",
+                      "feedback": (alert.get("case") or {}).get("feedback")}
+            alert["case"] = record
+            await self.hub.publish("nurse", {"type": "case", "case": record})
+            await self._safe(self.store.upsert_case(record))
+            await self._event(s, "case_packet", {"alert_id": alert_id, "variant": pkt["variant"],
+                                                 "stop_reason": pkt["stop_reason"]["code"],
                                                  "next_step": pkt["next_step"]["code"]})
             if not self.gemini.enabled:
                 return
             sbar, source = await self.gemini.case_sbar(pkt, s.patient, self.cat)
-            if source == "gemini" and alert.get("case_packet") is pkt:   # still the latest packet
-                alert["case_sbar"], alert["case_sbar_source"] = sbar, source
-                await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
+            if source == "gemini" and alert.get("case") is record:   # still the latest packet
+                record["sbar"], record["sbar_source"] = sbar, source
+                await self.hub.publish("nurse", {"type": "case", "case": record})
+                await self._safe(self.store.upsert_case(record))
         except Exception:
             log.exception("case packet failed (the alert itself is unaffected)")
 
-    async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse", note: str | None = None) -> dict:
+    async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse", note: str | None = None,
+                      case_helpful: bool | None = None) -> dict:
+        """`case_helpful`: the nurse's verdict on the alert's case packet, if it has one. What the patient actually
+        needed is `need_id`, which feeds reliability learning exactly as for any confirmation."""
         alert = self.alerts[alert_id]
         if alert["status"] != "open":
             # A second confirm (double tap, two dashboards) must not count twice in reliability or logs.
@@ -451,6 +461,14 @@ class SessionService:
                           {"alert_id": alert_id, "need": need_id, "nurse": nurse,
                            "predicted": alert["top"][0]["need"] if alert["top"] else None})
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
+        case = alert.get("case")
+        if case:
+            case["feedback"] = case_feedback(case["packet"], need_id, case_helpful, nurse, self.cat)
+            await self.hub.publish("nurse", {"type": "case", "case": case})
+            await self._safe(self.store.upsert_case(case))
+            await self._event(s or alert["patient_id"], "case_feedback",
+                              {"alert_id": alert_id, "helpful": case_helpful, "need": need_id,
+                               "rank": case["feedback"]["actual_rank"]})
         return alert
 
     async def _suggest(self, pid: str, alert_id: str, note: str, need_id: str | None, nurse: str):

@@ -143,24 +143,30 @@ def finish(client, sid, s):
 def receive(ws, alert_id, kind):
     for _ in range(40):
         m = ws.receive_json()
-        if m["type"] == kind and m["alert"]["id"] == alert_id:
+        if kind == "case" and m["type"] == "case" and m["case"]["alert_id"] == alert_id:
+            return m["case"]
+        if m["type"] == kind and kind != "case" and m["alert"]["id"] == alert_id:
             return m["alert"]
     raise AssertionError(f"no {kind} for {alert_id}")
 
 
-def test_unclear_request_gets_a_packet_after_the_alert():
+def unclear_session(client):
+    s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
+    sid = s["session_id"]
+    client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "belly"})
+    return finish(client, sid, client.post(f"/api/sessions/{sid}/tap", json={"kind": "feeling", "tap_id": "not_sure"}).json())
+
+
+def test_unclear_request_gets_a_full_packet_after_the_alert():
     with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
-        sid = s["session_id"]
-        client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "belly"})
-        s = finish(client, sid, client.post(f"/api/sessions/{sid}/tap", json={"kind": "feeling", "tap_id": "not_sure"}).json())
+        s = unclear_session(client)
         first = receive(nurse, s["alert_id"], "alert")
-        assert first["case_packet"] is None                        # the alert goes out first, unchanged
-        updated = receive(nurse, s["alert_id"], "alert_updated")
-        pkt = updated["case_packet"]
-        assert pkt["stop_reason"]["code"] != "RESOLVED" and updated["case_sbar_source"] == "template"
-        assert updated["case_sbar"]["recommendation"] == pkt["next_step"]["text"]
-        assert updated["sbar"] == first["sbar"]                     # the existing SBAR is untouched
+        assert first["case"] is None                                # the alert goes out first, unchanged
+        case = receive(nurse, s["alert_id"], "case")
+        pkt = case["packet"]
+        assert pkt["variant"] == "full" and pkt["stop_reason"]["code"] not in ("RESOLVED", "SAFETY_FLOOR")
+        assert case["sbar_source"] == "template" and case["sbar"]["recommendation"] == pkt["next_step"]["text"]
+        assert client.get("/api/alerts").json()[0]["sbar"] == first["sbar"]   # the existing SBAR is untouched
 
 
 def test_clear_request_gets_no_packet():
@@ -175,14 +181,14 @@ def test_clear_request_gets_no_packet():
             s = client.post(f"/api/sessions/{sid}/answer", json={"question_id": s["question"]["id"], "answer": "yes"}).json()
         client.get("/api/alerts")                                   # let background tasks run
         alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
-        assert alert["case_packet"] is None
+        assert alert["case"] is None
+        assert client.get(f"/api/cases/{s['alert_id']}").status_code == 404
 
 
 def test_a_hanging_gemini_never_delays_an_urgent_alert():
     with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
         slow = FakeModels(json.dumps({"situation": "x", "background": "x", "assessment": "x", "recommendation": "x"}), delay=30)
-        hanging = gemini_with(slow)
-        app.state.svc.gemini = hanging
+        app.state.svc.gemini = gemini_with(slow)
         try:
             s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
             t0 = time.monotonic()
@@ -190,8 +196,8 @@ def test_a_hanging_gemini_never_delays_an_urgent_alert():
             assert s["status"] == "escalated" and time.monotonic() - t0 < 2
             alert = receive(nurse, s["alert_id"], "alert")
             assert alert["priority"] == "urgent"
-            updated = receive(nurse, s["alert_id"], "alert_updated")   # template packet, while Gemini still hangs
-            assert updated["case_packet"]["stop_reason"]["code"] == "SAFETY_FLOOR"
-            assert updated["case_sbar_source"] == "template" and time.monotonic() - t0 < 5
+            case = receive(nurse, s["alert_id"], "case")            # light packet, while Gemini still hangs
+            assert case["packet"]["stop_reason"]["code"] == "SAFETY_FLOOR" and case["packet"]["variant"] == "light"
+            assert case["sbar_source"] == "template" and time.monotonic() - t0 < 5
         finally:
             app.state.svc.gemini = Gemini(api_key=None)

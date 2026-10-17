@@ -58,7 +58,7 @@ export function NurseView() {
             Nothing waiting. Requests from bedside tablets appear here as they&apos;re sent.
           </p>
         )}
-        {open.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note) => confirm(a.id, needId, note)} />)}
+        {open.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note, helpful) => confirm(a.id, needId, note, helpful)} />)}
 
         {doneAlerts.length > 0 && (
           <button
@@ -69,7 +69,7 @@ export function NurseView() {
             {showDone ? 'Hide' : 'Show'} {doneAlerts.length} confirmed
           </button>
         )}
-        {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note) => confirm(a.id, needId, note)} />)}
+        {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note, helpful) => confirm(a.id, needId, note, helpful)} />)}
       </section>
       </div>
 

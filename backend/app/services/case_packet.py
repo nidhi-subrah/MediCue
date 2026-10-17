@@ -105,6 +105,7 @@ class CasePacket:
     session_id: str
     patient_id: str
     created_at: str
+    variant: str       # full | light (high-risk escalation: no less_likely or chart_context)
     selections: list[CaseSelection]
     top_needs: list[CaseNeed]
     less_likely: list[LessLikelyNeed]
@@ -264,10 +265,12 @@ def uncertainty(cat: Catalog, d: Dialogue, pset: list[str], pc: PacketConfig) ->
 def build_case_packet(cat: Catalog, cfg: EngineConfig, d: Dialogue, *, session_id: str, patient_id: str,
                       prediction_set: list[str], decision: Decision | None, status: str,
                       chart: dict | None = None, consult: dict | None = None, now: float | None = None,
-                      pc: PacketConfig = PACKET) -> CasePacket:
+                      variant: str = "auto", pc: PacketConfig = PACKET) -> CasePacket:
     """Read-only over `d`: it never changes the belief, the trace or anything a decision uses.
 
     consult: the session's latest consult request ({person_name, relation, status}), if any.
+    variant: "full", "light", or "auto" = light for a safety-floor escalation (the nurse is already on the
+    way; they need the top needs, the inputs and what to ask first, not the full working).
     """
     pset = set(prediction_set)
     top = d.top(pc.top_k)
@@ -278,15 +281,19 @@ def build_case_packet(cat: Catalog, cfg: EngineConfig, d: Dialogue, *, session_i
     else:
         focus = top[0]["need"]
     contact = _contact(d, consult)
+    if variant == "auto":
+        variant = "light" if code == "SAFETY_FLOOR" else "full"
+    light = variant == "light"
     stop_text = STOP_TEXT[code].format(n=cfg.max_questions, name=(contact or {}).get("name", "a contact"),
                                        relation=(contact or {}).get("relation", ""))
     return CasePacket(
         session_id=session_id, patient_id=patient_id,
         created_at=_iso(now if now is not None else datetime.now(timezone.utc).timestamp()),
+        variant=variant,
         selections=selections(cat, d),
         top_needs=[CaseNeed(t["need"], t["label"], round(t["p"], 3), t["need"] in pset, t["risk"]) for t in top],
-        less_likely=less_likely(cat, d, pset | {t["need"] for t in top}, pc),
-        chart_context=chart_context(cat, d, chart, pc),
+        less_likely=[] if light else less_likely(cat, d, pset | {t["need"] for t in top}, pc),
+        chart_context=[] if light else chart_context(cat, d, chart, pc),
         stop_reason={"code": code, "text": stop_text},
         uncertainty=uncertainty(cat, d, prediction_set, pc),
         next_step=next_step(cat, d, code, focus, contact, d.p_high(), pc),
@@ -469,3 +476,18 @@ def _packet_phrases(packet: dict, patient: dict, cat: Catalog | None) -> set[str
 def finalize_case_sbar(sbar: dict, packet: dict) -> dict:
     """The recommendation may only restate the packet's next step: it is replaced with it, word for word."""
     return {k: sbar[k] for k in ("situation", "background", "assessment")} | {"recommendation": packet["next_step"]["text"]}
+
+
+# ---- nurse feedback ---------------------------------------------------------------------------------
+
+def case_feedback(packet: dict, need_id: str | None, helpful: bool | None, nurse: str, cat: Catalog,
+                  now: float | None = None) -> dict:
+    """The nurse's verdict on a packet, given with the normal confirmation of what the patient needed."""
+    ranked = [n["need"] for n in packet["top_needs"]]
+    return {
+        "helpful": helpful, "actual_need": need_id,
+        "actual_label": cat.by_id[need_id]["label"] if need_id else None,
+        "actual_rank": ranked.index(need_id) + 1 if need_id in ranked else None,
+        "actual_was_less_likely": any(x["need"] == need_id for x in packet["less_likely"]),
+        "by": nurse, "at": _iso(now if now is not None else datetime.now(timezone.utc).timestamp()),
+    }

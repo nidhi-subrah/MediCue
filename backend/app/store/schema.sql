@@ -115,6 +115,24 @@ CREATE TABLE IF NOT EXISTS research_hypotheses (
     status     TEXT NOT NULL,
     body       JSONB NOT NULL
 );
+-- Clinician copilot case packets (services/case_packet.py): one per unclear or high-risk episode, id = the
+-- alert id, updated in place when Gemini's wording arrives and when the nurse gives feedback. Hypertable on
+-- the alert time; summary columns for analysis (e.g. helpful rate by stop_reason), the full record in body.
+CREATE TABLE IF NOT EXISTS case_packets (
+    time        TIMESTAMPTZ NOT NULL,
+    id          TEXT        NOT NULL,
+    patient_id  TEXT        NOT NULL,
+    variant     TEXT        NOT NULL,
+    stop_reason TEXT        NOT NULL,
+    next_step   TEXT        NOT NULL,
+    helpful     BOOLEAN,
+    actual_need TEXT,
+    body        JSONB       NOT NULL
+);
+SELECT create_hypertable('case_packets', 'time', if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS case_packets_id_time ON case_packets (id, time);
+CREATE INDEX IF NOT EXISTS case_packets_patient_time ON case_packets (patient_id, time DESC);
+
 CREATE TABLE IF NOT EXISTS research_inquiries (
     id         TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL,

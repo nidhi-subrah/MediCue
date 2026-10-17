@@ -39,6 +39,7 @@ class MemoryStore:
         self.inquiries: dict[str, dict] = {}
         self.profiles: dict[str, dict] = {}
         self.suggestions: dict[str, dict] = {}
+        self.cases: dict[str, dict] = {}
 
     async def init(self): ...
     async def close(self): ...
@@ -114,3 +115,9 @@ class MemoryStore:
 
     async def upsert_suggestion(self, suggestion):
         self.suggestions[suggestion["id"]] = suggestion
+
+    async def upsert_case(self, case):
+        self.cases[case["id"]] = case
+
+    async def get_case(self, case_id):
+        return self.cases.get(case_id)

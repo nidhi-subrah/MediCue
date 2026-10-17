@@ -22,11 +22,12 @@ export function AlertCard({
   onConfirm,
 }: {
   alert: Alert
-  onConfirm: (needId: string | null, note: string | null) => Promise<void>
+  onConfirm: (needId: string | null, note: string | null, caseHelpful: boolean | null) => Promise<void>
 }) {
   const [other, setOther] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [helpful, setHelpful] = useState<boolean | null>(null)   // verdict on the case packet, sent with the confirmation
   const urgent = alert.priority === 'urgent'
   const open = alert.status === 'open'
   const [lead, ...rest] = alert.top
@@ -34,7 +35,7 @@ export function AlertCard({
   const confirm = async (needId: string | null) => {
     setBusy(true)
     try {
-      await onConfirm(needId, note.trim() || null)
+      await onConfirm(needId, note.trim() || null, helpful)
     } finally {
       setBusy(false)
     }
@@ -74,7 +75,7 @@ export function AlertCard({
         </div>
       )}
 
-      {alert.case_packet && <CasePacketView alert={alert} />}
+      {alert.case && <CasePacketView alert={alert} helpful={helpful} onHelpful={setHelpful} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (
