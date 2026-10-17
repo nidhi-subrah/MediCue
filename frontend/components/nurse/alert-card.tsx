@@ -29,7 +29,6 @@ export function AlertCard({
   const [other, setOther] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [helpful, setHelpful] = useState<boolean | null>(null)   // verdict on the case packet, sent with the confirmation
   const urgent = alert.priority === 'urgent'
   const open = alert.status === 'open'
   const [lead, ...rest] = alert.top
@@ -37,7 +36,7 @@ export function AlertCard({
   const confirm = async (needId: string | null) => {
     setBusy(true)
     try {
-      await onConfirm(needId, note.trim() || null, helpful)
+      await onConfirm(needId, note.trim() || null, null)
     } finally {
       setBusy(false)
     }
@@ -86,7 +85,7 @@ export function AlertCard({
         </div>
       )}
 
-      {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} initiallyOpen={openCase} />}
+      {alert.case && <CaseSummary alert={alert} initiallyOpen={openCase} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (

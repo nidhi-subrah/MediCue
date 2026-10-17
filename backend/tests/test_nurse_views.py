@@ -1,5 +1,6 @@
 """Unit insights, Care forecast and the unit patients' generated history. In-memory store, no network."""
 import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -145,3 +146,25 @@ def test_holt_projects_a_rising_series_upward_within_bounds():
     assert proj[0][0] < proj[-1][0] <= 1.0
     assert all(lo <= v <= hi for v, lo, hi in proj)
     assert all(0.0 <= lo and hi <= 1.0 for _, lo, hi in holt([0.95, 0.97, 0.99, 1.0], 4))
+
+
+def test_board_lists_every_unit_patient_with_open_requests_first():
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
+        client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"})
+        board = client.get("/api/nurse/board").json()
+        assert sorted(r["patient_id"] for r in board) == sorted(UNIT)
+        assert board[0]["patient_id"] == "p-chen" and board[0]["state"] == "urgent"
+        assert all(r["state"] in ("urgent", "checkin", "waiting", "answering", "consult", "calm") for r in board)
+        login_as_patient(client)
+        assert client.get("/api/nurse/board").status_code == 403
+
+
+def test_app_does_not_seed_the_synthetic_cohort_by_default():
+    import subprocess
+    import sys
+    env = {k: v for k, v in os.environ.items() if k != "SEED_SYNTHETIC_COHORT"}
+    out = subprocess.run([sys.executable, "-c", "from app.config import settings; print(settings.seed_synthetic_cohort)"],
+                         capture_output=True, text=True, env=env, cwd=os.path.dirname(os.path.dirname(__file__)))
+    assert out.stdout.strip() == "False", out.stderr

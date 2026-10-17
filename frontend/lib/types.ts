@@ -13,7 +13,7 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   CommunicationHistoryItem, CommunicationSummary, Presentation, InteractionSignals, AdaptationDecision,
   CommunicationModifier,
   GaugeLevel, UnitPatientRef, NeedGroupRef, HeatCell, InsightsGauge, UnitInsights, InsightsCell,
-  ForecastHour, RiskProjection, ForecastPatient, CareForecast } from '@shared/types'
+  ForecastHour, RiskProjection, ForecastPatient, CareForecast, NurseBoardRow } from '@shared/types'
 
 /** The UI's own notion of "how the person is answering right now". `standard` and `easy` map to
  *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to
