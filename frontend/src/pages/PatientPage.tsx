@@ -3,11 +3,9 @@ import type { ModeId, Patient, SessionState } from "@shared/types";
 import { api, useChannel } from "../api";
 import { catalog } from "../catalog";
 import TileGrid, { type TileOption } from "../components/TileGrid";
+import BodyMap from "../components/BodyMap";
 import EnginePanel from "../components/EnginePanel";
-
-const SPEECH_LANG: Record<string, string> = {
-  en: "en-CA", fr: "fr-CA", es: "es-ES", zh: "zh-CN", pa: "pa-IN", ar: "ar-SA", tl: "fil-PH",
-};
+import Icon from "../components/Icon";
 
 function load(key: string, fallback: boolean) {
   try {
@@ -23,23 +21,23 @@ function save(key: string, v: boolean) {
 
 interface Welfare { id: string; requested_by: string; expires_in: number; started: number }
 
+const STEPS = ["Where", "What", "Check"];
+const STEP_OF: Record<string, number> = { area: 0, feeling: 1, question: 2, waiting_consult: 2 };
+
 export default function PatientPage({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [s, setS] = useState<SessionState | null>(null);
-  const [language, setLanguage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showEngine, setShowEngine] = useState(() => load("ss.engine", true));
+  const [showEngine, setShowEngine] = useState(() => load("ss.engine", false));
   const [speak, setSpeak] = useState(() => load("ss.speak", false));
   const [welfare, setWelfare] = useState<Welfare | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  const start = useCallback(async (lang?: string | null, mode: ModeId = "grid") => {
+  const start = useCallback(async (mode: ModeId = "grid") => {
     setError(null);
     try {
-      const state = await api.post<SessionState>("/api/sessions", { patient_id: patientId, language: lang ?? undefined, mode });
-      setS(state);
-      setLanguage(state.language);
+      setS(await api.post<SessionState>("/api/sessions", { patient_id: patientId, language: "en", mode }));
     } catch (e) {
       setError(String(e));
     }
@@ -62,8 +60,6 @@ export default function PatientPage({ patientId }: { patientId: string }) {
     return () => window.clearInterval(t);
   }, [welfare]);
 
-  const t = (key: string, fallback: string) => s?.ui_text[key] ?? fallback;
-
   const act = useCallback(async (path: string, body: unknown) => {
     if (!s || busy) return;
     setBusy(true);
@@ -79,12 +75,12 @@ export default function PatientPage({ patientId }: { patientId: string }) {
   const prompt = useMemo(() => {
     if (!s) return "";
     switch (s.status) {
-      case "area": return t("prompt:area", "Where is it?");
-      case "feeling": return t("prompt:feeling", "What is it like?");
-      case "question": return s.question?.text_local ?? "";
-      case "waiting_consult": return t("asking", "Asking someone who knows you…");
-      case "escalated": return t("help_coming", "Help is coming. A nurse has your message.");
-      case "sent": return t("sent", "Your nurse has your message.");
+      case "area": return "Where is it?";
+      case "feeling": return "What is it like?";
+      case "question": return s.question?.text ?? "";
+      case "waiting_consult": return "Asking someone who knows you…";
+      case "escalated": return "Help is coming.";
+      case "sent": return "Your nurse has your message.";
       default: return "";
     }
   }, [s]);
@@ -92,7 +88,7 @@ export default function PatientPage({ patientId }: { patientId: string }) {
   useEffect(() => {
     if (!speak || !prompt || !("speechSynthesis" in window)) return;
     const u = new SpeechSynthesisUtterance(prompt);
-    u.lang = SPEECH_LANG[s?.language ?? "en"] ?? "en-CA";
+    u.lang = "en-CA";
     u.rate = 0.9;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
@@ -101,13 +97,11 @@ export default function PatientPage({ patientId }: { patientId: string }) {
   const options: TileOption[] = useMemo(() => {
     if (!s) return [];
     const feelingTiles = () => catalog.feelings.map((f) => ({
-      key: f.id, icon: f.icon, label: t(`feeling:${f.id}`, f.label), sublabel: f.label,
-      onSelect: () => act("tap", { kind: "feeling", tap_id: f.id }),
+      key: f.id, label: f.label, onSelect: () => act("tap", { kind: "feeling", tap_id: f.id }),
     }));
     if (s.status === "area") {
       return catalog.areas.map((a) => ({
-        key: a.id, icon: a.icon, label: t(`area:${a.id}`, a.label), sublabel: a.label,
-        onSelect: () => act("tap", { kind: "area", tap_id: a.id }),
+        key: a.id, label: a.label, onSelect: () => act("tap", { kind: "area", tap_id: a.id }),
       }));
     }
     if (s.status === "feeling") return feelingTiles();
@@ -115,61 +109,92 @@ export default function PatientPage({ patientId }: { patientId: string }) {
     if (s.status === "question" && s.question) {
       const q = s.question.id;
       return [
-        { key: "yes", icon: "👍", tone: "yes" as const, label: t("yes", "Yes"), sublabel: "Yes", onSelect: () => act("answer", { question_id: q, answer: "yes" }) },
-        { key: "no", icon: "👎", tone: "no" as const, label: t("no", "No"), sublabel: "No", onSelect: () => act("answer", { question_id: q, answer: "no" }) },
-        { key: "unsure", icon: "🤷", label: t("unsure", "Not sure"), sublabel: "Not sure", onSelect: () => act("answer", { question_id: q, answer: "unsure" }) },
+        { key: "yes", label: "Yes", onSelect: () => act("answer", { question_id: q, answer: "yes" }) },
+        { key: "no", label: "No", onSelect: () => act("answer", { question_id: q, answer: "no" }) },
+        { key: "unsure", label: "Not sure", onSelect: () => act("answer", { question_id: q, answer: "unsure" }) },
       ];
     }
     if (s.status === "waiting_consult") {
-      return [{ key: "skip", icon: "➡️", label: t("keep_going", "Keep going myself"), onSelect: () => act("skip_consult", {}) }];
+      return [{ key: "skip", icon: "forward", label: "Keep going myself", onSelect: () => act("skip_consult", {}) }];
     }
-    return [{ key: "again", icon: "🔁", label: t("start_over", "Start again"), onSelect: () => start(language, s.mode) }];
-  }, [s, act, language, start]);
+    return [{ key: "again", label: "Start again", onSelect: () => start(s.mode) }];
+  }, [s, act, start]);
 
   if (error && !s) return <div className="patient-shell"><p className="error">{error}</p><a href="#/">Back</a></div>;
-  if (!s || !patient) return <div className="patient-shell"><p>Loading…</p></div>;
+  if (!s || !patient) return <div className="patient-shell"><p className="patient-loading">Loading…</p></div>;
 
   const remaining = welfare ? Math.max(0, Math.ceil(welfare.expires_in - (now - welfare.started) / 1000)) : 0;
+  const step = STEP_OF[s.status];
+  const done = s.status === "escalated" || s.status === "sent";
+  const scan = s.mode === "scan";
+
+  let body: JSX.Element;
+  if (!scan && s.status === "area" && s.mode === "grid") {
+    body = <BodyMap options={options} />;
+  } else if (!scan && s.status === "question") {
+    const [yes, no, unsure] = options;
+    body = (
+      <div className="answers">
+        <button className="answer answer-yes" onClick={yes.onSelect}><Icon name="yes" size={56} />Yes</button>
+        <button className="answer answer-no" onClick={no.onSelect}><Icon name="no" size={56} />No</button>
+        <button className="answer-unsure" onClick={unsure.onSelect}>Not sure</button>
+      </div>
+    );
+  } else if (!scan && (s.status === "waiting_consult" || s.status === "sent" || s.status === "cancelled"
+                      || (s.status === "escalated" && s.taps !== 1))) {
+    const [only] = options;
+    body = (
+      <div className="single-action">
+        <button className="btn btn-large" onClick={only.onSelect}><Icon name={only.icon ?? only.key} />{only.label}</button>
+      </div>
+    );
+  } else {
+    body = <TileGrid options={options} mode={s.mode} label={prompt} />;
+  }
 
   return (
     <div className={`patient-shell ${showEngine ? "with-engine" : ""}`}>
       <div className="patient-ui">
         <header className="patient-bar">
-          <a href="#/" className="muted small" aria-label="Exit to home">✕</a>
-          <span className="patient-name">{patient.name} · {patient.room}</span>
-          <label className="small">
-            <span className="sr-only">Language</span>
-            <select value={language ?? "en"} onChange={(e) => { setLanguage(e.target.value); start(e.target.value, s.mode); }}>
-              {catalog.languages.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-            </select>
-          </label>
-          <label className="small">
+          <a href="#/" className="icon-link" aria-label="Exit to home"><Icon name="close" size={20} /></a>
+          <span className="patient-id">{patient.name}<span className="patient-room">{patient.room}</span></span>
+          <label className="bar-control">
             <span className="sr-only">Access mode</span>
             <select value={s.mode} onChange={(e) => act("mode", { mode: e.target.value })}>
               {catalog.modes.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           </label>
-          <button className="btn small" aria-pressed={speak} onClick={() => { setSpeak(!speak); save("ss.speak", !speak); }}>
-            🔊 {speak ? "On" : "Off"}
+          <button className="bar-control toggle" aria-pressed={speak} onClick={() => { setSpeak(!speak); save("ss.speak", !speak); }}>
+            <Icon name="sound" size={18} /> Read aloud
           </button>
-          <button className="btn small" aria-pressed={showEngine} onClick={() => { setShowEngine(!showEngine); save("ss.engine", !showEngine); }}>
-            {showEngine ? "Hide" : "Show"} engine
+          <button className="bar-control toggle" aria-pressed={showEngine} onClick={() => { setShowEngine(!showEngine); save("ss.engine", !showEngine); }}>
+            Engine
           </button>
         </header>
 
-        <h1 className={`patient-prompt status-${s.status}`} aria-live="assertive">{prompt}</h1>
-        {s.status === "question" && s.question && s.language !== "en" && (
-          <p className="muted center">{s.question.text}</p>
+        {step !== undefined && (
+          <ol className="steps" aria-label="Progress">
+            {STEPS.map((label, i) => (
+              <li key={label} className={i === step ? "current" : i < step ? "past" : ""}
+                  aria-current={i === step ? "step" : undefined}>{label}</li>
+            ))}
+          </ol>
         )}
-        {s.status === "waiting_consult" && s.consult && (
-          <p className="center">Asking {s.consult.person_name} ({s.consult.relation})…</p>
-        )}
-        {s.status === "escalated" && s.taps === 1 && <p className="center">{t("tell_more", "You can tell us more:")}</p>}
-        {s.mode === "scan" && <p className="muted center small">Switch scanning: press Space, Enter, or tap anywhere on the tiles to choose the highlighted one.</p>}
 
-        <TileGrid options={options} mode={s.mode} label={prompt} />
-        {busy && <p className="muted center small" aria-live="polite">…</p>}
-        {error && <p className="error small">{error}</p>}
+        <div className={`patient-stage ${done ? `done done-${s.status}` : ""}`}>
+          {done && <Icon name={s.status === "escalated" ? "alert" : "check"} size={64} className="done-mark" />}
+          <h1 className="patient-prompt" aria-live="assertive">{prompt}</h1>
+          {s.status === "escalated" && <p className="patient-note">A nurse has your message and is on the way.</p>}
+          {s.status === "waiting_consult" && s.consult && (
+            <p className="patient-note">We've asked {s.consult.person_name} ({s.consult.relation}) to help.</p>
+          )}
+          {s.status === "escalated" && s.taps === 1 && <p className="patient-note">You can tell us more:</p>}
+          {scan && <p className="patient-hint">Press Space or Enter, or tap anywhere, to choose the highlighted option.</p>}
+
+          {body}
+          {busy && <p className="patient-hint" aria-live="polite">Sending…</p>}
+          {error && <p className="error">{error}</p>}
+        </div>
       </div>
 
       {showEngine && <EnginePanel s={s} />}
@@ -179,9 +204,9 @@ export default function PatientPage({ patientId }: { patientId: string }) {
           await api.post(`/api/welfare/${welfare.id}/respond`);
           setWelfare(null);
         }}>
-          <span className="welfare-title">{t("welfare", "Are you okay? Tap anywhere.")}</span>
+          <span className="welfare-title">Are you okay? Tap anywhere.</span>
           <span>{welfare.requested_by} asked us to check on you.</span>
-          <span className="welfare-count">{remaining}s</span>
+          <span className="welfare-count">{remaining}</span>
         </button>
       )}
     </div>

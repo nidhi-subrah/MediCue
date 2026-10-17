@@ -5,9 +5,9 @@ import AlertCard from "../components/AlertCard";
 import Sparkline from "../components/Sparkline";
 
 const SPARKS: { metric: string; label: string; format: (v: number) => string }[] = [
-  { metric: "pain_needs", label: "Pain requests / 24 h", format: (v) => v.toFixed(0) },
-  { metric: "high_risk", label: "High-risk signals / 24 h", format: (v) => v.toFixed(0) },
-  { metric: "avg_tap_interval", label: "Seconds per tap", format: (v) => `${v.toFixed(1)} s` },
+  { metric: "pain_needs", label: "Pain requests", format: (v) => v.toFixed(0) },
+  { metric: "high_risk", label: "High-risk signals", format: (v) => v.toFixed(0) },
+  { metric: "avg_tap_interval", label: "Seconds per tap", format: (v) => `${v.toFixed(1)}s` },
   { metric: "avg_taps", label: "Taps per need", format: (v) => v.toFixed(1) },
 ];
 
@@ -49,36 +49,47 @@ export default function NurseDashboard() {
   const open = alerts.filter((a) => a.status === "open")
     .sort((a, b) => Number(b.priority === "urgent") - Number(a.priority === "urgent"));
   const done = alerts.filter((a) => a.status !== "open");
+  const urgentCount = open.filter((a) => a.priority === "urgent").length;
+  const flagged = trends.filter((t) => t.flags.length > 0);
+  const stable = trends.filter((t) => t.flags.length === 0);
 
   return (
     <div className="dashboard">
-      <section aria-labelledby="alerts-h">
-        <h2 id="alerts-h">Live alerts <span className="count">{open.length}</span></h2>
-        {open.length === 0 && <p className="muted">No open alerts. Open a patient tablet from the home page to send one.</p>}
+      <section className="requests" aria-labelledby="alerts-h">
+        <header className="section-head">
+          <h1 id="alerts-h">Requests</h1>
+          <p className="section-meta">
+            {open.length === 0 ? "None open" : `${open.length} open`}
+            {urgentCount > 0 && <span className="meta-urgent"> · {urgentCount} urgent</span>}
+          </p>
+        </header>
+        {open.length === 0 && (
+          <p className="empty">Nothing waiting. Requests from bedside tablets appear here as they're sent.</p>
+        )}
         {open.map((a) => <AlertCard key={a.id} alert={a} />)}
         {done.length > 0 && (
-          <button className="btn small" onClick={() => setShowDone(!showDone)}>
+          <button className="text-btn" onClick={() => setShowDone(!showDone)}>
             {showDone ? "Hide" : "Show"} {done.length} confirmed
           </button>
         )}
         {showDone && done.map((a) => <AlertCard key={a.id} alert={a} />)}
       </section>
 
-      <section aria-labelledby="trends-h">
-        <h2 id="trends-h">Catch It Early</h2>
-        <p className="muted small">Each patient's last 24 h compared with their own previous 7 days. Flags are prompts
-          for clinical review, not diagnoses.</p>
-        {trends.map((t) => (
-          <article key={t.patient_id} className="card trend">
-            <header className="alert-head">
-              <strong>{t.patient_name}</strong><span className="muted">Room {t.room}</span>
-              {t.mode_changes_24h > 0 && <span className="tag">{t.mode_changes_24h} access-mode change(s) in 24 h</span>}
-              {t.flags.length === 0 && <span className="muted small push">✓ stable</span>}
+      <section className="trends" aria-labelledby="trends-h">
+        <header className="section-head">
+          <h2 id="trends-h">Changes this shift</h2>
+          <p className="section-meta">Last 24 h against each patient's previous 7 days</p>
+        </header>
+        {flagged.map((t) => (
+          <article key={t.patient_id} className="trend">
+            <header className="trend-head">
+              <span className="alert-room">{t.room}</span>
+              <span className="alert-name">{t.patient_name}</span>
+              {t.mode_changes_24h > 0 && <span className="trend-meta">{t.mode_changes_24h} access-mode change{t.mode_changes_24h > 1 ? "s" : ""}</span>}
             </header>
             {t.flags.map((f) => (
               <p key={f.metric} className={`flag flag-${f.severity}`}>
-                <span className="flag-icon" aria-hidden>{f.severity === "attention" ? "▲▲" : "▲"}</span>
-                <span><strong>{f.severity === "attention" ? "Needs attention" : "Review"}:</strong> {f.message}</span>
+                <strong>{f.severity === "attention" ? "Needs attention" : "Review"}</strong> {f.message}
               </p>
             ))}
             <div className="sparks">
@@ -89,6 +100,12 @@ export default function NurseDashboard() {
             </div>
           </article>
         ))}
+        {stable.length > 0 && (
+          <p className="stable">
+            No change: {stable.map((t) => `${t.patient_name} (${t.room})`).join(", ")}
+          </p>
+        )}
+        <p className="fineprint">Flags are prompts for clinical review, not diagnoses.</p>
       </section>
     </div>
   );

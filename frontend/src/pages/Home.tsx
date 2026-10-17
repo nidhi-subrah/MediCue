@@ -11,43 +11,41 @@ export default function Home() {
 
   return (
     <div className="home">
-      <header className="hero">
-        <h1>SilentSignal</h1>
-        <p>A few taps from a patient who cannot speak become a precise, structured message for the care team,
-          with an honest statement of how sure the system is.</p>
+      <header className="home-intro">
+        <h1>Demo console</h1>
+        <p>
+          Open a bedside tablet for one of the synthetic patients below, and the nurse station in another window.
+          Requests travel from the tablet to the nurse in real time.
+        </p>
+        <nav className="home-links" aria-label="Staff views">
+          <a href="#/nurse">Nurse station</a>
+          <a href="#/research">Pattern review</a>
+        </nav>
       </header>
 
-      <section className="roles">
-        <a className="role-card" href="#/nurse">
-          <h2>Nurse dashboard</h2>
-          <p>Live alerts in SBAR format, one-tap confirmation, and Catch It Early trend flags.</p>
-        </a>
-        <a className="role-card" href="#/research">
-          <h2>Clinical lead</h2>
-          <p>Review patterns the system surfaced. Validate, reject or ask for more data.</p>
-        </a>
-      </section>
+      {error && <p className="error">Can't reach the backend. Is it running on port 8000? ({error})</p>}
 
-      {error && <p className="error">Backend unreachable: {error}</p>}
-      <h2>Patients (synthetic)</h2>
-      <div className="patient-list">
-        {patients.map((p) => (
-          <div key={p.id} className="card patient-row">
-            <div>
-              <strong>{p.name}</strong>, {p.age} · Room {p.room}
-              <div className="muted small">{p.diagnosis}</div>
-            </div>
-            <div className="row-actions">
-              <a className="btn primary" href={`#/patient/${p.id}`}>Patient tablet</a>
-              {p.people.map((person) => (
-                <a key={person.id} className="btn" href={`#/family/${person.id}`}>
-                  {person.name} ({person.relation})
-                </a>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <table className="patients">
+        <caption>Patients</caption>
+        <thead>
+          <tr><th>Room</th><th>Patient</th><th>Situation</th><th>Open as</th></tr>
+        </thead>
+        <tbody>
+          {patients.map((p) => (
+            <tr key={p.id}>
+              <td className="room">{p.room}</td>
+              <td><span className="pt-name">{p.name}</span><span className="pt-age">{p.age}</span></td>
+              <td className="dx">{p.diagnosis}</td>
+              <td className="open-as">
+                <a href={`#/patient/${p.id}`}>Bedside tablet</a>
+                {p.people.map((person) => (
+                  <a key={person.id} href={`#/family/${person.id}`}>{person.name.split(" ")[0]}, {person.relation}</a>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
