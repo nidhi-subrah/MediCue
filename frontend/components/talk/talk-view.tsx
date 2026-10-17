@@ -16,7 +16,7 @@ import { SuggestionBanner } from './suggestion-banner'
 import { SummaryPanel } from './summary-panel'
 
 export function TalkView() {
-  const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, setMode, skipConsult, respondWelfare } =
+  const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, setMode, skipConsult, goBack, respondWelfare } =
     useLiveSession()
   const audio = useSettings((s) => s.spokenPrompts)
   const updateSettings = useSettings((s) => s.update)
@@ -118,8 +118,8 @@ export function TalkView() {
                 step={step}
                 stepNumber={session.taps + 1}
                 mode={mode}
-                canUndo={false}
-                onUndo={() => {}}
+                canUndo={session.can_go_back}
+                onUndo={goBack}
               />
             </AnimatePresence>
           ) : null}

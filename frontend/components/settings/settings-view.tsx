@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch'
 import { useSpeaker } from '@/hooks/use-speaker'
 import { MODES, MODE_ORDER } from '@/lib/modes'
 import { type ButtonSize, type TextSize, useSettings } from '@/lib/store/settings'
-import type { Language } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -44,6 +44,56 @@ function ToggleRow({
   )
 }
 
+/** A slider that snaps to named levels, with the level names under the track. */
+function StepSlider<T extends string>({
+  label,
+  value,
+  levels,
+  onChange,
+}: {
+  label: string
+  value: T
+  levels: { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  const index = Math.max(0, levels.findIndex((l) => l.value === value))
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        type="range"
+        min={0}
+        max={levels.length - 1}
+        step={1}
+        value={index}
+        onChange={(e) => onChange(levels[Number(e.target.value)].value)}
+        aria-label={label}
+        aria-valuetext={levels[index].label}
+        list={`${label}-levels`}
+        className="h-3 w-full cursor-pointer accent-primary"
+      />
+      <datalist id={`${label}-levels`}>
+        {levels.map((l, i) => <option key={l.value} value={i} label={l.label} />)}
+      </datalist>
+      <div className="grid text-sm text-muted-foreground" style={{ gridTemplateColumns: `repeat(${levels.length}, minmax(0, 1fr))` }}>
+        {levels.map((l, i) => (
+          <button
+            key={l.value}
+            type="button"
+            onClick={() => onChange(l.value)}
+            className={cn(
+              'rounded-lg py-1',
+              i === 0 ? 'text-left' : i === levels.length - 1 ? 'text-right' : 'text-center',
+              i === index && 'font-semibold text-foreground',
+            )}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function SettingsView() {
   const s = useSettings()
   const { say } = useSpeaker()
@@ -71,11 +121,11 @@ export function SettingsView() {
           Seeing
         </h2>
         <Row title="Text size" hint="Preview: the quick brown fox needs a glass of water.">
-          <Segmented<TextSize>
+          <StepSlider<TextSize>
             label="Text size"
             value={s.textSize}
             onChange={(v) => s.update({ textSize: v })}
-            options={[
+            levels={[
               { value: 'md', label: 'Default' },
               { value: 'lg', label: 'Large' },
               { value: 'xl', label: 'Larger' },
@@ -84,12 +134,11 @@ export function SettingsView() {
           />
         </Row>
         <Row title="Button size" hint="Taller buttons need less precision.">
-          <Segmented<ButtonSize>
+          <StepSlider<ButtonSize>
             label="Button size"
             value={s.buttonSize}
-            columns={3}
             onChange={(v) => s.update({ buttonSize: v })}
-            options={[
+            levels={[
               { value: 'regular', label: 'Regular' },
               { value: 'large', label: 'Large' },
               { value: 'xl', label: 'Extra large' },
@@ -152,19 +201,6 @@ export function SettingsView() {
               <Volume2 className="size-4" aria-hidden="true" /> Test
             </button>
           </div>
-        </Row>
-        <Row title="Language" hint="Home screen, phrases and urgent message.">
-          <Segmented<Language>
-            label="Language"
-            value={s.language}
-            columns={3}
-            onChange={(v) => s.update({ language: v })}
-            options={[
-              { value: 'en', label: 'English' },
-              { value: 'es', label: 'Español' },
-              { value: 'fr', label: 'Français' },
-            ]}
-          />
         </Row>
       </section>
     </div>

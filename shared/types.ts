@@ -68,6 +68,7 @@ export interface SessionState {
   profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
   options: FeelingOptions | null;     // tailored second-step options (backend/app/engine/options.py)
   choice: OptionChoice | null;        // the option the patient picked
+  can_go_back: boolean;               // "Back" undoes the last input (only while nothing has been sent)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }

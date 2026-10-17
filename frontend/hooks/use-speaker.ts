@@ -5,12 +5,11 @@ import { SPEECH_LANG, canSpeak, speak, stopSpeaking } from '@/lib/speech'
 import { useSettings } from '@/lib/store/settings'
 
 export function useSpeaker() {
-  const language = useSettings((s) => s.language)
   const rate = useSettings((s) => s.speechRate)
 
   const say = useCallback(
-    (text: string) => speak(text, { lang: SPEECH_LANG[language], rate }),
-    [language, rate],
+    (text: string) => speak(text, { lang: SPEECH_LANG.en, rate }),
+    [rate],
   )
 
   return { say, stop: stopSpeaking, supported: canSpeak }
