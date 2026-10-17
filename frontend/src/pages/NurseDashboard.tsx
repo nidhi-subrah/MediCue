@@ -28,12 +28,13 @@ export default function NurseDashboard() {
   const [showDone, setShowDone] = useState(false);
 
   const loadTrends = useCallback(() => api.get<PatientTrend[]>("/api/trends").then(setTrends), []);
+  const loadAlerts = useCallback(() => api.get<Alert[]>("/api/alerts").then(setAlerts), []);
   useEffect(() => {
-    api.get<Alert[]>("/api/alerts").then(setAlerts);
+    loadAlerts();
     loadTrends();
     const t = window.setInterval(loadTrends, 60000);
     return () => window.clearInterval(t);
-  }, [loadTrends]);
+  }, [loadAlerts, loadTrends]);
 
   useChannel("nurse", (m) => {
     if (m.type === "alert") {
@@ -44,7 +45,7 @@ export default function NurseDashboard() {
       setAlerts((a) => a.map((x) => (x.id === m.alert.id ? m.alert : x)));
       if (m.alert.status === "confirmed") loadTrends();
     }
-  });
+  }, loadAlerts);  // refetch after a reconnect so no alert sent while offline is missed
 
   const open = alerts.filter((a) => a.status === "open")
     .sort((a, b) => Number(b.priority === "urgent") - Number(a.priority === "urgent"));

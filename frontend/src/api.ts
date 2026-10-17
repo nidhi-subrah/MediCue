@@ -16,10 +16,13 @@ export const api = {
   post: <T,>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
 };
 
-/** Subscribe to a backend pub/sub channel; reconnects with backoff. */
-export function useChannel(channel: string | null, onMessage: (m: WsMessage) => void) {
+/** Subscribe to a backend pub/sub channel; reconnects with backoff.
+ *  `onOpen` runs on every (re)connect, so callers can refetch anything published while disconnected. */
+export function useChannel(channel: string | null, onMessage: (m: WsMessage) => void, onOpen?: () => void) {
   const handler = useRef(onMessage);
   handler.current = onMessage;
+  const openHandler = useRef(onOpen);
+  openHandler.current = onOpen;
 
   useEffect(() => {
     if (!channel) return;
@@ -34,6 +37,7 @@ export function useChannel(channel: string | null, onMessage: (m: WsMessage) => 
       ws.onopen = () => {
         retry = 500;
         ping = window.setInterval(() => ws?.readyState === 1 && ws.send("ping"), 20000);
+        openHandler.current?.();
       };
       ws.onmessage = (e) => handler.current(JSON.parse(e.data));
       ws.onclose = () => {

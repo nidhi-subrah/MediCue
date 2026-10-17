@@ -309,6 +309,9 @@ class SessionService:
 
     async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse") -> dict:
         alert = self.alerts[alert_id]
+        if alert["status"] != "open":
+            # A second confirm (double tap, two dashboards) must not count twice in reliability or logs.
+            raise ValueError("alert is already confirmed")
         alert["status"], alert["confirmed_need"] = "confirmed", need_id
         s = self.sessions.get(alert["session_id"] or "")
         if s and need_id:
@@ -389,16 +392,23 @@ class SessionService:
         c = self.consults[cid]
         if c["status"] != "pending":
             raise ValueError("consult is no longer open")
+        options = [o["need"] for o in c["options"]]
+        if answer not in (None, "unsure") and answer not in options:
+            raise ValueError("answer must be one of the offered options")  # before any state changes
         c["status"], c["answer"] = "answered", answer
         s = self.sessions.get(c["session_id"])
         if s and s.status not in ("escalated", "sent"):
             person = next(x for x in s.dialogue.consultants if x.id == c["person_id"])
-            s.dialogue.apply_consult(person, [o["need"] for o in c["options"]], answer)
+            s.dialogue.apply_consult(person, options, answer)
             s.consult_answers.append((person.id, answer))
             await self._event(s, "consult_answered", {"consult_id": cid, "answer": answer})
             await self._log_belief(s)
-            if s.status in ("waiting_consult", "question"):
+            if s.status == "waiting_consult" and s.consult_id == cid:
                 await self._advance(s)
+            else:
+                # The patient moved on (skipped or timed out). Keep the evidence, but don't replace
+                # whatever question they are answering now.
+                await self.state(s, publish=True)
         return c
 
     def consults_for(self, person_id: str) -> list[dict]:

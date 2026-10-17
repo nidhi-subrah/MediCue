@@ -11,14 +11,18 @@ const SBAR_ROWS = [
 export default function AlertCard({ alert }: { alert: Alert }) {
   const [other, setOther] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const urgent = alert.priority === "urgent";
   const open = alert.status === "open";
   const [lead, ...rest] = alert.top;
 
   const confirm = async (needId: string | null) => {
     setBusy(true);
+    setError(null);
     try {
       await api.post(`/api/alerts/${alert.id}/confirm`, { need_id: needId });
+    } catch (e) {
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -89,6 +93,7 @@ export default function AlertCard({ alert }: { alert: Alert }) {
       ) : (
         <p className="confirmed">Confirmed{alert.confirmed_need ? `: ${needLabel(alert.confirmed_need)}` : ""}</p>
       )}
+      {error && <p className="error small">{error}</p>}
     </article>
   );
 }
