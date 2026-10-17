@@ -30,7 +30,9 @@ With no environment variables it runs fully in memory with template text, seeded
 | `app/services/sessions.py` | Live sessions, alerts, consults, learning from nurse confirmations, welfare checks |
 | `app/services/gemini.py` | SBAR, translation, caregiver questions, hypotheses, each with a template fallback |
 | `app/services/trends.py` | Last 24 h vs each patient's own baseline |
-| `app/services/research.py` | Pattern detectors → Gemini hypotheses → clinician review → prior multipliers |
+| `app/engine/research_decision.py` | Research decision engine: CHECK_DATA / ASK_CLINICIAN / WAIT scored by expected information gain − cost |
+| `app/services/research_data.py` | Hypothesis data tests, the three detectors (now proposers), free-text observation parser |
+| `app/services/research.py` | Research agent lifecycle: hypotheses, evidence, inquiries, lead review, digest, prior multipliers |
 | `app/store/` | `MemoryStore` (default) and `TimescaleStore` (`DATABASE_URL` set), `schema.sql` |
 
 ## Safety rules (deterministic, no network)
@@ -85,6 +87,27 @@ model the key can use (for example `gemini-flash-latest`): quotas are per model.
 
 These are synthetic: the simulated patients follow the engine's own likelihood model, plus noise. They work as a
 regression suite, not as evidence of clinical benefit.
+
+## Research agent
+
+```
+observation / detector → hypothesis (confidence 0.5)
+  → CHECK_DATA | ASK_CLINICIAN | WAIT   (argmax of info gain − cost, every step logged with its scores)
+  → evidence → Bayesian update → ... → ≥ 0.90 or ≤ 0.10 → pending review
+  → clinical lead: validate | reject | needs more data (thresholds tighten to 0.95 / 0.05)
+  → validated + prior effect → shapes the patient's prior in the belief engine
+```
+
+- **No double-dipping**: detectors look at a "discover" half of episodes (hash of session id). System hypotheses are
+  tested only on the held-out "confirm" half. Clinician observations come from outside the data and use all of it.
+- **Tempered evidence**: episodes from one patient are correlated, so data log-likelihood ratios are weighted
+  (0.25 for episodes, 0.6 for daily aggregates). Clinician answers are weighted 0.7. No single source settles a hypothesis.
+- **Who gets asked**: only staff who know the patient. The person who made the observation has their reliability
+  discounted on their own idea, so the agent prefers a second opinion. Asking while a worthwhile free data check is
+  pending carries an `unchecked_data` cost.
+- **Learning**: when the lead validates or rejects, each clinician who answered gets a Beta update to their reliability.
+- **Nothing is deleted**: evidence, timeline and decision traces are appended. Rejected hypotheses are never re-proposed.
+- Background cycle every `RESEARCH_TICK_S` (default 300 s) re-checks active hypotheses as new confirmations arrive.
 
 ## Tuning knobs (`app/config.py → EngineConfig`)
 

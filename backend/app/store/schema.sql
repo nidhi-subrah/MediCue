@@ -102,9 +102,18 @@ CREATE TABLE IF NOT EXISTS profile_suggestions (
     body       JSONB NOT NULL
 );
 
--- Human-in-the-loop research findings.
-CREATE TABLE IF NOT EXISTS findings (
+-- Research agent: hypotheses (with their full evidence trail and timeline in body) and clinician inquiries.
+-- Every agent action is also appended to the events hypertable as event_type = 'research_action'.
+CREATE TABLE IF NOT EXISTS research_hypotheses (
     id         TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    status     TEXT NOT NULL,
+    body       JSONB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS research_inquiries (
+    id         TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    status     TEXT NOT NULL,
     body       JSONB NOT NULL
 );

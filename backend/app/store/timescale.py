@@ -141,8 +141,16 @@ class TimescaleStore:
                 "INSERT INTO source_reliability (key, a, b) VALUES (%s,%s,%s) "
                 "ON CONFLICT (key) DO UPDATE SET a = EXCLUDED.a, b = EXCLUDED.b, updated_at = now()", (key, a, b))
 
-    async def list_findings(self):
-        rows = await self._all("SELECT body FROM findings ORDER BY created_at DESC")
+    async def events_of_type(self, event_type, since, patient_id=None):
+        sql = "SELECT time, patient_id, session_id, event_type, payload FROM events WHERE event_type = %s AND time >= %s"
+        params: tuple = (event_type, since)
+        if patient_id:
+            sql += " AND patient_id = %s"
+            params += (patient_id,)
+        return await self._all(sql + " ORDER BY time", params)
+
+    async def list_hypotheses(self):
+        rows = await self._all("SELECT body FROM research_hypotheses ORDER BY created_at DESC")
         return [r["body"] for r in rows]
 
     async def tap_baseline(self, patient_id, days=14):
@@ -173,9 +181,22 @@ class TimescaleStore:
                 (suggestion["id"], suggestion["created_at"], suggestion["patient_id"], suggestion["status"],
                  json.dumps(suggestion, default=str)))
 
-    async def upsert_finding(self, finding):
+    async def upsert_hypothesis(self, hypothesis):
         async with self.pool.connection() as conn:
             await conn.execute(
-                "INSERT INTO findings (id, created_at, body) VALUES (%s,%s,%s) "
-                "ON CONFLICT (id) DO UPDATE SET body = EXCLUDED.body",
-                (finding["id"], finding["created_at"], json.dumps(finding, default=str)))
+                "INSERT INTO research_hypotheses (id, created_at, updated_at, status, body) VALUES (%s,%s,%s,%s,%s) "
+                "ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, status = EXCLUDED.status, "
+                "body = EXCLUDED.body",
+                (hypothesis["id"], hypothesis["created_at"], hypothesis["updated_at"], hypothesis["status"],
+                 json.dumps(hypothesis, default=str)))
+
+    async def list_inquiries(self):
+        rows = await self._all("SELECT body FROM research_inquiries ORDER BY created_at DESC")
+        return [r["body"] for r in rows]
+
+    async def upsert_inquiry(self, inquiry):
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO research_inquiries (id, created_at, status, body) VALUES (%s,%s,%s,%s) "
+                "ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, body = EXCLUDED.body",
+                (inquiry["id"], inquiry["created_at"], inquiry["status"], json.dumps(inquiry, default=str)))

@@ -104,13 +104,68 @@ export interface PatientTrend {
   mode_changes_24h: number;
 }
 
-export interface Finding {
-  id: string; created_at: string; patient_id: string | null; kind: string;
-  title: string; evidence: string; hypothesis: string; hypothesis_source: "template" | "gemini";
-  status: "proposed" | "validated" | "rejected" | "needs_more_data";
-  reviewer: string | null; note: string | null;
-  prior_effect: { patient_id: string; need_ids: string[]; multiplier: number; hours?: number[] } | null;
+// ---- Research agent ------------------------------------------------------------------------------
+
+export type HypothesisStatus =
+  | "INVESTIGATING" | "WAITING_FOR_CLINICIAN" | "INCONCLUSIVE"
+  | "SUPPORTED_PENDING_REVIEW" | "REJECTED_PENDING_REVIEW"
+  | "VALIDATED" | "REJECTED";
+
+export type ResearchActionKind = "CHECK_DATA" | "ASK_CLINICIAN" | "WAIT";
+
+/** One row of the deterministic research decision engine's scoring (not LLM reasoning). */
+export interface ResearchActionScore {
+  kind: ResearchActionKind; label: string; target: string | null;
+  eig: number;                         // expected information gain, bits
+  costs: Record<string, number>;       // compute | delay | burden | unchecked_data
+  score: number;                       // eig − Σ costs
+  detail: Record<string, number | string>;
 }
+
+export interface ResearchEvidence {
+  id: string; t: string; source: "data" | "clinician";
+  supports: number; contradicts: number; summary: string; log_lr: number;
+  confidence_before: number; confidence_after: number;
+  episodes?: { time: string; supports: boolean; label: string }[];
+  clinician_id?: string; response?: "agree" | "disagree" | "unsure"; note?: string | null;
+}
+
+export interface TimelineEntry {
+  t: string; kind: "created" | "action" | "evidence" | "confidence" | "status" | "review" | "note";
+  text: string; confidence?: number; score?: number;
+}
+
+export interface ResearchHypothesis {
+  id: string; created_at: string; updated_at: string;
+  statement: string; claim: string;
+  observation_text: string | null;     // clinician's original words, preserved verbatim
+  origin: "clinician" | "system"; origin_detail: string; origin_id: string | null;
+  patient_id: string | null; cohort: string;
+  test: Record<string, unknown> | null; discovery: string | null;
+  rationale?: string; rationale_source?: "gemini" | "template";
+  confidence: number; status: HypothesisStatus;
+  thresholds: { support: number; reject: number };
+  evidence: ResearchEvidence[]; timeline: TimelineEntry[]; asked: string[];
+  last_action: ResearchActionKind | null;
+  next_action: { kind: string; label: string } | null;
+  decision_trace: { t: string; confidence: number; ranked: ResearchActionScore[]; selected: string; selected_label: string } | null;
+  prior_effect: { patient_id: string; need_ids: string[]; multiplier: number; hours?: number[]; after_visit_h?: number } | null;
+  reviewer: string | null; note: string | null; reviewed_at: string | null;
+}
+
+export interface ResearchInquiry {
+  id: string; hypothesis_id: string; clinician_id: string; clinician_name: string; clinician_role: string;
+  question: string; reliability: number; status: "pending" | "answered"; created_at: string;
+  response: "agree" | "disagree" | "unsure" | null; note: string | null; answered_at: string | null;
+}
+
+export interface ResearchDigest {
+  text: string; source: "gemini" | "template";
+  facts: { changed: number; clinician_gained: number; system_inconclusive: number; pending_review: number;
+           waiting_clinician: number; statements: string[] };
+}
+
+export interface StaffMember { id: string; name: string; role: string; patients: string[] }
 
 export type WsMessage =
   | { type: "alert"; alert: Alert }
@@ -120,7 +175,9 @@ export type WsMessage =
   | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number }
   | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" }
   | { type: "profile"; profile: PatientProfile }
-  | { type: "suggestions"; patient_id: string; suggestions: ProfileSuggestion[] };
+  | { type: "suggestions"; patient_id: string; suggestions: ProfileSuggestion[] }
+  | { type: "research_updated" };
+
 
 // ---- patient profiles, nurse-note suggestions, shift summary ----------------------------------------
 
