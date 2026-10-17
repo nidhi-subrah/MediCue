@@ -16,14 +16,18 @@ export default function InquiryCard({ inquiry }: { inquiry: ResearchInquiry }) {
   };
 
   return (
-    <article className="card inquiry" aria-label={`Question for ${inquiry.clinician_name}`}>
-      <p className="muted small">SilentSignal Research asks <strong>{inquiry.clinician_name}</strong> ({inquiry.clinician_role}) · {timeAgo(inquiry.created_at)}</p>
-      <p className="consult-q">{inquiry.question}</p>
-      <input aria-label="Optional note" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-      <div className="inquiry-actions">
+    <article className="inquiry" aria-label={`Question for ${inquiry.clinician_name}`}>
+      <p className="finding-meta">
+        <span className="finding-status">For {inquiry.clinician_name}</span>
+        <span>{inquiry.clinician_role}</span>
+        <span>{timeAgo(inquiry.created_at)}</span>
+      </p>
+      <p className="inquiry-q">{inquiry.question}</p>
+      <input aria-label="Optional note" placeholder="Add a note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+      <div className="review-row">
         <button className="btn" disabled={busy} onClick={() => answer("agree")}>Agree</button>
         <button className="btn" disabled={busy} onClick={() => answer("disagree")}>Disagree</button>
-        <button className="btn muted-btn" disabled={busy} onClick={() => answer("unsure")}>Unsure</button>
+        <button className="btn btn-quiet" disabled={busy} onClick={() => answer("unsure")}>Unsure</button>
       </div>
     </article>
   );

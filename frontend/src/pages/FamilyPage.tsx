@@ -36,48 +36,55 @@ export default function FamilyPage({ personId }: { personId: string }) {
   };
 
   if (error) return <p className="error">{error}</p>;
-  if (!me) return <p>Loading…</p>;
+  if (!me) return <p className="empty">Loading…</p>;
+  const first = me.patient_name.split(" ")[0];
   const pending = consults.filter((c) => c.status === "pending");
   const past = consults.filter((c) => c.status !== "pending");
 
   return (
     <div className="family">
-      <h1>Hi {me.name.split(" ")[0]}</h1>
-      <p className="muted">You're helping the care team understand {me.patient_name}.</p>
+      <header className="family-head">
+        <h1>Hi {me.name.split(" ")[0]}</h1>
+        <p>You're helping {first}'s care team understand what {first} needs.</p>
+      </header>
 
-      {pending.length === 0 && <div className="card"><p>No questions right now. We'll show one here when {me.patient_name.split(" ")[0]} needs your help.</p></div>}
+      {pending.length === 0 && (
+        <p className="family-idle">No questions right now. If {first} is hard to understand, we'll ask you here.</p>
+      )}
       {pending.map((c) => (
-        <article key={c.id} className="card consult" aria-live="polite">
+        <article key={c.id} className="consult" aria-live="polite">
+          <p className="consult-when">{first}'s care team is asking · {timeAgo(c.created_at)}</p>
           <p className="consult-q">{c.question}</p>
           <div className="consult-options">
-            {c.options.map((o) => <button key={o.need} className="btn big" onClick={() => answer(c, o.need)}>{o.label}</button>)}
-            <button className="btn big" onClick={() => answer(c, null)}>Something else</button>
-            <button className="btn big muted-btn" onClick={() => answer(c, null, true)}>I'm not sure</button>
+            {c.options.map((o) => <button key={o.need} className="choice" onClick={() => answer(c, o.need)}>{o.label}</button>)}
+            <button className="choice" onClick={() => answer(c, null)}>Something else</button>
           </div>
-          <p className="muted small">{timeAgo(c.created_at)}</p>
+          <button className="text-btn" onClick={() => answer(c, null, true)}>I'm not sure</button>
         </article>
       ))}
 
-      <section className="card">
-        <h2>Welfare check</h2>
-        <p className="small">If you're worried, ask {me.patient_name.split(" ")[0]} to respond on their tablet. If there's no
-          response in time, their nurse is alerted. This only notices a missed response; it can't tell why.</p>
-        <button className="btn primary" onClick={checkIn} disabled={welfare?.status === "pending"}>
-          Check on {me.patient_name.split(" ")[0]}
+      <section className="welfare">
+        <h2>Worried about {first}?</h2>
+        <p>
+          We'll ask {first} to tap their tablet. If there's no response in time, their nurse is alerted.
+          This only notices a missed response; it can't tell why.
+        </p>
+        <button className="btn" onClick={checkIn} disabled={welfare?.status === "pending"}>
+          Check on {first}
         </button>
         {welfare && (
-          <p className="small" aria-live="polite">
+          <p className={`welfare-status ws-${welfare.status}`} aria-live="polite">
             {welfare.status === "pending" && "Waiting for a response…"}
-            {welfare.status === "responded" && "✓ They responded."}
+            {welfare.status === "responded" && `${first} responded.`}
             {welfare.status === "no_response" && "No response. Their nurse has been alerted."}
           </p>
         )}
       </section>
 
       {past.length > 0 && (
-        <details>
+        <details className="history">
           <summary>Earlier questions ({past.length})</summary>
-          <ul className="small">{past.map((c) => <li key={c.id}>{c.question} · {c.status}</li>)}</ul>
+          <ul>{past.map((c) => <li key={c.id}>{c.question} <span className="muted">{c.status}</span></li>)}</ul>
         </details>
       )}
     </div>

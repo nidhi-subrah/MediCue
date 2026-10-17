@@ -49,50 +49,56 @@ export default function ResearchPage() {
 
   return (
     <div className="research research-agent">
-      <header className="research-head">
+      <header className="section-head research-head">
         <div>
-          <h1>Research agent</h1>
-          <p className="muted small">Observations from clinicians and patterns the system detects become hypotheses. For each one the
-            agent decides whether to check the data, ask a clinician who knows the patient, or wait for more episodes,
-            and updates its confidence from the evidence. Nothing becomes a finding until the clinical lead reviews it.</p>
+          <h1>Research</h1>
+          <p className="section-meta">
+            {pending.length} awaiting review · {active.length} under investigation · {inquiries.length} question{inquiries.length === 1 ? "" : "s"} for clinicians
+          </p>
         </div>
-        <button className="btn primary" onClick={run} disabled={running}>{running ? "Running…" : "Run research cycle"}</button>
+        <button className="btn" onClick={run} disabled={running}>{running ? "Running…" : "Run research cycle"}</button>
       </header>
+      <p className="research-intro">
+        Clinician observations and patterns found in confirmed requests become hypotheses. For each one the agent
+        chooses to check the data, ask a clinician who knows the patient, or wait for more episodes, and updates its
+        confidence from what it finds. Nothing is treated as a finding until the clinical lead reviews it.
+      </p>
 
       {digest && (
-        <section className="card digest" aria-label="Research digest">
-          <h2>This shift</h2>
-          <p>{digest.text}</p>
-          <p className="muted small">{digest.source === "gemini" ? "Phrased by Gemini from the counts" : "Generated from the counts"}</p>
+        <section className="digest" aria-label="Research digest">
+          <p className="digest-kicker">This shift</p>
+          <p className="digest-text">{digest.text}</p>
+          {digest.source === "gemini" && <p className="by">Phrased by Gemini from the counts</p>}
         </section>
       )}
 
       <div className="research-grid">
         <div className="research-main">
-          <section aria-labelledby="pending-h">
-            <h2 id="pending-h">Pending review <span className="count">{pending.length}</span></h2>
+          <section className="research-section" aria-labelledby="pending-h">
+            <header className="section-head"><h2 id="pending-h">Pending review</h2><span className="section-meta">{pending.length}</span></header>
             {pending.length === 0
-              ? <p className="muted small">Nothing has crossed a review threshold yet.</p>
-              : <p className="muted small">Human review is required before any hypothesis is treated as a finding.</p>}
+              ? <p className="empty">Nothing has crossed a review threshold yet.</p>
+              : <p className="research-note">Human review is required before any hypothesis is treated as a finding.</p>}
             {pending.map((h) => <HypothesisCard key={h.id} h={h} mode="review" />)}
           </section>
 
-          <section aria-labelledby="active-h">
-            <h2 id="active-h">Active hypotheses <span className="count">{active.length}</span></h2>
+          <section className="research-section" aria-labelledby="active-h">
+            <header className="section-head"><h2 id="active-h">Active hypotheses</h2><span className="section-meta">{active.length}</span></header>
+            {active.length === 0 && <p className="empty">No hypotheses under investigation.</p>}
             {active.map((h) => <HypothesisCard key={h.id} h={h} mode="active" />)}
           </section>
 
-          <section aria-labelledby="history-h">
-            <h2 id="history-h">Validated / rejected <span className="count">{done.length}</span></h2>
-            {done.length === 0 && <p className="muted small">No reviewed hypotheses yet. Evidence and history are kept here after review.</p>}
+          <section className="research-section" aria-labelledby="history-h">
+            <header className="section-head"><h2 id="history-h">Validated and rejected</h2><span className="section-meta">{done.length}</span></header>
+            {done.length === 0 && <p className="empty">Nothing reviewed yet. Evidence and history stay here after review.</p>}
             {done.map((h) => <HypothesisCard key={h.id} h={h} mode="history" />)}
           </section>
         </div>
 
         <aside className="research-side">
-          <section aria-labelledby="inq-h">
-            <h2 id="inq-h">Clinician inquiries <span className="count">{inquiries.length}</span></h2>
-            {inquiries.length === 0 && <p className="muted small">The agent has no open questions.</p>}
+          <section className="research-section" aria-labelledby="inq-h">
+            <header className="section-head"><h2 id="inq-h">Questions for clinicians</h2><span className="section-meta">{inquiries.length}</span></header>
+            {inquiries.length === 0 && <p className="empty">The agent has no open questions.</p>}
             {inquiries.map((i) => <InquiryCard key={i.id} inquiry={i} />)}
           </section>
           <ObservationForm staff={staff} patients={patients} />
