@@ -63,6 +63,9 @@ export interface SessionState {
   alert_id: string | null;
   ui_text: Record<string, string>;    // translated tile labels/prompts for the patient's language
   prior_reasons: string[];            // why the prior looks the way it does (time of day, surgery, history)
+  inconsistencies: number;            // surprising answers (+1) and "not sure" (+0.5) this session
+  baseline_interval: number | null;   // patient's usual seconds between inputs, from history
+  profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -79,6 +82,8 @@ export interface Alert {
   sbar: SBAR; sbar_source: "template" | "gemini";
   confirmed_need: string | null; seconds_to_alert: number;
   reason: string;                     // the decision engine's explanation for this alert
+  profile: ProfileItem[];
+  nurse_note: string | null;          // observation written at confirmation
 }
 
 export interface ConsultRequest {
@@ -169,4 +174,48 @@ export type WsMessage =
   | { type: "consult"; consult: ConsultRequest }
   | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number }
   | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" }
+  | { type: "profile"; profile: PatientProfile }
+  | { type: "suggestions"; patient_id: string; suggestions: ProfileSuggestion[] }
   | { type: "research_updated" };
+
+
+// ---- patient profiles, nurse-note suggestions, shift summary ----------------------------------------
+
+export type ProfileKind =
+  | "need" | "fatigue" | "person_trust" | "person_available" | "person_preferred" | "access" | "signal" | "note";
+
+export interface ProfileItem {
+  kind: ProfileKind; target: string; value: string; hours: number[] | null;
+  evidence: string;                   // exact quote from the chart notes or the nurse's note
+  origin: "notes" | "nurse";
+  effect: string;                     // plain-language effect on the engine
+}
+
+export interface PatientProfile {
+  patient_id: string; source: "gemini" | "none"; items: ProfileItem[];
+  dropped: { kind: string; target: string; value: string; evidence: string; reason: string; status: string }[];
+  updated_at: string | null; notes: string; extracting: boolean;
+}
+
+export interface ProfileSuggestion {
+  id: string; created_at: string; patient_id: string; patient_name: string; room: string;
+  alert_id: string | null; note: string; nurse: string;
+  status: "pending" | "approved" | "rejected" | "duplicate" | "blocked";
+  reason: string | null; item: ProfileItem; reviewer: string | null; reviewed_at: string | null;
+}
+
+export interface HandoffPatient {
+  patient_id: string; name: string; room: string; status: "attention" | "watch" | "stable";
+  headline: string; watch_for: string | null;
+  requests: number; urgent: number; open_urgent: number;
+  confirmed: { label: string; count: number }[];
+  tap_seconds: number | null; baseline_seconds: number | null;
+  inconsistent_answers: number; mode_changes: number;
+  trends: { label: string; message: string; severity: "review" | "attention" }[];
+  profile: string[];                  // quotes from the notes behind the patient's profile
+}
+
+export interface HandoffSummary {
+  generated_at: string; window_hours: number; source: "gemini" | "template";
+  patients: HandoffPatient[]; stable: { patient_id: string; name: string; room: string }[];
+}

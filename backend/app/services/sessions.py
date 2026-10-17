@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from ..catalog import Catalog
 from ..config import EngineConfig, settings
 from ..data.patients import PATIENT_BY_ID, PERSON_BY_ID
+from ..engine import profile as prof
 from ..engine.belief import PriorContext, context_prior, entropy
 from ..engine.conformal import ConformalPredictor
 from ..engine.decision import Consultant, Decision
@@ -64,11 +65,15 @@ class Session:
     started: float = field(default_factory=time.time)
     belief_step: int = 0
     consult_answers: list[tuple[str, str | None]] = field(default_factory=list)  # (person id, need id)
+    tired_mode: str = "large"        # where the tablet goes when the patient tires (patient profile)
+    auto_switched: bool = False
 
 
 class SessionService:
-    def __init__(self, cat: Catalog, cfg: EngineConfig, store, hub: Hub, gemini: Gemini, conformal: ConformalPredictor):
+    def __init__(self, cat: Catalog, cfg: EngineConfig, store, hub: Hub, gemini: Gemini, conformal: ConformalPredictor,
+                 profiles=None):
         self.cat, self.cfg, self.store, self.hub, self.gemini, self.conformal = cat, cfg, store, hub, gemini, conformal
+        self.profiles = profiles   # services.profiles.ProfileService; None = no profiles
         self.sessions: dict[str, Session] = {}
         self.alerts: dict[str, dict] = {}
         self.consults: dict[str, dict] = {}
@@ -150,10 +155,28 @@ class SessionService:
         prior, reasons = context_prior(self.cat, PriorContext(
             hour=local_hour, days_since_surgery=p["days_since_surgery"],
             history_counts=history, multipliers=mult))
-        consultants = [Consultant(x["id"], x["name"], x["relation"], clip(x["reliability"])) for x in view["people"]]
-        d = Dialogue(self.cat, self.cfg, prior, clip(view["signal_reliability"]), consultants,
-                     {k: v["flag"] for k, v in p["chart"].items()})
-        s = Session(uuid.uuid4().hex[:12], p, d, mode, language or p["language"], reasons)
+
+        # Patient profile (engine/profile.py): bounded adjustments from chart notes and approved nurse notes.
+        profile = self.profiles.get(patient_id) if self.profiles else prof.PatientProfile(patient_id)
+        pmult = prof.prior_multipliers(profile, self.cat, local_hour)
+        prior = prof.apply_to_prior(prior, pmult, self.cat)
+        reasons += prof.prior_reasons(profile, local_hour)
+        consultants = []
+        for person in p["people"]:
+            a, b = await self.reliability(f"person:{person['id']}", (person["a"], person["b"]))
+            adj = prof.person_adjustment(profile, person["id"], a, b, local_hour)
+            consultants.append(Consultant(person["id"], person["name"], person["relation"],
+                                          clip(adj.a / (adj.a + adj.b)), adj.available, adj.cost_factor))
+        try:
+            baseline = await self.store.tap_baseline(patient_id)
+        except Exception:
+            log.exception("tap baseline lookup failed")
+            baseline = None
+        d = Dialogue(self.cat, self.cfg, prior, clip(prof.signal_reliability(profile, view["signal_reliability"])),
+                     consultants, {k: v["flag"] for k, v in p["chart"].items()},
+                     baseline_interval=baseline, fatigue_sensitivity=prof.fatigue_sensitivity(profile, local_hour))
+        s = Session(uuid.uuid4().hex[:12], p, d, mode, language or p["language"], reasons,
+                    tired_mode=prof.mode_when_tired(profile))
         self.sessions[s.id] = s
         await self._event(s, "session_started", {"mode": mode, "language": s.language, "prior_reasons": reasons})
         await self._log_belief(s)
@@ -202,10 +225,11 @@ class SessionService:
         s.decision = d
         kind = d.chosen.kind
         s.question_id = None
-        if s.mode == "grid" and s.dialogue.fatigue() >= FATIGUE_SWITCH and kind in ("ask", "tap"):
-            # Adaptive access: tiring patients get larger, fewer targets.
-            await self._event(s, "mode_changed", {"from": s.mode, "to": "large", "reason": "fatigue"})
-            s.mode = "large"
+        if (not s.auto_switched and s.mode == "grid" and s.mode != s.tired_mode
+                and s.dialogue.fatigue() >= FATIGUE_SWITCH and kind in ("ask", "tap")):
+            # Adaptive access: tiring patients get larger, fewer targets, or the mode their profile prefers.
+            await self._event(s, "mode_changed", {"from": s.mode, "to": s.tired_mode, "reason": "fatigue"})
+            s.mode, s.auto_switched = s.tired_mode, True
         if kind == "escalate":
             s.status = "escalated"
             s.dialogue.attach_context()
@@ -246,11 +270,15 @@ class SessionService:
             "fatigue": round(d.fatigue(), 2), "taps": d.taps, "questions_asked": d.questions_asked,
             "last_decision": s.decision.public() if s.decision else None,
             "trace": [t.public() for t in d.trace], "alert_id": s.alert_id, "ui_text": ui,
-            "prior_reasons": s.prior_reasons,
+            "prior_reasons": s.prior_reasons, "inconsistencies": d.inconsistencies,
+            "baseline_interval": d.baseline_interval, "profile": self._profile_items(s.patient["id"]),
         }
         if publish:
             await self.hub.publish(f"patient:{s.patient['id']}", {"type": "session", "session": out})
         return out
+
+    def _profile_items(self, pid: str) -> list[dict]:
+        return self.profiles.public(pid)["items"] if self.profiles else []
 
     # ---- alerts ----------------------------------------------------------------------------------
 
@@ -268,6 +296,7 @@ class SessionService:
                         for lid, label, flag in d.lookup_results],
             "consults": [{"person": who, "answer": ans} for who, ans in d.consult_answers],
             "language": s.language,
+            "profile": [i["effect"] for i in self._profile_items(p["id"])],
         }
 
     async def _create_alert(self, s: Session, priority: str):
@@ -282,6 +311,7 @@ class SessionService:
             "sbar": template_sbar(ctx), "sbar_source": "template", "confirmed_need": None,
             "seconds_to_alert": round(time.time() - first_tap, 1),
             "reason": s.decision.reason if s.decision else "",
+            "profile": self._profile_items(s.patient["id"]), "nurse_note": None,
         }
         s.alert_id = alert["id"]
         self.alerts[alert["id"]] = alert
@@ -309,12 +339,17 @@ class SessionService:
             alert["sbar"], alert["sbar_source"] = sbar, source
             await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
 
-    async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse") -> dict:
+    async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse", note: str | None = None) -> dict:
         alert = self.alerts[alert_id]
         if alert["status"] != "open":
             # A second confirm (double tap, two dashboards) must not count twice in reliability or logs.
             raise ValueError("alert is already confirmed")
         alert["status"], alert["confirmed_need"] = "confirmed", need_id
+        note = (note or "").strip() or None
+        alert["nurse_note"] = note
+        if note and self.profiles:
+            # Feature B: Gemini suggests profile changes from the note; a nurse approves each one.
+            self._spawn(self._suggest(alert["patient_id"], alert_id, note, need_id, nurse))
         s = self.sessions.get(alert["session_id"] or "")
         if s and need_id:
             await self._learn(s, alert, need_id)
@@ -323,6 +358,12 @@ class SessionService:
                            "predicted": alert["top"][0]["need"] if alert["top"] else None})
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
         return alert
+
+    async def _suggest(self, pid: str, alert_id: str, note: str, need_id: str | None, nurse: str):
+        try:
+            await self.profiles.suggest(pid, alert_id, note, need_id, nurse)
+        except Exception:
+            log.exception("profile suggestion failed (note kept on the alert)")
 
     async def _learn(self, s: Session, alert: dict, need_id: str):
         d, pid, i = s.dialogue, s.patient["id"], self.cat.index[need_id]

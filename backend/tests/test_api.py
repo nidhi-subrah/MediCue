@@ -75,26 +75,39 @@ def test_welfare_check_requires_preauthorised_caregiver():
         assert client.post(f"/api/welfare/{w['id']}/respond").json()["status"] == "responded"
 
 
-def open_consult(client):
-    """Drive p-chen to a pending consult (head + pain, then 'unsure' to every question)."""
-    s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
-    sid = s["session_id"]
-    client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "head"})
-    s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "feeling", "tap_id": "pain"}).json()
-    for _ in range(5):
-        if s["status"] != "question":
-            break
-        s = client.post(f"/api/sessions/{sid}/answer",
-                        json={"question_id": s["question"]["id"], "answer": "unsure"}).json()
-    assert s["status"] == "waiting_consult"
-    return s
+def open_consult(client, question_after_skip=False):
+    """Drive p-chen to a pending consult: an ambiguous tap pair, then 'unsure' to every question.
+
+    Tries a few ambiguous pairs because which one ends in a consult depends on the patient's seeded
+    history (the prior), and that history changes as demo data is added. With question_after_skip,
+    only accepts a consult where skipping it leads to a patient question, and returns
+    (consult state, state after skipping).
+    """
+    pairs = (("head", "pain"), ("belly", "pain"), ("head", "not_sure"), ("belly", "not_sure"), ("back", "not_sure"))
+    for area, feeling in pairs:
+        s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
+        sid = s["session_id"]
+        client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": area})
+        s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "feeling", "tap_id": feeling}).json()
+        for _ in range(5):
+            if s["status"] != "question":
+                break
+            s = client.post(f"/api/sessions/{sid}/answer",
+                            json={"question_id": s["question"]["id"], "answer": "unsure"}).json()
+        if s["status"] != "waiting_consult":
+            continue
+        if not question_after_skip:
+            return s
+        skipped = client.post(f"/api/sessions/{sid}/skip_consult").json()
+        if skipped["status"] == "question":
+            return s, skipped
+    raise AssertionError("no ambiguous tap pair led to a consult")
 
 
 def test_late_consult_answer_keeps_patients_open_question():
     with TestClient(app) as client:
-        s = open_consult(client)
-        sid, cid = s["session_id"], s["consult"]["id"]
-        s = client.post(f"/api/sessions/{sid}/skip_consult").json()
+        consult, s = open_consult(client, question_after_skip=True)
+        sid, cid = consult["session_id"], consult["consult"]["id"]
         assert s["status"] == "question"
         qid = s["question"]["id"]
         assert client.post(f"/api/consults/{cid}/answer", json={"need_id": None}).status_code == 200
