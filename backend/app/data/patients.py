@@ -84,5 +84,16 @@ PATIENTS = [
     },
 ]
 
+# Unit staff the research agent can ask. `patients` = who they know well; `a`, `b` = Beta prior on how often
+# their impressions turn out right (updated when the clinical lead validates or rejects a hypothesis).
+STAFF = [
+    {"id": "rn-priya", "name": "Priya S.", "role": "RN", "patients": ["p-chen", "p-alvarez", "p-okoye"], "a": 8, "b": 1},
+    {"id": "rn-marcus", "name": "Marcus T.", "role": "RN, nights", "patients": ["p-chen", "p-patel", "p-haddad"], "a": 6, "b": 2},
+    {"id": "rn-amara", "name": "Amara K.", "role": "RN", "patients": ["p-alvarez", "p-patel", "p-haddad", "p-kowalski"], "a": 6, "b": 2},
+    {"id": "psw-joe", "name": "Joe M.", "role": "PSW", "patients": ["p-kowalski"], "a": 7, "b": 2},
+]
+CLINICAL_LEAD = {"id": "dr-okafor", "name": "Dr. Okafor", "role": "Clinical lead"}
+STAFF_BY_ID = {s["id"]: s for s in STAFF}
+
 PATIENT_BY_ID = {p["id"]: p for p in PATIENTS}
 PERSON_BY_ID = {person["id"]: {**person, "patient_id": p["id"]} for p in PATIENTS for person in p["people"]}

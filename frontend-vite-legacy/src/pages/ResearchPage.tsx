@@ -1,81 +1,109 @@
-import { useEffect, useState } from "react";
-import type { Finding } from "@shared/types";
-import { api, timeAgo } from "../api";
-import { needLabel } from "../catalog";
+import { useCallback, useEffect, useState } from "react";
+import type { Patient, ResearchDigest, ResearchHypothesis, ResearchInquiry, StaffMember } from "@shared/types";
+import { api, useChannel } from "../api";
+import HypothesisCard from "../components/research/HypothesisCard";
+import InquiryCard from "../components/research/InquiryCard";
+import ObservationForm from "../components/research/ObservationForm";
 
-const STATUS_LABEL: Record<Finding["status"], string> = {
-  proposed: "Awaiting review", validated: "Validated", rejected: "Rejected", needs_more_data: "Needs more data",
-};
+const PENDING = new Set(["SUPPORTED_PENDING_REVIEW", "REJECTED_PENDING_REVIEW"]);
+const DONE = new Set(["VALIDATED", "REJECTED"]);
 
 export default function ResearchPage() {
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [hypotheses, setHypotheses] = useState<ResearchHypothesis[]>([]);
+  const [inquiries, setInquiries] = useState<ResearchInquiry[]>([]);
+  const [digest, setDigest] = useState<ResearchDigest | null>(null);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [running, setRunning] = useState(false);
 
-  const load = () => api.get<Finding[]>("/api/research/findings").then(setFindings);
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    const [h, i, d] = await Promise.all([
+      api.get<ResearchHypothesis[]>("/api/research/hypotheses"),
+      api.get<ResearchInquiry[]>("/api/research/inquiries?status=pending"),
+      api.get<ResearchDigest>("/api/research/digest"),
+    ]);
+    setHypotheses(h);
+    setInquiries(i);
+    setDigest(d);
+  }, []);
+
+  useEffect(() => {
+    load();
+    api.get<{ staff: StaffMember[] }>("/api/research/clinicians").then((r) => setStaff(r.staff));
+    api.get<Patient[]>("/api/patients").then(setPatients);
+  }, [load]);
+
+  useChannel("research", (m) => { if (m.type === "research_updated") load(); });
 
   const run = async () => {
     setRunning(true);
-    try { await api.post("/api/research/run"); await load(); } finally { setRunning(false); }
+    try { await api.post("/api/research/cycle"); await load(); } finally { setRunning(false); }
   };
 
-  const review = async (f: Finding, status: Finding["status"]) => {
-    const updated = await api.post<Finding>(`/api/research/findings/${f.id}/review`, { status, note: notes[f.id] ?? null });
-    setFindings((all) => all.map((x) => (x.id === f.id ? updated : x)));
-  };
-
-  const waiting = findings.filter((f) => f.status === "proposed").length;
+  const pending = hypotheses.filter((h) => PENDING.has(h.status));
+  // Clinician observations first (a person is waiting on them), then the most decided.
+  const active = hypotheses.filter((h) => !PENDING.has(h.status) && !DONE.has(h.status))
+    .sort((a, b) => Number(b.origin === "clinician") - Number(a.origin === "clinician")
+      || Math.abs(b.confidence - 0.5) - Math.abs(a.confidence - 0.5));
+  const done = hypotheses.filter((h) => DONE.has(h.status));
 
   return (
-    <div className="research">
+    <div className="research research-agent">
       <header className="section-head research-head">
         <div>
-          <h1>Pattern review</h1>
-          <p className="section-meta">{waiting} awaiting review · {findings.length} total</p>
+          <h1>Research</h1>
+          <p className="section-meta">
+            {pending.length} awaiting review · {active.length} under investigation · {inquiries.length} question{inquiries.length === 1 ? "" : "s"} for clinicians
+          </p>
         </div>
-        <button className="btn" onClick={run} disabled={running}>{running ? "Analysing…" : "Scan for new patterns"}</button>
+        <button className="btn" onClick={run} disabled={running}>{running ? "Running…" : "Run research cycle"}</button>
       </header>
       <p className="research-intro">
-        Patterns found in confirmed requests. Validating one adjusts that patient's starting probabilities;
-        rejected patterns are not proposed again.
+        Clinician observations and patterns found in confirmed requests become hypotheses. For each one the agent
+        chooses to check the data, ask a clinician who knows the patient, or wait for more episodes, and updates its
+        confidence from what it finds. Nothing is treated as a finding until the clinical lead reviews it.
       </p>
 
-      {findings.length === 0 && <p className="empty">No patterns yet.</p>}
-      {findings.map((f) => (
-        <article key={f.id} className={`finding status-${f.status}`}>
-          <p className="finding-meta">
-            <span className="finding-status">{STATUS_LABEL[f.status]}</span>
-            <span>{f.kind.replace(/_/g, " ")}</span>
-            <span>first seen {timeAgo(f.created_at)}</span>
-          </p>
-          <h2 className="finding-title">{f.title}</h2>
-          <dl className="finding-body">
-            <div><dt>Evidence</dt><dd>{f.evidence}</dd></div>
-            <div>
-              <dt>Hypothesis</dt>
-              <dd>{f.hypothesis}{f.hypothesis_source === "gemini" && <span className="by"> (drafted by Gemini)</span>}</dd>
-            </div>
-            {f.prior_effect && (
-              <div>
-                <dt>If validated</dt>
-                <dd>
-                  {f.prior_effect.need_ids.map(needLabel).join(", ")} made {f.prior_effect.multiplier}× more likely
-                  {f.prior_effect.hours ? ` from ${f.prior_effect.hours[0]}:00 to ${f.prior_effect.hours[f.prior_effect.hours.length - 1] + 1}:00` : ""}
-                </dd>
-              </div>
-            )}
-            {f.reviewer && <div><dt>Reviewed</dt><dd>{f.reviewer}{f.note ? `: “${f.note}”` : ""}</dd></div>}
-          </dl>
-          <div className="review-row">
-            <input aria-label="Reviewer note" placeholder="Add a note (optional)" value={notes[f.id] ?? ""}
-                   onChange={(e) => setNotes({ ...notes, [f.id]: e.target.value })} />
-            <button className="btn" onClick={() => review(f, "validated")}>Validate</button>
-            <button className="btn" onClick={() => review(f, "needs_more_data")}>Needs more data</button>
-            <button className="btn btn-quiet" onClick={() => review(f, "rejected")}>Reject</button>
-          </div>
-        </article>
-      ))}
+      {digest && (
+        <section className="digest" aria-label="Research digest">
+          <p className="digest-kicker">This shift</p>
+          <p className="digest-text">{digest.text}</p>
+          {digest.source === "gemini" && <p className="by">Phrased by Gemini from the counts</p>}
+        </section>
+      )}
+
+      <div className="research-grid">
+        <div className="research-main">
+          <section className="research-section" aria-labelledby="pending-h">
+            <header className="section-head"><h2 id="pending-h">Pending review</h2><span className="section-meta">{pending.length}</span></header>
+            {pending.length === 0
+              ? <p className="empty">Nothing has crossed a review threshold yet.</p>
+              : <p className="research-note">Human review is required before any hypothesis is treated as a finding.</p>}
+            {pending.map((h) => <HypothesisCard key={h.id} h={h} mode="review" />)}
+          </section>
+
+          <section className="research-section" aria-labelledby="active-h">
+            <header className="section-head"><h2 id="active-h">Active hypotheses</h2><span className="section-meta">{active.length}</span></header>
+            {active.length === 0 && <p className="empty">No hypotheses under investigation.</p>}
+            {active.map((h) => <HypothesisCard key={h.id} h={h} mode="active" />)}
+          </section>
+
+          <section className="research-section" aria-labelledby="history-h">
+            <header className="section-head"><h2 id="history-h">Validated and rejected</h2><span className="section-meta">{done.length}</span></header>
+            {done.length === 0 && <p className="empty">Nothing reviewed yet. Evidence and history stay here after review.</p>}
+            {done.map((h) => <HypothesisCard key={h.id} h={h} mode="history" />)}
+          </section>
+        </div>
+
+        <aside className="research-side">
+          <section className="research-section" aria-labelledby="inq-h">
+            <header className="section-head"><h2 id="inq-h">Questions for clinicians</h2><span className="section-meta">{inquiries.length}</span></header>
+            {inquiries.length === 0 && <p className="empty">The agent has no open questions.</p>}
+            {inquiries.map((i) => <InquiryCard key={i.id} inquiry={i} />)}
+          </section>
+          <ObservationForm staff={staff} patients={patients} />
+        </aside>
+      </div>
     </div>
   );
 }

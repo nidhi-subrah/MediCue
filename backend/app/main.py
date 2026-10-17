@@ -5,7 +5,6 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +15,10 @@ from pydantic import BaseModel
 from .catalog import get_catalog
 from .config import settings
 from .data import seed
-from .data.patients import PATIENT_BY_ID, PATIENTS, PERSON_BY_ID
+from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
 from .services.gemini import Gemini
 from .services.hub import Hub
-from .services.research import run_research
+from .services.research import ResearchAgent
 from .services.sessions import SessionService
 from .services.trends import build_trends
 from .sim.simulator import calibrate
@@ -45,12 +44,26 @@ async def lifespan(app: FastAPI):
     app.state.cat, app.state.store, app.state.gemini = cat, store, gemini
     app.state.hub = Hub()
     app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal)
+    app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
     try:
-        await run_research(cat, store, gemini, PATIENT_BY_ID)
+        await app.state.research.ensure_demo_observation()
+        await app.state.research.cycle()
     except Exception:
-        log.exception("initial research run failed")
+        log.exception("initial research cycle failed")
+    ticker = asyncio.create_task(_research_ticker(app.state.research))
     yield
+    ticker.cancel()
     await store.close()
+
+
+async def _research_ticker(agent: ResearchAgent):
+    """Re-check every active hypothesis periodically: new confirmed needs arrive as the unit works."""
+    while True:
+        await asyncio.sleep(settings.research_tick_s)
+        try:
+            await agent.cycle()
+        except Exception:
+            log.exception("research cycle failed")
 
 
 app = FastAPI(title="SilentSignal", lifespan=lifespan)
@@ -227,35 +240,69 @@ async def welfare_respond(wid: str):
     return await _call(svc().respond_welfare(wid))
 
 
-# ---- research -------------------------------------------------------------------------------------
+# ---- research agent ------------------------------------------------------------------------------
 
-class ReviewBody(BaseModel):
-    status: str            # validated | rejected | needs_more_data
-    reviewer: str = "clinical lead"
+def agent() -> ResearchAgent:
+    return app.state.research
+
+
+class ObservationBody(BaseModel):
+    text: str
+    clinician_id: str
+    patient_id: str | None = None
+
+
+class InquiryAnswerBody(BaseModel):
+    response: str            # agree | disagree | unsure
     note: str | None = None
 
 
-@app.get("/api/research/findings")
-async def findings():
-    return await app.state.store.list_findings()
+class ReviewBody(BaseModel):
+    decision: str            # validated | rejected | needs_more_data
+    reviewer: str = CLINICAL_LEAD["name"]
+    note: str | None = None
 
 
-@app.post("/api/research/run")
-async def research_run():
-    return await run_research(app.state.cat, app.state.store, app.state.gemini, PATIENT_BY_ID)
+@app.get("/api/research/clinicians")
+async def research_clinicians():
+    return {"staff": [{k: s[k] for k in ("id", "name", "role", "patients")} for s in STAFF], "lead": CLINICAL_LEAD}
 
 
-@app.post("/api/research/findings/{fid}/review")
-async def review(fid: str, body: ReviewBody):
-    if body.status not in ("validated", "rejected", "needs_more_data"):
-        raise HTTPException(422, "bad status")
-    found = {f["id"]: f for f in await app.state.store.list_findings()}
-    if fid not in found:
-        raise HTTPException(404, "unknown finding")
-    f = found[fid] | {"status": body.status, "reviewer": body.reviewer, "note": body.note,
-                      "reviewed_at": datetime.now(timezone.utc).isoformat()}
-    await app.state.store.upsert_finding(f)
-    return f
+@app.get("/api/research/hypotheses")
+async def hypotheses():
+    return await agent().hypotheses()
+
+
+@app.get("/api/research/inquiries")
+async def inquiries(status: str | None = None):
+    return await agent().inquiries(status)
+
+
+@app.get("/api/research/digest")
+async def digest():
+    return await agent().digest()
+
+
+@app.post("/api/research/observations")
+async def add_observation(body: ObservationBody):
+    if not body.text.strip():
+        raise HTTPException(422, "observation text is empty")
+    return await _call(agent().add_observation(body.text.strip(), body.clinician_id, body.patient_id))
+
+
+@app.post("/api/research/inquiries/{iid}/answer")
+async def answer_inquiry(iid: str, body: InquiryAnswerBody):
+    return await _call(agent().answer_inquiry(iid, body.response, body.note))
+
+
+@app.post("/api/research/hypotheses/{hid}/review")
+async def review(hid: str, body: ReviewBody):
+    return await _call(agent().review(hid, body.decision, body.reviewer, body.note))
+
+
+@app.post("/api/research/cycle")
+async def research_cycle():
+    return await agent().cycle()
 
 
 # ---- realtime -------------------------------------------------------------------------------------

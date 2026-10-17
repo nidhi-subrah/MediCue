@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..catalog import Catalog
 from ..config import EngineConfig, settings
@@ -141,7 +141,9 @@ class SessionService:
         local_hour = now().astimezone(settings.unit_tz).hour
         try:
             history = await self.store.history_counts(patient_id)
-            mult = await prior_multipliers(self.store, patient_id, local_hour)
+            visits = await self.store.events_of_type("family_visit", now() - timedelta(hours=12), patient_id)
+            last_end = max((datetime.fromisoformat(v["payload"]["end"]) for v in visits), default=None)
+            mult = await prior_multipliers(self.store, patient_id, local_hour, last_end)
         except Exception:
             log.exception("context lookup failed; using base prior")
             history, mult = {}, {}
