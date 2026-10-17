@@ -169,11 +169,12 @@ interactions."* The 14-day unit history runs the same policy over each simulated
 
 ## Nurse station
 
-"How patients are communicating" (`frontend/components/nurse/communication-panel.tsx`): current mode, what it
-adapted from and when, the reason in numbers ("Response time rose to 2.3× this session's baseline across 2
-responses"), the screen change ("4 → 2 choices, large buttons"), this shift's history, and a collapsible
-*How it decided* trace with the three layers. In assisted mode, and on the "Needs help communicating" request,
-the nurse sees what is confirmed, what is unresolved and the current belief.
+- **Patients page**: each patient's current communication mode and how many times it changed this shift
+  (`GET /api/communication`, which also returns the reason in numbers, the screen change and the three-layer
+  trace for each change).
+- **"Needs help communicating" requests** in the queue: what is confirmed, what is unresolved and the current
+  belief.
+- **Unit insights**: the "Simpler screens needed (7 d)" trend above.
 
 ## Accessibility principles
 
