@@ -9,6 +9,8 @@ The next step is always one of NEXT_STEPS: communication actions only. No treatm
 diagnosis appears anywhere. A need whose probability fell is "less likely given answers", never
 "ruled out": the system cannot rule anything out.
 """
+import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -51,7 +53,8 @@ class PacketConfig:
     drop_abs: float = 0.08           # ... and lost at least this much ...
     drop_ratio: float = 0.5          # ... ending at no more than half its peak
     max_less_likely: int = 4
-    chart_min_change: float = 0.03   # a chart field "changed a probability" if it moved one need this much
+    chart_min_change: float = 0.05   # a chart field "changed a probability" if it moved one need this much
+    sbar_chart_items: int = 2        # the template SBAR names only the biggest chart changes
     low_risk_p_high: float = 0.10    # below this P(high-risk need), a tired patient can rest and be re-checked
     recheck_minutes: int = 15
 
@@ -288,3 +291,181 @@ def build_case_packet(cat: Catalog, cfg: EngineConfig, d: Dialogue, *, session_i
         uncertainty=uncertainty(cat, d, prediction_set, pc),
         next_step=next_step(cat, d, code, focus, contact, d.p_high(), pc),
     )
+
+
+# ---- SBAR handoff from a packet (template, and the checks Gemini's wording must pass) --------------
+
+# Treatment, medication, diagnosis and false-certainty language. Checked on Gemini's wording after the
+# packet's own phrases (need labels, questions, chart fields, the patient's chart diagnosis) are removed.
+BANNED_TERMS = re.compile(
+    r"\b(diagnos\w*|treat\w*|therap\w*|medicat\w*|medicine|drug|dose|dosage|mg|mcg|administer\w*|prescri\w*|"
+    r"give|giving|start|stop|increase|decrease|titrat\w*|analgesi\w*|opioid\w*|antibiotic\w*|morphine|"
+    r"acetaminophen|paracetamol|ibuprofen|tylenol|infection|sepsis|stroke|delirium|dehydrated|"
+    r"definitely|certainly|confirmed|clearly|obviously|ruled out|rules out|rule out|excluded|no doubt)\b", re.I)
+CERTAINTY = re.compile(r"definitely|certainly|confirmed|clearly|obviously|ruled out|rules out|rule out|excluded|no doubt")
+HEDGES = re.compile(r"\b(likely|possible|possibly|unclear|uncertain|unsure|may|might|not clear|not sure)\b", re.I)
+NUMBER = re.compile(r"\d+(?:\.\d+)?")
+LABEL_STOP_WORDS = {"or", "to", "a", "at", "the", "needs", "wants", "about", "of", "in", "over", "no", "last", "h",
+                    "since", "below", "above", "recorded"}
+# Ways a chart field gets described besides its label. Matching is deliberately broad: a false match only
+# means the template is used instead of Gemini's wording.
+CHART_KEYWORDS = {
+    "analgesic_overdue": ["pain medication", "analgesic", "painkiller", "pain relief"],
+    "void_overdue": ["void", "urinated", "peed"],
+    "spo2_dropping": ["spo2", "oxygen", "saturation", "sats"],
+    "febrile": ["temperature", "fever", "febrile"],
+    "low_fluid_intake": ["fluid intake", "fluids", "intake"],
+    "meal_missed": ["meal"],
+    "reposition_overdue": ["reposition", "turned"],
+    "recent_med_change": ["medication change", "medication changed", "med change", "changed medication"],
+    "bp_elevated": ["blood pressure", "bp"],
+}
+
+
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _names(label: str, text: str) -> bool:
+    """True if `text` names `label`, allowing other word forms ("shortness of breath" names "Short of breath")."""
+    if label.lower() in text.lower():
+        return True
+    stems = [w[:5] for w in _tokens(label) if w not in LABEL_STOP_WORDS and len(w) > 1]
+    toks = _tokens(text)
+    return bool(stems) and all(any(t.startswith(st) for t in toks) for st in stems)
+
+
+def _names_keyword(keyword: str, text: str) -> bool:
+    if " " in keyword:
+        return keyword in text.lower()
+    return any(t.startswith(keyword) for t in _tokens(text))
+MAX_FIELD_CHARS = 450
+
+
+def _local_hm(iso: str) -> str:
+    from ..config import settings
+    return datetime.fromisoformat(iso).astimezone(settings.unit_tz).strftime("%H:%M")
+
+
+def case_facts(packet: dict, patient: dict) -> dict:
+    """What Gemini sees: the packet's facts, with probabilities already written as percentages."""
+    return {
+        "patient": {"name": patient["name"], "room": patient["room"], "background": patient.get("diagnosis", "")},
+        "why_it_stopped": packet["stop_reason"]["text"],
+        "uncertainty": packet["uncertainty"]["text"],
+        "selections": [f"{_local_hm(s['t'])} {s['text']}" for s in packet["selections"]],
+        "most_likely": [f"{n['label']} {_pct(n['p'])}" + ("" if n["in_set"] else " (outside the 90% set)")
+                        for n in packet["top_needs"]],
+        "less_likely_given_answers": [f"{x['label']}: {_pct(x['from_p'])} to {_pct(x['to_p'])}, after {x['cause']['text']}"
+                                      for x in packet["less_likely"]],
+        "chart_that_changed_the_picture": [
+            f"{c['label']}{' (' + c['value'] + ')' if c['value'] else ''}: {c['need_label']} "
+            f"{_pct(c['from_p'])} to {_pct(c['to_p'])}" for c in packet["chart_context"]],
+        "next_step": packet["next_step"]["text"],
+    }
+
+
+def _inputs_summary(packet: dict) -> str:
+    taps = [s["text"].split(": ", 1)[-1] for s in packet["selections"] if s["kind"] != "answer"]
+    answers = [s["text"].rsplit("→ ", 1)[-1] for s in packet["selections"] if s["kind"] == "answer"]
+    out = f"Tapped {', then '.join(taps)}" if taps else "No taps"
+    if answers:
+        counts = {a: answers.count(a) for a in dict.fromkeys(answers)}
+        out += "; answers: " + ", ".join(f"{n} {a}" for a, n in counts.items())
+    return out
+
+
+def template_case_sbar(packet: dict, patient: dict, pc: PacketConfig = PACKET) -> dict:
+    f = case_facts(packet, patient)
+    biggest = sorted(packet["chart_context"], key=lambda c: -abs(c["to_p"] - c["from_p"]))[:pc.sbar_chart_items]
+    chart = "; ".join(f"{c['label']}: {c['need_label']} {_pct(c['from_p'])} to {_pct(c['to_p'])}" for c in biggest)
+    less = "; ".join(f["less_likely_given_answers"][:2])
+    return {
+        "situation": f"{patient['name']} (room {patient['room']}) made a request that is not clear yet. "
+                     f"{packet['stop_reason']['text']}",
+        "background": (f"{patient.get('diagnosis', '')} {_inputs_summary(packet)}. "
+                       f"Chart: {chart or 'no chart field changed the picture'}.").strip(),
+        "assessment": f"{packet['uncertainty']['text']} Most likely: {', '.join(f['most_likely'])}."
+                      + (f" Less likely given answers: {less}." if less else ""),
+        "recommendation": packet["next_step"]["text"],
+    }
+
+
+def check_case_sbar(sbar: dict, packet: dict, patient: dict, cat: Catalog) -> list[str]:
+    """Problems with an SBAR written from `packet`; empty means it adds nothing the packet doesn't say."""
+    facts = case_facts(packet, patient)
+    facts_text = json.dumps(facts, ensure_ascii=False)
+    problems = []
+    fields = ("situation", "background", "assessment", "recommendation")
+    for k in fields:
+        if not isinstance(sbar.get(k), str) or not sbar[k].strip() or len(sbar[k]) > MAX_FIELD_CHARS:
+            problems.append(f"{k}: empty or too long")
+    if problems:
+        return problems
+    text = " ".join(sbar[k] for k in fields)
+
+    allowed_numbers = {float(n) for n in NUMBER.findall(facts_text)}
+    for n in NUMBER.findall(text):
+        if float(n) not in allowed_numbers:
+            problems.append(f"number not in packet: {n}")
+
+    packet_needs = ({n["label"] for n in packet["top_needs"]} | {x["label"] for x in packet["less_likely"]}
+                    | {c["need_label"] for c in packet["chart_context"]})
+    if packet["next_step"]["need"]:
+        packet_needs.add(cat.by_id[packet["next_step"]["need"]]["label"])
+    # The packet's own phrases (its needs, the patient's inputs, the next step) may be quoted freely; any
+    # other need or chart field named in what is left was added by the model.
+    rest = text
+    for phrase in sorted(_packet_phrases(packet, patient, None), key=len, reverse=True):
+        rest = re.sub(re.escape(phrase), " ", rest, flags=re.I)
+    for n in cat.needs:
+        if n["label"] not in packet_needs and _names(n["label"], rest):
+            problems.append(f"need not in packet: {n['label']}")
+
+    packet_lookups = {c["lookup"] for c in packet["chart_context"]}
+    chart = patient.get("chart", {})
+    for lk in cat.lookups:
+        if lk.id in packet_lookups:
+            continue
+        value = chart.get(lk.id, {}).get("value")
+        if (_names(lk.label, rest) or (value and value.lower() in rest.lower())
+                or any(_names_keyword(k, rest) for k in CHART_KEYWORDS.get(lk.id, []))):
+            problems.append(f"chart field not in packet: {lk.label}")
+
+    own = text
+    for phrase in sorted(_packet_phrases(packet, patient, cat), key=len, reverse=True):
+        own = re.sub(re.escape(phrase), " ", own, flags=re.I)
+    # A word the packet itself uses (e.g. "stroke" in the chart's diagnosis line, "medication" in the need
+    # "Question about medication" when that need is in the packet) is a fact, not advice.
+    packet_words = set(re.findall(r"[a-z]+", " ".join(_packet_phrases(packet, patient, None)).lower()))
+    for m in BANNED_TERMS.finditer(own):
+        term = m.group(0).lower()
+        if term in packet_words and not CERTAINTY.fullmatch(term):
+            continue
+        problems.append(f"banned term: {m.group(0)}")
+    if packet["stop_reason"]["code"] != "RESOLVED" and not HEDGES.search(sbar["assessment"]):
+        problems.append("assessment drops the uncertainty")
+    return problems
+
+
+def _packet_phrases(packet: dict, patient: dict, cat: Catalog | None) -> set[str]:
+    """Wording that comes from the packet or the chart itself, which the banned-terms check must not trip on
+    (e.g. the need "Question about medication", or the chart's own diagnosis line). With cat=None, only
+    this packet's own phrases (not the whole catalog)."""
+    phrases = set()
+    if cat is not None:
+        phrases |= {n["label"] for n in cat.needs} | {q.text for q in cat.questions} | {lk.label for lk in cat.lookups}
+        phrases |= set(cat.area_labels.values()) | set(cat.feeling_labels.values())
+    phrases |= {n["label"] for n in packet["top_needs"]} | {x["label"] for x in packet["less_likely"]}
+    phrases |= {c["label"] for c in packet["chart_context"]} | {c["need_label"] for c in packet["chart_context"]}
+    phrases |= {x["cause"]["text"] for x in packet["less_likely"]}
+    phrases |= {s["text"] for s in packet["selections"]} | {packet["next_step"]["text"], packet["stop_reason"]["text"]}
+    phrases |= {c["value"] for c in packet["chart_context"] if c["value"]}
+    if patient.get("diagnosis"):
+        phrases.add(patient["diagnosis"])
+    return {p for p in phrases if p}
+
+
+def finalize_case_sbar(sbar: dict, packet: dict) -> dict:
+    """The recommendation may only restate the packet's next step: it is replaced with it, word for word."""
+    return {k: sbar[k] for k in ("situation", "background", "assessment")} | {"recommendation": packet["next_step"]["text"]}

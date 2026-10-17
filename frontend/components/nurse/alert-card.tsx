@@ -8,6 +8,7 @@ import { catalog, needLabel } from '@/lib/live/catalog'
 import { pct, timeAgo } from '@/lib/services/backend'
 import type { Alert } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { CasePacketView } from './case-packet'
 
 const SBAR_ROWS = [
   ['situation', 'Situation'],
@@ -72,6 +73,8 @@ export function AlertCard({
           )}
         </div>
       )}
+
+      {alert.case_packet && <CasePacketView alert={alert} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (
