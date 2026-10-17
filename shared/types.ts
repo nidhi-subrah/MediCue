@@ -494,3 +494,52 @@ export interface LadderPatient {
   level: LadderLevel | null; label: string | null; active: boolean;
   changes: LadderChange[];            // this shift, oldest first
 }
+
+// ---- nurse views: Unit insights (past) and Care forecast (ahead) — backend/app/services/nurse_views.py ----
+
+export type GaugeLevel = "green" | "amber" | "red" | "unknown";
+export interface UnitPatientRef { patient_id: string; name: string; room: string }
+export interface NeedGroupRef { id: string; label: string }
+
+export interface HeatCell { start: string; requests: number; urgent: number }
+export interface InsightsGauge extends UnitPatientRef {
+  tap_speed: { ratio: number | null; recent_s: number | null; usual_s: number | null; level: GaugeLevel; words: string };
+  corrections: { count: number; level: GaugeLevel; words: string };
+  quiet: { seconds: number | null; usual_seconds: number | null; level: GaugeLevel; since: string; words: string };
+}
+export interface UnitInsights {
+  range: "24h" | "7d" | "14d"; bucket: "1 hour" | "1 day"; since: string; until: string; generated_at: string;
+  heatmap: { columns: string[]; max: number; patients: (UnitPatientRef & { cells: HeatCell[]; total: number })[] };
+  timeline: { hours: number; since: string; until: string;
+              patients: (UnitPatientRef & { items: { time: string; kind: "request" | "urgent" | "consult" | "change"; label: string }[] })[] };
+  needs_by_type: { groups: NeedGroupRef[];
+                   days: { day: string; counts: Record<string, number>; by_patient: Record<string, Record<string, number>> }[];
+                   markers: (UnitPatientRef & { time: string; day: string; label: string; kind: string })[] };
+  gauges: InsightsGauge[];
+}
+export interface InsightsCell extends UnitPatientRef {
+  start: string; end: string; items: { time: string; label: string; urgent: boolean; group: string }[];
+}
+
+export interface ForecastHour { start: string; by_group: Record<string, number>; expected: number; low: number; high: number }
+export interface RiskProjection {
+  risk: string; label: string; amber: number; red: number; level: "green" | "amber" | "red"; caption: string;
+  history: { start: string; score: number }[];
+  ahead: { start: string; score: number; low: number; high: number }[];
+}
+export interface ForecastPatient extends UnitPatientRef {
+  enough_history: boolean; history_days: number;
+  lead_in: { start: string; requests: number }[];
+  hours: ForecastHour[];
+  risk: RiskProjection[];
+  why: { need: string; label: string; group: string; expected: number; reason: string; source: "gemini" | "pattern" }[];
+  adjustments: { group: string; group_label: string; label: string; multiplier: number; reason: string; evidence: string }[];
+  flags: { time: string; risk: string; label: string; level: "amber" | "red"; why: string[] }[];
+}
+export interface CareForecast {
+  generated_at: string; source: "gemini" | "base" | "pending"; hours: string[]; groups: NeedGroupRef[];
+  patients: ForecastPatient[];
+  unit: { start: string; expected: number }[];
+  check: { points: { start: string; expected: number; actual: number }[]; expected_total: number; actual_total: number };
+  notice: string;
+}

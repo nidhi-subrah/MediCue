@@ -1,5 +1,7 @@
 'use client'
 
+import { ArrowRight, ChartColumn, TrendingUp } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 import { useNurseStation } from '@/lib/live/nurse'
 import { cn } from '@/lib/utils'
@@ -11,6 +13,13 @@ import { LevelsPanel } from './levels-panel'
 import { ShiftSummary } from './shift-summary'
 import { SuggestionsPanel } from './suggestions-panel'
 import { Sparkline } from './sparkline'
+
+const VIEWS = [
+  { href: '/nurse/insights', title: 'Unit insights', icon: ChartColumn,
+    description: 'What has happened: requests, timelines and how each patient is communicating.' },
+  { href: '/nurse/forecast', title: 'Care forecast', icon: TrendingUp,
+    description: 'What is likely next: expected requests, risks heading up, and what to be ready for.' },
+] as const
 
 const SPARKS: { metric: string; label: string; format: (v: number) => string }[] = [
   { metric: 'pain_needs', label: 'Pain requests', format: (v) => v.toFixed(0) },
@@ -34,6 +43,25 @@ export function NurseView() {
   const stable = trends.filter((t) => t.flags.length === 0)
 
   return (
+    <div className="flex flex-col gap-8">
+    <nav aria-label="Unit views" className="grid gap-4 sm:grid-cols-2">
+      {VIEWS.map((v) => (
+        <Link
+          key={v.href}
+          href={v.href}
+          className="group flex items-center gap-4 rounded-3xl border-2 border-primary/25 bg-primary-soft p-5 transition-colors hover:border-primary md:p-6"
+        >
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+            <v.icon className="size-7" aria-hidden="true" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-xl font-bold">{v.title}</span>
+            <span className="text-base leading-snug text-muted-foreground">{v.description}</span>
+          </span>
+          <ArrowRight className="size-6 shrink-0 text-primary transition-transform group-hover:translate-x-1" aria-hidden="true" />
+        </Link>
+      ))}
+    </nav>
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-10">
       {showSummary && <ShiftSummary onClose={() => setShowSummary(false)} />}
@@ -136,6 +164,7 @@ export function NurseView() {
         <p className="text-xs text-muted-foreground">Flags are prompts for clinical review, not diagnoses.</p>
       </section>
       </div>
+    </div>
     </div>
   )
 }
