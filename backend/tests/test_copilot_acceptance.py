@@ -23,6 +23,7 @@ from app.services.case_packet import STOP_TEXT, check_case_sbar, template_case_s
 from app.services.gemini import Gemini
 from tests.test_case_packet import PACKET, SEND, cat, cfg, dialogue, packet, run
 from tests.test_case_sbar import CHEN, FakeModels, belly_unclear, faithful, gemini_with, receive, unclear_session
+from tests.conftest import login_as_nurse
 
 REPO = Path(__file__).resolve().parents[2]
 HIGH_RISK_TAPS = [("chest", "pain"), ("chest", "hard_to_breathe"), ("mouth_throat", "hard_to_breathe")]
@@ -35,19 +36,21 @@ def detail(g: Gemini, p: dict, timeout=5.0):
 # ---- (1) Gemini disabled: full packet and SBAR from templates ---------------------------------------
 
 def test_gemini_disabled_still_produces_a_full_packet_and_sbar():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        assert not app.state.svc.gemini.enabled                       # no key in tests
-        s = unclear_session(client)
-        receive(nurse, s["alert_id"], "case")
-        case = client.get(f"/api/cases/{s['alert_id']}").json()
-        p = case["packet"]
-        assert p["variant"] == "full" and p["stop_reason"]["code"] != "RESOLVED"
-        assert p["selections"] and len(p["top_needs"]) == 3
-        assert p["uncertainty"]["text"] and p["next_step"]["text"] and p["stop_reason"]["text"]
-        assert case["sbar_source"] == "template"
-        assert all(case["sbar"][k].strip() for k in ("situation", "background", "assessment", "recommendation"))
-        assert case["sbar"]["recommendation"] == p["next_step"]["text"]
-        assert check_case_sbar(case["sbar"], p, CHEN, cat) == []      # the template passes its own checks
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            assert not app.state.svc.gemini.enabled                       # no key in tests
+            s = unclear_session(client)
+            receive(nurse, s["alert_id"], "case")
+            case = client.get(f"/api/cases/{s['alert_id']}").json()
+            p = case["packet"]
+            assert p["variant"] == "full" and p["stop_reason"]["code"] != "RESOLVED"
+            assert p["selections"] and len(p["top_needs"]) == 3
+            assert p["uncertainty"]["text"] and p["next_step"]["text"] and p["stop_reason"]["text"]
+            assert case["sbar_source"] == "template"
+            assert all(case["sbar"][k].strip() for k in ("situation", "background", "assessment", "recommendation"))
+            assert case["sbar"]["recommendation"] == p["next_step"]["text"]
+            assert check_case_sbar(case["sbar"], p, CHEN, cat) == []      # the template passes its own checks
 
 
 def test_gemini_disabled_makes_no_call_and_says_so():
@@ -184,6 +187,7 @@ def test_live_escalation_is_identical_with_the_copilot_on_or_off(area, feeling, 
     results = {}
     for mode in ("on", "off"):
         with TestClient(app) as client:
+            login_as_nurse(client)
             if mode == "off":
                 async def no_copilot(self, alert_id, s):
                     return None
@@ -198,6 +202,7 @@ def test_live_escalation_is_identical_with_the_copilot_on_or_off(area, feeling, 
 
 def test_the_alert_is_pushed_before_any_packet_work_starts(monkeypatch):
     with TestClient(app) as client:
+        login_as_nurse(client)
         hub, published, seen_at_build = app.state.hub, [], []
         real_publish, real_build = hub.publish, sessions_mod.build_case_packet
 
@@ -220,6 +225,7 @@ def test_the_alert_is_pushed_before_any_packet_work_starts(monkeypatch):
 def test_escalation_latency_stays_within_budget_with_the_copilot_on():
     """Tap to escalated response, five times; the PRD target is under 10 s, this checks well under 1 s."""
     with TestClient(app) as client:
+        login_as_nurse(client)
         times = [_live_escalation(client, "chest", "pain")[1] for _ in range(5)]
     assert max(times) < 1.0, times
 

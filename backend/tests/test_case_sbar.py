@@ -12,6 +12,7 @@ from app.main import app
 from app.services.case_packet import check_case_sbar, template_case_sbar
 from app.services.gemini import Gemini
 from tests.test_case_packet import SEND, cat, dialogue, packet
+from tests.conftest import login_as_nurse
 
 CHEN = PATIENT_BY_ID["p-chen"]
 
@@ -158,19 +159,22 @@ def unclear_session(client):
 
 
 def test_unclear_request_gets_a_full_packet_after_the_alert():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = unclear_session(client)
-        first = receive(nurse, s["alert_id"], "alert")
-        assert first["case"] is None                                # the alert goes out first, unchanged
-        case = receive(nurse, s["alert_id"], "case")
-        pkt = case["packet"]
-        assert pkt["variant"] == "full" and pkt["stop_reason"]["code"] not in ("RESOLVED", "SAFETY_FLOOR")
-        assert case["sbar_source"] == "template" and case["sbar"]["recommendation"] == pkt["next_step"]["text"]
-        assert client.get("/api/alerts").json()[0]["sbar"] == first["sbar"]   # the existing SBAR is untouched
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            s = unclear_session(client)
+            first = receive(nurse, s["alert_id"], "alert")
+            assert first["case"] is None                                # the alert goes out first, unchanged
+            case = receive(nurse, s["alert_id"], "case")
+            pkt = case["packet"]
+            assert pkt["variant"] == "full" and pkt["stop_reason"]["code"] not in ("RESOLVED", "SAFETY_FLOOR")
+            assert case["sbar_source"] == "template" and case["sbar"]["recommendation"] == pkt["next_step"]["text"]
+            assert client.get("/api/alerts").json()[0]["sbar"] == first["sbar"]   # the existing SBAR is untouched
 
 
 def test_clear_request_gets_no_packet():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = client.post("/api/sessions", json={"patient_id": "p-patel", "language": "en"}).json()
         sid = s["session_id"]
         client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "mouth_throat"})
@@ -186,18 +190,20 @@ def test_clear_request_gets_no_packet():
 
 
 def test_a_hanging_gemini_never_delays_an_urgent_alert():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        slow = FakeModels(json.dumps({"situation": "x", "background": "x", "assessment": "x", "recommendation": "x"}), delay=30)
-        app.state.svc.gemini = gemini_with(slow)
-        try:
-            s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
-            t0 = time.monotonic()
-            s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"}).json()
-            assert s["status"] == "escalated" and time.monotonic() - t0 < 2
-            alert = receive(nurse, s["alert_id"], "alert")
-            assert alert["priority"] == "urgent"
-            case = receive(nurse, s["alert_id"], "case")            # light packet, while Gemini still hangs
-            assert case["packet"]["stop_reason"]["code"] == "SAFETY_FLOOR" and case["packet"]["variant"] == "light"
-            assert case["sbar_source"] == "template" and time.monotonic() - t0 < 5
-        finally:
-            app.state.svc.gemini = Gemini(api_key=None)
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            slow = FakeModels(json.dumps({"situation": "x", "background": "x", "assessment": "x", "recommendation": "x"}), delay=30)
+            app.state.svc.gemini = gemini_with(slow)
+            try:
+                s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
+                t0 = time.monotonic()
+                s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"}).json()
+                assert s["status"] == "escalated" and time.monotonic() - t0 < 2
+                alert = receive(nurse, s["alert_id"], "alert")
+                assert alert["priority"] == "urgent"
+                case = receive(nurse, s["alert_id"], "case")            # light packet, while Gemini still hangs
+                assert case["packet"]["stop_reason"]["code"] == "SAFETY_FLOOR" and case["packet"]["variant"] == "light"
+                assert case["sbar_source"] == "template" and time.monotonic() - t0 < 5
+            finally:
+                app.state.svc.gemini = Gemini(api_key=None)

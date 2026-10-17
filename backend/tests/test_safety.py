@@ -21,6 +21,7 @@ from app.risk.silence import SilenceConfig, acknowledge, start_ladder, tick
 from app.risk.silence_monitor import utcnow
 from app.risk.synthetic import generate
 from app.services import sessions
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 
@@ -84,19 +85,22 @@ HIGH_RISK_TAPS = [("chest", "pain"), ("chest", "hard_to_breathe"), ("mouth_throa
 @pytest.mark.parametrize("area,feeling", HIGH_RISK_TAPS)
 @pytest.mark.parametrize("pid", ["p-chen", "p-kowalski"])   # p-kowalski: lowest signal reliability (0.625)
 def test_high_risk_need_escalates_regardless_of_silence_state(state, area, feeling, pid):
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        SILENCE_STATES[state](client, pid)
-        s = client.post("/api/sessions", json={"patient_id": pid, "language": "en"}).json()
-        s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": area}).json()
-        if s["status"] == "feeling":
-            s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "feeling", "tap_id": feeling}).json()
-        assert s["status"] == "escalated" and s["questions_asked"] == 0
-        alert = _receive_alert(nurse, s["alert_id"])
-        assert alert["priority"] == "urgent" and alert["status"] == "open"
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            SILENCE_STATES[state](client, pid)
+            s = client.post("/api/sessions", json={"patient_id": pid, "language": "en"}).json()
+            s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": area}).json()
+            if s["status"] == "feeling":
+                s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "feeling", "tap_id": feeling}).json()
+            assert s["status"] == "escalated" and s["questions_asked"] == 0
+            alert = _receive_alert(nurse, s["alert_id"])
+            assert alert["priority"] == "urgent" and alert["status"] == "open"
 
 
 def test_silence_cannot_replace_or_duplicate_a_high_risk_escalation():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
         s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"}).json()
         session = app.state.svc.sessions[s["session_id"]]

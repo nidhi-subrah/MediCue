@@ -1,9 +1,10 @@
 'use client'
 
-import { CircleCheckBig, Siren, X } from 'lucide-react'
+import { CircleCheckBig, LogOut, Siren, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/components/app/auth-provider'
 import { useLiveSession } from '@/lib/live/session'
 import { buildStep, uiMode } from '@/lib/live/talk-adapter'
 import { useSettings } from '@/lib/store/settings'
@@ -17,6 +18,7 @@ import { SummaryPanel } from './summary-panel'
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
     signal, setLevel } = useLiveSession()
+  const { user, logout } = useAuth()
   const audio = useSettings((s) => s.spokenPrompts)
   const updateSettings = useSettings((s) => s.update)
   const [showEngine, setShowEngine] = useState(false)
@@ -61,6 +63,16 @@ export function TalkView() {
             {patient.name} · {patient.room}
           </span>
         </div>
+        {user?.role === 'patient' && (
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+            Log out
+          </button>
+        )}
       </div>
 
       {/* Communication ladder: the backend steps the level down when answering gets harder, up when it

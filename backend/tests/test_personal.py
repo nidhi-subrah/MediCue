@@ -7,6 +7,7 @@ from app.engine.dialogue import Dialogue
 from app.engine.personal import PersonalModel
 from app.main import app
 from app.sim.learning import learning_curve
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 cfg = settings.engine
@@ -68,6 +69,7 @@ def _session(client, pid, area, feeling, true_need):
 
 def test_nurse_confirmations_teach_the_live_engine():
     with TestClient(app) as client:
+        login_as_nurse(client)
         first, _ = _session(client, "p-kowalski", "whole_body", "scared", "too_cold")
         _session(client, "p-kowalski", "whole_body", "scared", "too_cold")
         third, s = _session(client, "p-kowalski", "whole_body", "scared", "too_cold")
@@ -80,6 +82,7 @@ def test_nurse_confirmations_teach_the_live_engine():
 
 def test_learning_demo_endpoint():
     with TestClient(app) as client:
+        login_as_nurse(client)
         r = client.post("/api/patients/p-chen/learning/demo",
                         json={"area": "whole_body", "feeling": "scared", "need": "too_cold", "sessions": 5}).json()
         assert len(r["sessions"]) == 5 and r["sessions"][-1]["inputs"] < r["sessions"][0]["inputs"]

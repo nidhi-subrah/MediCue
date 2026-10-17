@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.conftest import login_as_nurse
 
 
 def run_until_done(client, state, answer="yes"):
@@ -17,6 +18,7 @@ def run_until_done(client, state, answer="yes"):
 
 def test_full_flow_routine_need_then_confirm():
     with TestClient(app) as client:
+        login_as_nurse(client)
         assert client.get("/api/health").json()["ok"]
         cat = client.get("/api/catalog").json()
         assert len(cat["needs"]) == 20
@@ -40,6 +42,7 @@ def test_full_flow_routine_need_then_confirm():
 
 def test_chest_pain_escalates_and_pushes_to_nurse_websocket():
     with TestClient(app) as client:
+        login_as_nurse(client)
         with client.websocket_connect("/ws?channel=nurse") as nurse:
             s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
             s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"}).json()
@@ -54,6 +57,7 @@ def test_chest_pain_escalates_and_pushes_to_nurse_websocket():
 
 def test_wrong_input_kind_is_rejected():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
         r = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "feeling", "tap_id": "pain"})
         assert r.status_code == 409
@@ -61,6 +65,7 @@ def test_wrong_input_kind_is_rejected():
 
 def test_trends_flag_seeded_patterns():
     with TestClient(app) as client:
+        login_as_nurse(client)
         trends = {t["patient_id"]: t for t in client.get("/api/trends").json()}
         assert any(f["metric"] == "pain_needs" for f in trends["p-chen"]["flags"])
         assert any(f["metric"] in ("avg_tap_interval", "avg_taps", "scan_share") for f in trends["p-alvarez"]["flags"])
@@ -69,6 +74,7 @@ def test_trends_flag_seeded_patterns():
 
 def test_welfare_check_requires_preauthorised_caregiver():
     with TestClient(app) as client:
+        login_as_nurse(client)
         r = client.post("/api/welfare", json={"patient_id": "p-chen", "requested_by": "fam-miguel"})
         assert r.status_code == 403
         w = client.post("/api/welfare", json={"patient_id": "p-chen", "requested_by": "fam-lin"}).json()
@@ -92,6 +98,7 @@ def open_consult(client):
 
 def test_late_consult_answer_keeps_patients_open_question():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = open_consult(client)
         sid, cid = s["session_id"], s["consult"]["id"]
         s = client.post(f"/api/sessions/{sid}/skip_consult").json()
@@ -106,6 +113,7 @@ def test_late_consult_answer_keeps_patients_open_question():
 
 def test_consult_answer_outside_options_is_rejected_without_closing_it():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = open_consult(client)
         cid = s["consult"]["id"]
         r = client.post(f"/api/consults/{cid}/answer", json={"need_id": "pain_chest_not_offered"})
@@ -117,6 +125,7 @@ def test_consult_answer_outside_options_is_rejected_without_closing_it():
 
 def test_alert_confirm_is_once_only():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
         s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"}).json()
         aid = s["alert_id"]
