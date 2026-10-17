@@ -426,6 +426,22 @@ export interface CaseRecord {
   feedback: CaseFeedback | null;
   // "I've read this and I'm on it" (POST /api/cases/{id}/acknowledge). Does not close the alert.
   acknowledged: { by: string; at: string } | null;
+  sbar_template: SBAR;                // always kept, so the template and Gemini versions can be compared
+  facts: Record<string, unknown>;     // exactly what Gemini is sent (structured facts only)
+  gemini: {
+    outcome: "pending" | "disabled" | "gemini" | "no_reply" | "rejected";
+    sbar: SBAR | null;                // Gemini's version, only when it passed every check
+    problems: string[];               // why it was rejected
+  };
+}
+
+/** A scripted demo scenario run through the real session service (POST /api/demo/scenarios/{id}). */
+export interface DemoScenario { id: string; title: string; patient_id: string; hour: number; description: string }
+export interface DemoRun {
+  scenario: DemoScenario; session_id: string; alert_id: string | null; status: SessionStatus;
+  steps: { text: string; status: SessionStatus; fatigue: number; mode: ModeId }[];
+}
+
 // ---- tailored second-step options ------------------------------------------------------------------
 
 export interface FeelingOption {
