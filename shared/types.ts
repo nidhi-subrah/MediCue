@@ -63,6 +63,9 @@ export interface SessionState {
   alert_id: string | null;
   ui_text: Record<string, string>;    // translated tile labels/prompts for the patient's language
   prior_reasons: string[];            // why the prior looks the way it does (time of day, surgery, history)
+  inconsistencies: number;            // surprising answers (+1) and "not sure" (+0.5) this session
+  baseline_interval: number | null;   // patient's usual seconds between inputs, from history
+  profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -81,6 +84,8 @@ export interface Alert {
   reason: string;                     // the decision engine's explanation for this alert
   label?: string | null;              // e.g. "Patient stopped responding mid-request"
   confirmed_by?: string | null;
+  profile: ProfileItem[];
+  nurse_note: string | null;          // observation written at confirmation
 }
 
 export interface ConsultRequest {
@@ -101,12 +106,22 @@ export interface PatientTrend {
   mode_changes_24h: number;
 }
 
-export interface Finding {
-  id: string; created_at: string; patient_id: string | null; kind: string;
-  title: string; evidence: string; hypothesis: string; hypothesis_source: "template" | "gemini";
-  status: "proposed" | "validated" | "rejected" | "needs_more_data";
-  reviewer: string | null; note: string | null;
-  prior_effect: { patient_id: string; need_ids: string[]; multiplier: number; hours?: number[] } | null;
+// ---- Research agent ------------------------------------------------------------------------------
+
+export type HypothesisStatus =
+  | "INVESTIGATING" | "WAITING_FOR_CLINICIAN" | "INCONCLUSIVE"
+  | "SUPPORTED_PENDING_REVIEW" | "REJECTED_PENDING_REVIEW"
+  | "VALIDATED" | "REJECTED";
+
+export type ResearchActionKind = "CHECK_DATA" | "ASK_CLINICIAN" | "WAIT";
+
+/** One row of the deterministic research decision engine's scoring (not LLM reasoning). */
+export interface ResearchActionScore {
+  kind: ResearchActionKind; label: string; target: string | null;
+  eig: number;                         // expected information gain, bits
+  costs: Record<string, number>;       // compute | delay | burden | unchecked_data
+  score: number;                       // eig − Σ costs
+  detail: Record<string, number | string>;
 }
 
 // Early-warning risk engine (app/risk). All risk data is synthetic.
@@ -168,6 +183,50 @@ export interface SilenceLadder {
   started_at: string; closed_at: string | null; reason: string; active: boolean;
   current: SilenceStep["kind"] | null; steps: SilenceStep[];
 }
+export interface ResearchEvidence {
+  id: string; t: string; source: "data" | "clinician";
+  supports: number; contradicts: number; summary: string; log_lr: number;
+  confidence_before: number; confidence_after: number;
+  episodes?: { time: string; supports: boolean; label: string }[];
+  clinician_id?: string; response?: "agree" | "disagree" | "unsure"; note?: string | null;
+}
+
+export interface TimelineEntry {
+  t: string; kind: "created" | "action" | "evidence" | "confidence" | "status" | "review" | "note";
+  text: string; confidence?: number; score?: number;
+}
+
+export interface ResearchHypothesis {
+  id: string; created_at: string; updated_at: string;
+  statement: string; claim: string;
+  observation_text: string | null;     // clinician's original words, preserved verbatim
+  origin: "clinician" | "system"; origin_detail: string; origin_id: string | null;
+  patient_id: string | null; cohort: string;
+  test: Record<string, unknown> | null; discovery: string | null;
+  rationale?: string; rationale_source?: "gemini" | "template";
+  confidence: number; status: HypothesisStatus;
+  thresholds: { support: number; reject: number };
+  evidence: ResearchEvidence[]; timeline: TimelineEntry[]; asked: string[];
+  last_action: ResearchActionKind | null;
+  next_action: { kind: string; label: string } | null;
+  decision_trace: { t: string; confidence: number; ranked: ResearchActionScore[]; selected: string; selected_label: string } | null;
+  prior_effect: { patient_id: string; need_ids: string[]; multiplier: number; hours?: number[]; after_visit_h?: number } | null;
+  reviewer: string | null; note: string | null; reviewed_at: string | null;
+}
+
+export interface ResearchInquiry {
+  id: string; hypothesis_id: string; clinician_id: string; clinician_name: string; clinician_role: string;
+  question: string; reliability: number; status: "pending" | "answered"; created_at: string;
+  response: "agree" | "disagree" | "unsure" | null; note: string | null; answered_at: string | null;
+}
+
+export interface ResearchDigest {
+  text: string; source: "gemini" | "template";
+  facts: { changed: number; clinician_gained: number; system_inconclusive: number; pending_review: number;
+           waiting_clinician: number; statements: string[] };
+}
+
+export interface StaffMember { id: string; name: string; role: string; patients: string[] }
 
 export type WsMessage =
   | { type: "alert"; alert: Alert }
@@ -177,4 +236,49 @@ export type WsMessage =
   | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number;
       respond_path?: string }         // silence checks answer on their own endpoint
   | { type: "silence_check"; ladder: SilenceLadder }
-  | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" };
+  | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" }
+  | { type: "profile"; profile: PatientProfile }
+  | { type: "suggestions"; patient_id: string; suggestions: ProfileSuggestion[] }
+  | { type: "research_updated" };
+
+
+// ---- patient profiles, nurse-note suggestions, shift summary ----------------------------------------
+
+export type ProfileKind =
+  | "need" | "fatigue" | "person_trust" | "person_available" | "person_preferred" | "access" | "signal" | "note";
+
+export interface ProfileItem {
+  kind: ProfileKind; target: string; value: string; hours: number[] | null;
+  evidence: string;                   // exact quote from the chart notes or the nurse's note
+  origin: "notes" | "nurse";
+  effect: string;                     // plain-language effect on the engine
+}
+
+export interface PatientProfile {
+  patient_id: string; source: "gemini" | "none"; items: ProfileItem[];
+  dropped: { kind: string; target: string; value: string; evidence: string; reason: string; status: string }[];
+  updated_at: string | null; notes: string; extracting: boolean;
+}
+
+export interface ProfileSuggestion {
+  id: string; created_at: string; patient_id: string; patient_name: string; room: string;
+  alert_id: string | null; note: string; nurse: string;
+  status: "pending" | "approved" | "rejected" | "duplicate" | "blocked";
+  reason: string | null; item: ProfileItem; reviewer: string | null; reviewed_at: string | null;
+}
+
+export interface HandoffPatient {
+  patient_id: string; name: string; room: string; status: "attention" | "watch" | "stable";
+  headline: string; watch_for: string | null;
+  requests: number; urgent: number; open_urgent: number;
+  confirmed: { label: string; count: number }[];
+  tap_seconds: number | null; baseline_seconds: number | null;
+  inconsistent_answers: number; mode_changes: number;
+  trends: { label: string; message: string; severity: "review" | "attention" }[];
+  profile: string[];                  // quotes from the notes behind the patient's profile
+}
+
+export interface HandoffSummary {
+  generated_at: string; window_hours: number; source: "gemini" | "template";
+  patients: HandoffPatient[]; stable: { patient_id: string; name: string; room: string }[];
+}

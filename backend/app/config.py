@@ -16,6 +16,7 @@ class EngineConfig:
     false_alarm_cost: float = 40.0    # cost of pulling a nurse to the bedside for a low-risk need
     escalate_threshold: float = 0.25  # P(any high-risk need) that forces escalation (safety floor)
     max_questions: int = 4            # hard cap on clarifying questions per session
+    max_inconsistent_answers: float = 2.0  # stop asking the patient after this many surprising answers
     delay_ask: float = 1.0            # ~10 s per question
     delay_lookup: float = 0.02
     delay_consult: float = 8.0        # ~2 min waiting for a reply
@@ -35,6 +36,7 @@ class Settings:
     seed_demo_data: bool = os.getenv("SEED_DEMO_DATA", "1") == "1"
     consult_timeout_s: float = float(os.getenv("CONSULT_TIMEOUT_S", "120"))
     welfare_timeout_s: float = float(os.getenv("WELFARE_TIMEOUT_S", "45"))
+    research_tick_s: float = float(os.getenv("RESEARCH_TICK_S", "300"))
     unit_tz: ZoneInfo = ZoneInfo(os.getenv("UNIT_TZ", "America/Toronto"))
     engine: EngineConfig = field(default_factory=EngineConfig)
 

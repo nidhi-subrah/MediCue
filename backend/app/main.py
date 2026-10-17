@@ -5,7 +5,6 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,11 +15,13 @@ from pydantic import BaseModel
 from .catalog import get_catalog
 from .config import settings
 from .data import seed
-from .data.patients import PATIENT_BY_ID, PATIENTS, PERSON_BY_ID
+from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
 from .risk import router as risk_router, start as start_risk, start_silence
 from .services.gemini import Gemini
+from .services.handoff import build_handoff
 from .services.hub import Hub
-from .services.research import run_research
+from .services.profiles import ProfileService
+from .services.research import ResearchAgent
 from .services.sessions import SessionService
 from .services.trends import build_trends
 from .sim.simulator import calibrate
@@ -46,16 +47,48 @@ async def lifespan(app: FastAPI):
     log.info("Gemini %s", "enabled" if gemini.enabled else "disabled (template fallbacks)")
     app.state.cat, app.state.store, app.state.gemini = cat, store, gemini
     app.state.hub = Hub()
-    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal)
+    app.state.profiles = ProfileService(cat, store, gemini, app.state.hub)
+    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles)
     app.state.silence = start_silence(app.state.svc, app.state.risk)
-    try:
-        await run_research(cat, store, gemini, PATIENT_BY_ID)
-    except Exception:
-        log.exception("initial research run failed")
+    app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
+
+    # Profiles (one Gemini request for the whole unit), then the first research cycle. With Gemini on this
+    # runs in the background so rate-limit retries never delay startup; sessions use whatever profile is
+    # ready and never wait for Gemini. With Gemini off it is quick and runs before the app serves requests.
+    async def background_start():
+        try:
+            await app.state.profiles.warm()
+        except Exception:
+            log.exception("profile extraction failed")
+        try:
+            await app.state.research.ensure_demo_observation()
+            await app.state.research.cycle()
+        except Exception:
+            log.exception("initial research cycle failed")
+
+    if gemini.enabled:
+        warm = asyncio.create_task(background_start())
+    else:
+        await background_start()
+        warm = None
+    ticker = asyncio.create_task(_research_ticker(app.state.research))
     yield
     if app.state.silence:
         await app.state.silence.stop()
+    ticker.cancel()
+    if warm:
+        warm.cancel()
     await store.close()
+
+
+async def _research_ticker(agent: ResearchAgent):
+    """Re-check every active hypothesis periodically: new confirmed needs arrive as the unit works."""
+    while True:
+        await asyncio.sleep(settings.research_tick_s)
+        try:
+            await agent.cycle()
+        except Exception:
+            log.exception("research cycle failed")
 
 
 app = FastAPI(title="SilentSignal", lifespan=lifespan)
@@ -78,7 +111,8 @@ def _need(fn, *args):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "gemini": app.state.gemini.enabled, "store": type(app.state.store).__name__,
+    return {"ok": True, "gemini": app.state.gemini.enabled, "gemini_paused_s": round(app.state.gemini.paused_for),
+            "store": type(app.state.store).__name__,
             "conformal_qhat": svc().conformal.qhat}
 
 
@@ -177,6 +211,7 @@ async def skip_consult(sid: str):
 class ConfirmBody(BaseModel):
     need_id: str | None = None
     nurse: str = "nurse"
+    note: str | None = None      # optional observation; Gemini suggests profile changes from it
 
 
 @app.get("/api/alerts")
@@ -190,15 +225,73 @@ async def alerts(status: str | None = None):
 async def confirm(aid: str, body: ConfirmBody):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse))
+    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note))
 
 
-@app.get("/api/trends")
-async def trends():
+async def _trends():
     store = app.state.store
     rows = await store.window_signals(8)
     changes = await store.mode_changes(24)
     return build_trends(rows, PATIENTS, changes)
+
+
+@app.get("/api/trends")
+async def trends():
+    return await _trends()
+
+
+@app.get("/api/handoff")
+async def handoff(hours: int = 12):
+    return await build_handoff(app.state.cat, app.state.store, svc(), app.state.profiles, app.state.gemini,
+                               await _trends(), max(1, min(hours, 48)))
+
+
+# ---- patient profiles -----------------------------------------------------------------------------
+
+class NotesBody(BaseModel):
+    notes: str
+
+
+class SuggestionReviewBody(BaseModel):
+    approve: bool
+    reviewer: str = "nurse"
+
+
+def _patient_or_404(pid: str):
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+
+
+@app.get("/api/patients/{pid}/profile")
+async def get_profile(pid: str):
+    _patient_or_404(pid)
+    return app.state.profiles.public(pid)
+
+
+@app.post("/api/patients/{pid}/notes")
+async def set_notes(pid: str, body: NotesBody):
+    _patient_or_404(pid)
+    if not body.notes.strip():
+        raise HTTPException(422, "notes are empty")
+    return await app.state.profiles.set_notes(pid, body.notes)
+
+
+@app.post("/api/patients/{pid}/profile/refresh")
+async def refresh_profile(pid: str):
+    _patient_or_404(pid)
+    await app.state.profiles.extract(pid)
+    return app.state.profiles.public(pid)
+
+
+@app.get("/api/suggestions")
+async def suggestions(status: str | None = None):
+    items = await app.state.profiles.list_suggestions()
+    return [s for s in items if status is None or s["status"] == status]
+
+
+@app.post("/api/suggestions/{sid}/review")
+async def review_suggestion(sid: str, body: SuggestionReviewBody):
+    return await _call(app.state.profiles.review(sid, body.approve, body.reviewer))
 
 
 # ---- family / consults / welfare ------------------------------------------------------------------
@@ -233,35 +326,69 @@ async def welfare_respond(wid: str):
     return await _call(svc().respond_welfare(wid))
 
 
-# ---- research -------------------------------------------------------------------------------------
+# ---- research agent ------------------------------------------------------------------------------
 
-class ReviewBody(BaseModel):
-    status: str            # validated | rejected | needs_more_data
-    reviewer: str = "clinical lead"
+def agent() -> ResearchAgent:
+    return app.state.research
+
+
+class ObservationBody(BaseModel):
+    text: str
+    clinician_id: str
+    patient_id: str | None = None
+
+
+class InquiryAnswerBody(BaseModel):
+    response: str            # agree | disagree | unsure
     note: str | None = None
 
 
-@app.get("/api/research/findings")
-async def findings():
-    return await app.state.store.list_findings()
+class ReviewBody(BaseModel):
+    decision: str            # validated | rejected | needs_more_data
+    reviewer: str = CLINICAL_LEAD["name"]
+    note: str | None = None
 
 
-@app.post("/api/research/run")
-async def research_run():
-    return await run_research(app.state.cat, app.state.store, app.state.gemini, PATIENT_BY_ID)
+@app.get("/api/research/clinicians")
+async def research_clinicians():
+    return {"staff": [{k: s[k] for k in ("id", "name", "role", "patients")} for s in STAFF], "lead": CLINICAL_LEAD}
 
 
-@app.post("/api/research/findings/{fid}/review")
-async def review(fid: str, body: ReviewBody):
-    if body.status not in ("validated", "rejected", "needs_more_data"):
-        raise HTTPException(422, "bad status")
-    found = {f["id"]: f for f in await app.state.store.list_findings()}
-    if fid not in found:
-        raise HTTPException(404, "unknown finding")
-    f = found[fid] | {"status": body.status, "reviewer": body.reviewer, "note": body.note,
-                      "reviewed_at": datetime.now(timezone.utc).isoformat()}
-    await app.state.store.upsert_finding(f)
-    return f
+@app.get("/api/research/hypotheses")
+async def hypotheses():
+    return await agent().hypotheses()
+
+
+@app.get("/api/research/inquiries")
+async def inquiries(status: str | None = None):
+    return await agent().inquiries(status)
+
+
+@app.get("/api/research/digest")
+async def digest():
+    return await agent().digest()
+
+
+@app.post("/api/research/observations")
+async def add_observation(body: ObservationBody):
+    if not body.text.strip():
+        raise HTTPException(422, "observation text is empty")
+    return await _call(agent().add_observation(body.text.strip(), body.clinician_id, body.patient_id))
+
+
+@app.post("/api/research/inquiries/{iid}/answer")
+async def answer_inquiry(iid: str, body: InquiryAnswerBody):
+    return await _call(agent().answer_inquiry(iid, body.response, body.note))
+
+
+@app.post("/api/research/hypotheses/{hid}/review")
+async def review(hid: str, body: ReviewBody):
+    return await _call(agent().review(hid, body.decision, body.reviewer, body.note))
+
+
+@app.post("/api/research/cycle")
+async def research_cycle():
+    return await agent().cycle()
 
 
 # ---- realtime -------------------------------------------------------------------------------------

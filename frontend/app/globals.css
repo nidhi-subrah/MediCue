@@ -1,0 +1,198 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-atkinson), 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+  --font-mono: var(--font-atkinson-mono), 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-urgent: var(--urgent);
+  --color-urgent-foreground: var(--urgent-foreground);
+  --color-urgent-soft: var(--urgent-soft);
+  --color-primary-soft: var(--primary-soft);
+  --color-surface: var(--surface);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+  Palette: soft paper neutral, deep ink, muted indigo (brand),
+  sage green (confirmed), crimson (urgent only).
+*/
+:root {
+  color-scheme: light;
+  --background: oklch(0.975 0.004 95);
+  --surface: oklch(0.955 0.006 95);
+  --foreground: oklch(0.24 0.03 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.03 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.03 265);
+  --primary: oklch(0.44 0.11 268);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-soft: oklch(0.945 0.025 268);
+  --secondary: oklch(0.945 0.025 268);
+  --secondary-foreground: oklch(0.36 0.1 268);
+  --muted: oklch(0.95 0.006 95);
+  --muted-foreground: oklch(0.47 0.02 265);
+  --accent: oklch(0.945 0.025 268);
+  --accent-foreground: oklch(0.36 0.1 268);
+  --success: oklch(0.47 0.08 165);
+  --success-foreground: oklch(0.99 0 0);
+  --success-soft: oklch(0.95 0.03 165);
+  --urgent: oklch(0.47 0.19 15);
+  --urgent-foreground: oklch(0.99 0 0);
+  --urgent-soft: oklch(0.955 0.025 15);
+  --destructive: oklch(0.47 0.19 15);
+  --border: oklch(0.905 0.008 95);
+  --input: oklch(0.88 0.01 95);
+  --ring: oklch(0.44 0.11 268);
+  --radius: 1rem;
+  --tap: 3.75rem;
+}
+
+:root[data-button-size='large'] {
+  --tap: 4.5rem;
+}
+:root[data-button-size='xl'] {
+  --tap: 5.25rem;
+}
+
+:root[data-text-size='lg'] {
+  font-size: 112.5%;
+}
+:root[data-text-size='xl'] {
+  font-size: 125%;
+}
+:root[data-text-size='xxl'] {
+  font-size: 140%;
+}
+
+:root.high-contrast {
+  --background: oklch(1 0 0);
+  --surface: oklch(0.97 0 0);
+  --foreground: oklch(0.12 0 0);
+  --card-foreground: oklch(0.12 0 0);
+  --popover-foreground: oklch(0.12 0 0);
+  --muted-foreground: oklch(0.28 0.01 265);
+  --primary: oklch(0.32 0.14 268);
+  --secondary-foreground: oklch(0.25 0.12 268);
+  --accent-foreground: oklch(0.25 0.12 268);
+  --success: oklch(0.36 0.09 165);
+  --urgent: oklch(0.4 0.2 15);
+  --destructive: oklch(0.4 0.2 15);
+  --border: oklch(0.35 0.01 265);
+  --input: oklch(0.35 0.01 265);
+  --ring: oklch(0.12 0 0);
+}
+
+:root.reduce-motion *,
+:root.reduce-motion *::before,
+:root.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .scan-progress {
+    animation: none !important;
+  }
+}
+
+@theme {
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  button,
+  a,
+  input,
+  textarea,
+  [role='tab'],
+  [role='switch'] {
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-duration: 200ms;
+    transition-timing-function: var(--ease-soft);
+  }
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
+  }
+}
+
+@keyframes scan-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.scan-progress {
+  transform-origin: left;
+  animation: scan-fill var(--scan-duration, 1800ms) linear forwards;
+}
+
+@keyframes urgent-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--urgent) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 18px color-mix(in oklch, var(--urgent) 0%, transparent);
+  }
+}
+
+.urgent-pulse {
+  animation: urgent-pulse 2.2s ease-in-out infinite;
+}
+
+.min-tap {
+  min-height: var(--tap);
+}
