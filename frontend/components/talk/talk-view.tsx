@@ -1,10 +1,12 @@
 'use client'
 
-import { CircleCheckBig, LogOut, Siren, X } from 'lucide-react'
+import { CircleCheckBig, Eye, LogOut, Siren, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
+import { ShowSomeone } from '@/components/app/show-someone'
+import { UrgentButton } from '@/components/app/urgent-button'
 import { useLiveSession } from '@/lib/live/session'
 import { buildStep, uiMode } from '@/lib/live/talk-adapter'
 import { useSettings } from '@/lib/store/settings'
@@ -25,6 +27,7 @@ export function TalkView() {
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
   const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.ladder.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
+  const [showToSomeone, setShowToSomeone] = useState(false)
 
   if (error && !session) {
     return (
@@ -47,11 +50,12 @@ export function TalkView() {
 
   const level = session.ladder.level
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
+  const lastMessage = session.trace.length > 0 ? session.trace[session.trace.length - 1].label : step?.prompt ?? 'Nothing to show yet.'
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/home"
             className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
@@ -62,17 +66,28 @@ export function TalkView() {
           <span className="inline-flex h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
             {patient.name} · {patient.room}
           </span>
-        </div>
-        {user?.role === 'patient' && (
           <button
             type="button"
-            onClick={() => logout()}
+            onClick={() => setShowToSomeone(true)}
             className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
           >
-            <LogOut className="size-4" aria-hidden="true" />
-            Log out
+            <Eye className="size-4" aria-hidden="true" />
+            Show to someone
           </button>
-        )}
+        </div>
+        <div className="flex items-center gap-2">
+          {user?.role === 'patient' && (
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              Log out
+            </button>
+          )}
+          <UrgentButton compact />
+        </div>
       </div>
 
       {/* Communication ladder: the backend steps the level down when answering gets harder, up when it
@@ -148,13 +163,21 @@ export function TalkView() {
         <button
           type="button"
           onClick={respondWelfare}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-foreground p-8 text-center text-background"
+          style={{
+            paddingTop: 'max(2rem, calc(env(safe-area-inset-top) + 1rem))',
+            paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1rem))',
+            paddingLeft: 'max(2rem, calc(env(safe-area-inset-left) + 1rem))',
+            paddingRight: 'max(2rem, calc(env(safe-area-inset-right) + 1rem))',
+          }}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-foreground text-center text-background"
         >
           <span className="text-balance text-4xl font-bold leading-tight md:text-6xl">Are you okay? Tap anywhere.</span>
           <span className="text-lg opacity-80">Someone asked us to check on you.</span>
           <span className="font-mono text-5xl tabular-nums opacity-70">{welfareSecondsLeft}</span>
         </button>
       )}
+
+      <ShowSomeone open={showToSomeone} onOpenChange={setShowToSomeone} text={lastMessage} />
     </div>
   )
 }

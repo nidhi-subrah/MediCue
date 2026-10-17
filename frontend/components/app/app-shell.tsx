@@ -102,14 +102,16 @@ export function AppShell({
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex h-14 flex-col items-center justify-center gap-1 rounded-2xl text-xs font-semibold transition-colors',
+                    'flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 text-xs font-semibold transition-colors',
                     active
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:bg-muted',
                   )}
                 >
-                  <Icon className="size-5" aria-hidden="true" />
-                  {item.label}
+                  <Icon className="size-5 shrink-0" aria-hidden="true" />
+                  <span className="flex h-8 items-center justify-center text-center leading-tight">
+                    {item.label}
+                  </span>
                 </Link>
               </li>
             )
