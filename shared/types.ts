@@ -543,3 +543,10 @@ export interface CareForecast {
   check: { points: { start: string; expected: number; actual: number }[]; expected_total: number; actual_total: number };
   notice: string;
 }
+
+/** Nurse station "Unit right now": each unit patient's current state (GET /api/nurse/board). */
+export interface NurseBoardRow extends UnitPatientRef {
+  state: "urgent" | "checkin" | "waiting" | "answering" | "consult" | "calm";
+  headline: string; since: string | null; open_requests: number;
+  screen: string | null;              // the tablet's level when it has been simplified ("Yes / No", ...)
+}

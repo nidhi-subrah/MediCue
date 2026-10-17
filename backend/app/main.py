@@ -424,6 +424,12 @@ async def nurse_insights_cell(patient_id: str, start: datetime, bucket: str = "1
     return await app.state.nurse_views.cell(patient_id, start, bucket)
 
 
+@app.get("/api/nurse/board")
+async def nurse_board(user: DemoUser = Depends(require_nurse)):
+    """Each unit patient's state right now, most pressing first (the nurse station's "Unit right now")."""
+    return await app.state.nurse_views.board(svc(), app.state.silence)
+
+
 @app.get("/api/nurse/forecast")
 async def nurse_forecast(user: DemoUser = Depends(require_nurse)):
     return await app.state.nurse_views.forecast()

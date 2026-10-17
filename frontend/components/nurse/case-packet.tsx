@@ -2,7 +2,7 @@
 
 import {
   ArrowDown, ArrowUp, BatteryLow, Check, CircleCheck, CircleDashed, Clock, Copy, Eye, FileText, Gauge, Hand,
-  Hourglass, ListChecks, MessageCircleQuestion, MessageSquare, Scale, ShieldAlert, ThumbsDown, ThumbsUp,
+  Hourglass, ListChecks, MessageCircleQuestion, MessageSquare, Scale, ShieldAlert,
   TimerOff, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -368,40 +368,19 @@ export function CasePacketCard({ alert }: { alert: Alert }) {
 
 // ---- on the alert card -----------------------------------------------------------------------------
 
-function Verdict({ helpful, onHelpful }: { helpful: boolean | null; onHelpful: (v: boolean | null) => void }) {
-  const option = (value: boolean, label: string, Icon: typeof ThumbsUp) => (
-    <button type="button" aria-pressed={helpful === value} onClick={() => onHelpful(helpful === value ? null : value)}
-            className={cn('inline-flex h-10 items-center gap-1.5 rounded-full border-2 px-3 text-sm font-semibold',
-                          helpful === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>
-      <Icon className="size-4" aria-hidden="true" />{label}
-    </button>
-  )
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm text-muted-foreground">Was the case packet helpful?</span>
-      {option(true, 'Helpful', ThumbsUp)}
-      {option(false, 'Not helpful', ThumbsDown)}
-      <span className="text-sm text-muted-foreground">Then tap what they needed below.</span>
-    </div>
-  )
-}
-
 function FeedbackLine({ fb }: { fb: CaseFeedback }) {
-  const verdict = fb.helpful === null ? 'No verdict' : fb.helpful ? 'Marked helpful' : 'Marked not helpful'
   const where = fb.actual_rank ? `#${fb.actual_rank} in the packet`
     : fb.actual_was_less_likely ? 'listed as less likely' : 'not in the packet'
   return (
     <p className="text-sm">
-      <strong>{verdict}</strong> by {fb.by}
-      {fb.actual_label && <> · They needed {fb.actual_label} ({where})</>}
+      Confirmed by {fb.by}
+      {fb.actual_label && <> · they needed <strong>{fb.actual_label}</strong> ({where})</>}
     </p>
   )
 }
 
 /** Compact summary on the alert card; the full Case packet card opens from it. */
-export function CaseSummary({ alert, helpful, onHelpful, initiallyOpen = false }: {
-  alert: Alert; helpful: boolean | null; onHelpful: (v: boolean | null) => void; initiallyOpen?: boolean
-}) {
+export function CaseSummary({ alert, initiallyOpen = false }: { alert: Alert; initiallyOpen?: boolean }) {
   const [open, setOpen] = useState(initiallyOpen)
   // The demo's alert can reach the screen before the demo request returns, so open on the change too.
   useEffect(() => {
@@ -427,8 +406,7 @@ export function CaseSummary({ alert, helpful, onHelpful, initiallyOpen = false }
           Open case packet
         </button>
       </div>
-      {record.feedback ? <FeedbackLine fb={record.feedback} />
-        : alert.status === 'open' && <Verdict helpful={helpful} onHelpful={onHelpful} />}
+      {record.feedback && <FeedbackLine fb={record.feedback} />}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           className="max-h-[92dvh] overflow-y-auto bg-card p-6 sm:max-w-3xl md:p-8 data-open:animate-none data-closed:animate-none">

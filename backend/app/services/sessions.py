@@ -81,6 +81,7 @@ class Session:
     options: dict | None = None      # tailored second-step options, fixed once shown (engine/options.py)
     choice: dict | None = None       # the option the patient picked: label, predicted or "something else"
     history: list[dict] = field(default_factory=list)   # snapshots before each patient input, for "Back"
+    sent_as: str | None = None       # what the patient tapped when it was sent straight away ("Washroom")
 
 
 # What "Back" restores. Everything else (alerts, consults, logs) is either not created yet while the patient
@@ -282,9 +283,11 @@ class SessionService:
         finish = None
         choice = self._pick_option(s, option_id, tap_id) if kind == "feeling" and option_id else None
         if choice and choice["send_now"]:
-            finish = f"Sent straight away: “{choice['label']}” needs no follow-up question."
+            s.sent_as = choice["label"]
         elif kind == "area" and opts.area_sends_now(self.cat, tap_id):
-            finish = f"Sent straight away: “{self.cat.area_labels[tap_id]}” needs no follow-up question."
+            s.sent_as = self.cat.area_labels[tap_id]
+        if s.sent_as:
+            finish = f"Sent straight away: “{s.sent_as}” needs no follow-up question."
         latency = self._latency_ms(s)
         self._remember(s)
         if choice:
@@ -386,7 +389,8 @@ class SessionService:
             await self._create_alert(s, "urgent")
         elif kind == "send":
             s.status = "sent"
-            await self._create_alert(s, "routine")
+            # Sent straight away: the alert says what the patient tapped, not the engine's guess between needs.
+            await self._create_alert(s, "routine", s.sent_as if d.reason.startswith("Sent straight away") else None)
         elif kind == "tap":
             s.status = "feeling" if s.dialogue.area else "area"
             if s.status == "feeling" and s.options is None:

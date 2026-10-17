@@ -35,6 +35,9 @@ class Settings:
     cors_origins: list[str] = field(
         default_factory=lambda: os.getenv("CORS_ORIGINS", "*").split(","))
     seed_demo_data: bool = os.getenv("SEED_DEMO_DATA", "1") == "1"
+    # Mai's 22 synthetic early-warning residents (risk/synthetic.py). The app only shows the 6 unit patients, so
+    # they are not seeded by default; the tests turn this on for the risk engine's backtest and API checks.
+    seed_synthetic_cohort: bool = os.getenv("SEED_SYNTHETIC_COHORT", "0") == "1"
     consult_timeout_s: float = float(os.getenv("CONSULT_TIMEOUT_S", "120"))
     welfare_timeout_s: float = float(os.getenv("WELFARE_TIMEOUT_S", "45"))
     research_tick_s: float = float(os.getenv("RESEARCH_TICK_S", "300"))

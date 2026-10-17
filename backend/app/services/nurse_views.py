@@ -51,6 +51,7 @@ from datetime import datetime, timedelta, timezone
 from ..catalog import Catalog
 from ..config import settings
 from ..data.patients import PATIENT_BY_ID, PATIENTS, PERSON_BY_ID
+from ..engine.ladder import LEVELS
 from .gemini import Gemini
 
 log = logging.getLogger(__name__)
@@ -118,6 +119,56 @@ class NurseViews:
 
     def _need_label(self, nid: str | None) -> str:
         return self.cat.by_id[nid]["label"] if nid in self.cat.by_id else (nid or "Request")
+
+    # ======================================================================================================
+    # Nurse station board: each patient's state RIGHT NOW (no trends: those are Unit insights)
+    # ======================================================================================================
+
+    async def board(self, svc, silence) -> list[dict]:
+        """One row per unit patient, most pressing first: an open urgent request, a check-in waiting on a nurse,
+        a routine request waiting, the patient answering on the tablet now, family being asked, or calm with
+        the time of their last request."""
+        now = _now()
+        ladders = {}
+        if silence:
+            for lad in silence.ladders_view(None, None, True):
+                ladders.setdefault(lad["patient_id"], lad)
+        latest = {}
+        for s in svc.sessions.values():
+            pid = s.patient["id"]
+            if pid not in latest or s.started > latest[pid].started:
+                latest[pid] = s
+        rank = {"urgent": 0, "checkin": 1, "waiting": 2, "answering": 3, "consult": 4, "calm": 5}
+        rows = []
+        for pid in UNIT:
+            open_alerts = sorted((a for a in svc.alerts.values() if a["patient_id"] == pid and a["status"] == "open"),
+                                 key=lambda a: (a["priority"] != "urgent", a["created_at"]))
+            s = latest.get(pid)
+            level = s.ladder.level if s else None
+            level_label = LEVELS[level] if s and level and level > 1 else None   # only when the screen is simpler
+            if open_alerts:
+                a = open_alerts[0]
+                state = "urgent" if a["priority"] == "urgent" else "waiting"
+                what = a.get("label") or (a["top"][0]["label"] if a.get("top") else "Request")
+                headline, since = f"{'Urgent request' if state == 'urgent' else 'Waiting'}: {what}", a["created_at"]
+            elif pid in ladders:
+                state, headline, since = "checkin", "Check-in: hasn't tapped for a while", ladders[pid]["started_at"]
+            elif s and s.status in ("area", "feeling", "question"):
+                state, headline, since = "answering", "Answering on the tablet now", _iso(datetime.fromtimestamp(s.started, timezone.utc))
+            elif s and s.status == "waiting_consult" and s.consult_id in svc.consults:
+                c = svc.consults[s.consult_id]
+                state, headline, since = "consult", f"Asking {c['person_name']} ({c['relation']})", c["created_at"]
+            else:
+                rows_ = await self.store.confirmations(now - timedelta(hours=48), pid)
+                last = max(rows_, key=lambda r: r["time"], default=None)
+                state = "calm"
+                if last:
+                    headline, since = f"Last asked: {self._need_label(last['confirmed_need']).lower()}", _iso(last["time"])
+                else:
+                    headline, since = "No requests in the last 2 days", None
+            rows.append(self._patient(pid) | {"state": state, "headline": headline, "since": since,
+                                              "open_requests": len(open_alerts), "screen": level_label})
+        return sorted(rows, key=lambda r: rank[r["state"]])
 
     # ======================================================================================================
     # Unit insights
