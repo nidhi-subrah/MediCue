@@ -36,7 +36,10 @@ export function AnalyticsView() {
       <header className="flex flex-col gap-2">
         <h1 className="text-4xl font-bold tracking-tight">Tiger Data intelligence</h1>
         <p className="text-lg text-muted-foreground">
-          Every number below comes from a real query against Tiger Data — no mocked analytics.
+          {overview.store === 'memory'
+            ? 'No Tiger Data database is connected on this server, so these numbers come from the in-memory store. '
+              + 'Hypertable and compression figures need Tiger Data (set DATABASE_URL).'
+            : 'Every number below comes from a real query against Tiger Data — no mocked analytics.'}
         </p>
       </header>
 

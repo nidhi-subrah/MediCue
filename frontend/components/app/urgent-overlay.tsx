@@ -13,6 +13,7 @@ export function UrgentOverlay() {
   const open = useUrgent((s) => s.open)
   const message = useUrgent((s) => s.message)
   const reason = useUrgent((s) => s.reason)
+  const notice = useUrgent((s) => s.notice)
   const closeUrgent = useUrgent((s) => s.closeUrgent)
   const { say, stop } = useSpeaker()
   const [toneOn, setToneOn] = useState(false)
@@ -63,6 +64,11 @@ export function UrgentOverlay() {
             Show this screen to anyone nearby. SilentSignal does not contact emergency services
             on its own — use the call button if you need them.
           </DialogDescription>
+          {notice && (
+            <p role="status" className="max-w-2xl rounded-2xl border-2 border-urgent-foreground/70 px-4 py-3 text-xl font-semibold">
+              {notice.text}
+            </p>
+          )}
         </div>
 
         <div className="grid gap-3 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:grid-cols-2 md:px-16 lg:grid-cols-4">

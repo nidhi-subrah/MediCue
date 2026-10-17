@@ -14,8 +14,11 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --reload
 
 # frontend (terminal 2)
-cd frontend && npm install && npm run dev       # open http://localhost:5173
+cd frontend && npm install && npm run dev       # open http://localhost:3000
 ```
+
+Sign in with a demo account (the login page has one-tap buttons for them): nurse `nurse@medicare.demo` / `nurse`,
+patient `patient@medicare.demo` / `patient`. Set `DEMO_NURSE_PASSWORD` / `DEMO_PATIENT_PASSWORD` to change them.
 
 No database or API key is needed: it falls back to an in-memory store and template text.
 Set `DATABASE_URL` (Tiger Data) and `GEMINI_API_KEY` to turn those on (see `backend/.env.example`).

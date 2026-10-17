@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .auth import (
-    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session,
+    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session, demo_accounts,
     current_user, destroy_session, require_nurse, user_for_session_id, verify_password,
 )
 from .catalog import get_catalog
@@ -165,6 +165,12 @@ async def logout(request: Request, response: Response):
         destroy_session(session_id)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
+
+
+@app.get("/api/auth/demo-accounts")
+async def auth_demo_accounts():
+    """Demo logins shown on the login page, only while the built-in demo passwords are in use."""
+    return demo_accounts()
 
 
 @app.get("/api/auth/me")

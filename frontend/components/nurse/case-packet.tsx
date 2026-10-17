@@ -283,12 +283,12 @@ function SbarCompare({ record }: { record: CaseRecord }) {
 
 export function CasePacketCard({ alert }: { alert: Alert }) {
   const record = alert.case as CaseRecord
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const light = record.packet.variant === 'light'
 
-  const onCopy = async () => setCopied(await copy(sbarText(alert, record)))
+  const onCopy = async () => setCopied((await copy(sbarText(alert, record))) ? 'copied' : 'failed')
   const onAcknowledge = async () => {
     setBusy(true)
     setError(null)
@@ -331,8 +331,8 @@ export function CasePacketCard({ alert }: { alert: Alert }) {
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" onClick={onCopy}
                   className="min-tap inline-flex items-center gap-2 rounded-xl border-2 border-foreground/70 bg-card px-5 text-lg font-semibold">
-            {copied ? <Check className="size-5" aria-hidden="true" /> : <Copy className="size-5" aria-hidden="true" />}
-            {copied ? 'SBAR copied' : 'Copy SBAR'}
+            {copied === 'copied' ? <Check className="size-5" aria-hidden="true" /> : <Copy className="size-5" aria-hidden="true" />}
+            {copied === 'copied' ? 'SBAR copied' : 'Copy SBAR'}
           </button>
           {record.acknowledged ? (
             <p className="inline-flex items-center gap-2 text-lg font-semibold">
@@ -348,8 +348,15 @@ export function CasePacketCard({ alert }: { alert: Alert }) {
           <DialogClose className="min-tap ml-auto rounded-xl border-2 border-border bg-card px-5 text-lg font-semibold">
             Close
           </DialogClose>
-          <span role="status" className="sr-only">{copied ? 'SBAR copied to the clipboard' : ''}</span>
+          <span role="status" className="sr-only">{copied === 'copied' ? 'SBAR copied to the clipboard' : ''}</span>
         </div>
+        {copied === 'failed' && (
+          <label className="flex flex-col gap-1.5 text-base">
+            <span className="font-semibold">This browser blocked copying. Select the text and copy it yourself:</span>
+            <textarea readOnly rows={6} value={sbarText(alert, record)} onFocus={(e) => e.currentTarget.select()} autoFocus
+                      className="rounded-xl border-2 border-foreground/60 bg-card p-3 font-mono text-sm" />
+          </label>
+        )}
         <p className="text-base text-muted-foreground">
           Acknowledge means you have read this and are acting on it. Confirm what they needed on the alert afterwards.
         </p>

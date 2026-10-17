@@ -1,12 +1,13 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Brand } from '@/components/app/brand'
 import { useAuth } from '@/components/app/auth-provider'
 import { api } from '@/lib/services/backend'
 
 type LoginResponse = { role: 'patient' | 'nurse'; patient_id: string | null }
+type DemoAccount = { role: 'patient' | 'nurse'; email: string; password: string }
 
 function homeFor(user: LoginResponse) {
   return user.role === 'nurse' ? '/nurse' : `/talk/${user.patient_id}`
@@ -19,6 +20,11 @@ export function LoginView() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Only listed while the built-in demo passwords are in use (backend/app/auth.py: demo_accounts).
+  const [demo, setDemo] = useState<DemoAccount[]>([])
+  useEffect(() => {
+    api.get<DemoAccount[]>('/api/auth/demo-accounts').then(setDemo).catch(() => {})
+  }, [])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -94,10 +100,25 @@ export function LoginView() {
           </button>
         </form>
 
-        <p className="text-center text-sm leading-relaxed text-muted-foreground">
-          Demo accounts — patient: <span className="font-mono">patient@medicare.demo</span>, nurse:{' '}
-          <span className="font-mono">nurse@medicare.demo</span>
-        </p>
+        {demo.length > 0 ? (
+          <div className="flex flex-col gap-3 rounded-3xl border-2 border-dashed border-border p-5">
+            <p className="text-sm font-semibold text-foreground">Demo accounts (synthetic data)</p>
+            <div className="grid gap-2">
+              {demo.map((a) => (
+                <button key={a.email} type="button" onClick={() => { setEmail(a.email); setPassword(a.password); setError(null) }}
+                        className="flex min-w-0 flex-col items-start rounded-2xl border border-border bg-card px-4 py-3 text-left hover:border-primary/40">
+                  <span className="text-base font-semibold">Use the {a.role} account</span>
+                  <span className="break-words font-mono text-sm text-muted-foreground">{a.email} · password: {a.password}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-center text-sm leading-relaxed text-muted-foreground">
+            Demo accounts — patient: <span className="font-mono">patient@medicare.demo</span>, nurse:{' '}
+            <span className="font-mono">nurse@medicare.demo</span>
+          </p>
+        )}
       </div>
     </div>
   )
