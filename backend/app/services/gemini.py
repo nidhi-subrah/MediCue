@@ -120,6 +120,43 @@ class Gemini:
         return finding.get("template_hypothesis", finding["title"]), "template"
 
 
+    # ---- research agent --------------------------------------------------------------------------
+
+    async def observation_spec(self, text: str, patients: dict, cat) -> dict | None:
+        """Free-text clinician observation → test spec. The caller validates every field."""
+        prompt = (
+            "Turn a clinician's observation about a patient into a test spec for a research agent. "
+            "Return JSON only. Use only these ids.\n"
+            f"Patients: {[{'id': k, 'name': v['name'], 'chart_events': v['chart_events']} for k, v in patients.items()]}\n"
+            f"Need ids: {cat.need_ids}\n"
+            "type is one of: after_event (need rises after family visits end; set window_h), time_window "
+            "(need concentrated in local hours; set hours as integers 0-23), rate_change (need rises after a chart "
+            "event; copy its time to event_time and label to event_label), trend (patient taking longer per tap).\n"
+            f"Observation: {text}")
+        out = await self._json(prompt, ObservationSpec)
+        if not out:
+            return None
+        spec = {k: v for k, v in out.model_dump().items() if v not in (None, [])}
+        return spec
+
+    async def research_digest(self, facts: dict) -> tuple[str | None, str]:
+        prompt = (
+            "Write a 2-4 sentence shift digest for a clinical lead about a research agent's hypotheses. Plain, "
+            "factual, no causal claims, no diagnosis. Use these counts exactly.\n" + json.dumps(facts))
+        out = await self._json(prompt, TextModel)
+        return (out.text, "gemini") if out else (None, "template")
+
+
+class ObservationSpec(BaseModel):
+    type: str
+    patient_id: str
+    need_ids: list[str] = []
+    hours: list[int] = []
+    window_h: float | None = None
+    event_time: str | None = None
+    event_label: str | None = None
+
+
 def _pct(p: float) -> str:
     return f"{round(p * 100)}%"
 

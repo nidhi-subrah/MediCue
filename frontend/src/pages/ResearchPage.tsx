@@ -1,66 +1,103 @@
-import { useEffect, useState } from "react";
-import type { Finding } from "@shared/types";
-import { api, timeAgo } from "../api";
-import { needLabel } from "../catalog";
+import { useCallback, useEffect, useState } from "react";
+import type { Patient, ResearchDigest, ResearchHypothesis, ResearchInquiry, StaffMember } from "@shared/types";
+import { api, useChannel } from "../api";
+import HypothesisCard from "../components/research/HypothesisCard";
+import InquiryCard from "../components/research/InquiryCard";
+import ObservationForm from "../components/research/ObservationForm";
 
-const STATUS_LABEL: Record<Finding["status"], string> = {
-  proposed: "Proposed", validated: "✓ Validated", rejected: "✕ Rejected", needs_more_data: "… Needs more data",
-};
+const PENDING = new Set(["SUPPORTED_PENDING_REVIEW", "REJECTED_PENDING_REVIEW"]);
+const DONE = new Set(["VALIDATED", "REJECTED"]);
 
 export default function ResearchPage() {
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [hypotheses, setHypotheses] = useState<ResearchHypothesis[]>([]);
+  const [inquiries, setInquiries] = useState<ResearchInquiry[]>([]);
+  const [digest, setDigest] = useState<ResearchDigest | null>(null);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [running, setRunning] = useState(false);
 
-  const load = () => api.get<Finding[]>("/api/research/findings").then(setFindings);
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    const [h, i, d] = await Promise.all([
+      api.get<ResearchHypothesis[]>("/api/research/hypotheses"),
+      api.get<ResearchInquiry[]>("/api/research/inquiries?status=pending"),
+      api.get<ResearchDigest>("/api/research/digest"),
+    ]);
+    setHypotheses(h);
+    setInquiries(i);
+    setDigest(d);
+  }, []);
+
+  useEffect(() => {
+    load();
+    api.get<{ staff: StaffMember[] }>("/api/research/clinicians").then((r) => setStaff(r.staff));
+    api.get<Patient[]>("/api/patients").then(setPatients);
+  }, [load]);
+
+  useChannel("research", (m) => { if (m.type === "research_updated") load(); });
 
   const run = async () => {
     setRunning(true);
-    try { await api.post("/api/research/run"); await load(); } finally { setRunning(false); }
+    try { await api.post("/api/research/cycle"); await load(); } finally { setRunning(false); }
   };
 
-  const review = async (f: Finding, status: Finding["status"]) => {
-    const updated = await api.post<Finding>(`/api/research/findings/${f.id}/review`, { status, note: notes[f.id] ?? null });
-    setFindings((all) => all.map((x) => (x.id === f.id ? updated : x)));
-  };
+  const pending = hypotheses.filter((h) => PENDING.has(h.status));
+  // Clinician observations first (a person is waiting on them), then the most decided.
+  const active = hypotheses.filter((h) => !PENDING.has(h.status) && !DONE.has(h.status))
+    .sort((a, b) => Number(b.origin === "clinician") - Number(a.origin === "clinician")
+      || Math.abs(b.confidence - 0.5) - Math.abs(a.confidence - 0.5));
+  const done = hypotheses.filter((h) => DONE.has(h.status));
 
   return (
-    <div className="research">
+    <div className="research research-agent">
       <header className="research-head">
         <div>
-          <h1>Pattern review</h1>
-          <p className="muted small">The system scans confirmed needs for recurring patterns, an agent drafts a hypothesis,
-            and you decide. Validated findings adjust that patient's prior. Rejected ones are never proposed again.</p>
+          <h1>Research agent</h1>
+          <p className="muted small">Observations from clinicians and patterns the system detects become hypotheses. For each one the
+            agent decides whether to check the data, ask a clinician who knows the patient, or wait for more episodes,
+            and updates its confidence from the evidence. Nothing becomes a finding until the clinical lead reviews it.</p>
         </div>
-        <button className="btn primary" onClick={run} disabled={running}>{running ? "Analysing…" : "Run analysis"}</button>
+        <button className="btn primary" onClick={run} disabled={running}>{running ? "Running…" : "Run research cycle"}</button>
       </header>
 
-      {findings.length === 0 && <p className="muted">No findings yet.</p>}
-      {findings.map((f) => (
-        <article key={f.id} className={`card finding status-${f.status}`}>
-          <header className="alert-head">
-            <span className="tag">{f.kind.replace(/_/g, " ")}</span>
-            <strong>{f.title}</strong>
-            <span className="push small">{STATUS_LABEL[f.status]}</span>
-          </header>
-          <p><strong>Evidence:</strong> {f.evidence}</p>
-          <p><strong>Hypothesis</strong> <span className="muted small">({f.hypothesis_source === "gemini" ? "Gemini" : "template"})</span>: {f.hypothesis}</p>
-          {f.prior_effect && (
-            <p className="small muted">If validated: prior × {f.prior_effect.multiplier} for {f.prior_effect.need_ids.map(needLabel).join(", ")}
-              {f.prior_effect.hours ? ` between ${f.prior_effect.hours[0]}:00 and ${f.prior_effect.hours[f.prior_effect.hours.length - 1] + 1}:00` : ""}.</p>
-          )}
-          {f.reviewer && <p className="small">Reviewed by {f.reviewer}{f.note ? `: “${f.note}”` : ""}</p>}
-          <div className="confirm-row">
-            <input aria-label="Reviewer note" placeholder="Note (optional)" value={notes[f.id] ?? ""}
-                   onChange={(e) => setNotes({ ...notes, [f.id]: e.target.value })} />
-            <button className="btn" onClick={() => review(f, "validated")}>Validate</button>
-            <button className="btn" onClick={() => review(f, "needs_more_data")}>Needs more data</button>
-            <button className="btn" onClick={() => review(f, "rejected")}>Reject</button>
-          </div>
-          <p className="muted small">First seen {timeAgo(f.created_at)}</p>
-        </article>
-      ))}
+      {digest && (
+        <section className="card digest" aria-label="Research digest">
+          <h2>This shift</h2>
+          <p>{digest.text}</p>
+          <p className="muted small">{digest.source === "gemini" ? "Phrased by Gemini from the counts" : "Generated from the counts"}</p>
+        </section>
+      )}
+
+      <div className="research-grid">
+        <div className="research-main">
+          <section aria-labelledby="pending-h">
+            <h2 id="pending-h">Pending review <span className="count">{pending.length}</span></h2>
+            {pending.length === 0
+              ? <p className="muted small">Nothing has crossed a review threshold yet.</p>
+              : <p className="muted small">Human review is required before any hypothesis is treated as a finding.</p>}
+            {pending.map((h) => <HypothesisCard key={h.id} h={h} mode="review" />)}
+          </section>
+
+          <section aria-labelledby="active-h">
+            <h2 id="active-h">Active hypotheses <span className="count">{active.length}</span></h2>
+            {active.map((h) => <HypothesisCard key={h.id} h={h} mode="active" />)}
+          </section>
+
+          <section aria-labelledby="history-h">
+            <h2 id="history-h">Validated / rejected <span className="count">{done.length}</span></h2>
+            {done.length === 0 && <p className="muted small">No reviewed hypotheses yet. Evidence and history are kept here after review.</p>}
+            {done.map((h) => <HypothesisCard key={h.id} h={h} mode="history" />)}
+          </section>
+        </div>
+
+        <aside className="research-side">
+          <section aria-labelledby="inq-h">
+            <h2 id="inq-h">Clinician inquiries <span className="count">{inquiries.length}</span></h2>
+            {inquiries.length === 0 && <p className="muted small">The agent has no open questions.</p>}
+            {inquiries.map((i) => <InquiryCard key={i.id} inquiry={i} />)}
+          </section>
+          <ObservationForm staff={staff} patients={patients} />
+        </aside>
+      </div>
     </div>
   );
 }
