@@ -1,8 +1,7 @@
 'use client'
 
-import { CircleCheckBig, Eye, LogOut, Siren, X } from 'lucide-react'
+import { CircleCheckBig, Eye, LogOut, Siren } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
 import { ShowSomeone } from '@/components/app/show-someone'
@@ -34,9 +33,13 @@ export function TalkView() {
       <div className="flex flex-col items-start gap-4 rounded-3xl border border-border bg-card p-8">
         <h1 className="text-3xl font-bold">Couldn&apos;t load this session</h1>
         <p className="text-lg leading-relaxed text-muted-foreground">{error}</p>
-        <Link href="/home" className="inline-flex h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground">
-          Back to patients
-        </Link>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="inline-flex h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground"
+        >
+          Try again
+        </button>
       </div>
     )
   }
@@ -56,15 +59,6 @@ export function TalkView() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {user?.role !== 'patient' && (   // a patient has nowhere else to go; they get Log out instead
-            <Link
-              href="/home"
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
-            >
-              <X className="size-4" aria-hidden="true" />
-              Exit
-            </Link>
-          )}
           <span className="inline-flex h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
             {patient.name} · {patient.room}
           </span>
