@@ -25,6 +25,7 @@ class TraceStep:
     top: list[dict]
     entropy: float
     p_high: float
+    belief: tuple[float, ...] = ()   # full belief after this step (read by services/case_packet.py)
 
     def public(self) -> dict:
         return {"t": self.t, "kind": self.kind, "label": self.label, "detail": self.detail, "top": self.top[:3],
@@ -188,4 +189,4 @@ class Dialogue:
 
     def _record(self, kind: str, label: str, detail: str):
         self.trace.append(TraceStep(time.time(), kind, label, detail, top_items(self.cat, self.belief, 3),
-                                    entropy(self.belief), p_high_risk(self.cat, self.belief)))
+                                    entropy(self.belief), p_high_risk(self.cat, self.belief), tuple(self.belief)))
