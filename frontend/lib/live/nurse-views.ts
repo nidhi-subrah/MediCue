@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/services/backend'
-import type { CareForecast, InsightsCell, UnitInsights } from '@/lib/types'
+import type { CareForecast, InsightsCell, NurseBoardRow, UnitInsights } from '@/lib/types'
 
 const REFRESH_MS = 60_000
 
@@ -64,4 +64,23 @@ export function useCareForecast() {
   }, [load])
 
   return { data, error }
+}
+
+/** Nurse station "Unit right now": refreshed every 10 seconds and whenever `bump` changes (a new alert,
+ *  a confirmation, a check-in update), so it follows the live queue. */
+export function useNurseBoard(bump: unknown) {
+  const [rows, setRows] = useState<NurseBoardRow[]>([])
+  const load = useCallback(async () => {
+    try {
+      setRows(await api.get<NurseBoardRow[]>('/api/nurse/board'))
+    } catch {
+      // keep the last board; the queue on the left is the source of truth for anything urgent
+    }
+  }, [])
+  useEffect(() => {
+    void load()
+    const t = window.setInterval(load, 10_000)
+    return () => window.clearInterval(t)
+  }, [load, bump])
+  return rows
 }

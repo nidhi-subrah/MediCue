@@ -27,7 +27,7 @@ async def start(store):
         from .synthetic import generate
         risk_store = make_risk_store(store)
         await risk_store.init()
-        if settings.seed_demo_data and not await risk_store.is_seeded():
+        if settings.seed_demo_data and settings.seed_synthetic_cohort and not await risk_store.is_seeded():
             cohort = await asyncio.to_thread(generate, get_catalog())
             await risk_store.replace_cohort(cohort)
             log.info("risk: seeded synthetic cohort (%d patients, %d events, %d chart events)",
