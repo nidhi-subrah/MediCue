@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ModeId } from "@shared/types";
+import Icon from "./Icon";
 
 export interface TileOption {
   key: string;
   label: string;
-  sublabel?: string;
-  icon?: string;
-  tone?: "yes" | "no" | "neutral";
+  icon?: string;        // Icon name; defaults to the key
   onSelect: () => void;
 }
 
@@ -45,20 +44,19 @@ export default function TileGrid({ options, mode, label }: { options: TileOption
     <div
       role="group"
       aria-label={label}
-      className={`tiles tiles-${mode} ${options.length <= 3 ? "tiles-few" : ""}`}
+      className={`tiles tiles-${mode}`}
       onClick={mode === "scan" ? () => options[focus]?.onSelect() : undefined}
     >
       {options.map((o, i) => (
         <button
           key={o.key}
-          className={`tile tone-${o.tone ?? "neutral"} ${mode === "scan" && i === focus ? "scan-focus" : ""}`}
+          className={`tile ${mode === "scan" && i === focus ? "scan-focus" : ""}`}
           aria-current={mode === "scan" && i === focus ? "true" : undefined}
           onClick={mode === "scan" ? undefined : o.onSelect}
           tabIndex={mode === "scan" ? -1 : 0}
         >
-          {o.icon && <span className="tile-icon" aria-hidden>{o.icon}</span>}
+          <Icon name={o.icon ?? o.key} size={mode === "grid" ? 36 : 48} className="tile-icon" />
           <span className="tile-label">{o.label}</span>
-          {o.sublabel && o.sublabel !== o.label && <span className="tile-sub">{o.sublabel}</span>}
         </button>
       ))}
     </div>

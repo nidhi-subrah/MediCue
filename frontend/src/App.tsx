@@ -18,17 +18,22 @@ function useHashRoute() {
 export default function App() {
   const [page, id] = useHashRoute();
   const isPatient = page === "patient";
+  const isFamily = page === "family";
   return (
     <>
       {!isPatient && (
         <nav className="topnav" aria-label="Main">
-          <a href="#/" className="brand">SilentSignal</a>
-          <a href="#/nurse" aria-current={page === "nurse" ? "page" : undefined}>Nurse</a>
-          <a href="#/research" aria-current={page === "research" ? "page" : undefined}>Research</a>
-          <span className="disclaimer">Prototype · synthetic data · not a diagnostic device</span>
+          <a href="#/" className="wordmark">SilentSignal</a>
+          {!isFamily && (
+            <>
+              <a href="#/nurse" aria-current={page === "nurse" ? "page" : undefined}>Nurse station</a>
+              <a href="#/research" aria-current={page === "research" ? "page" : undefined}>Pattern review</a>
+            </>
+          )}
+          <span className="disclaimer">Prototype with synthetic data. Not a diagnostic device.</span>
         </nav>
       )}
-      <main className={isPatient ? "patient-main" : "main"}>
+      <main className={isPatient ? "patient-main" : `main main-${page ?? "home"}`}>
         {page === "patient" && id ? <PatientPage patientId={id} /> :
          page === "nurse" ? <NurseDashboard /> :
          page === "family" && id ? <FamilyPage personId={id} /> :
