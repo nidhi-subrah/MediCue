@@ -60,7 +60,7 @@ class Dialogue:
         self.consulted: set[str] = set()
         self.consult_answers: list[tuple[str, str]] = []   # (person name, answer label)
         self.inconsistencies = 0.0                         # surprising answers (+1) and "not sure" (+0.5)
-        self.yes_no = False                                # communication ladder level 3+: questions, no taps
+        self.yes_no = False                                # adaptive communication yes/no mode: questions, no taps
         self._record("prior", "Prior from context", "")
 
     # ---- evidence ----------------------------------------------------------------------------
@@ -75,10 +75,10 @@ class Dialogue:
 
     def open_yes_no(self):
         """Skip the remaining taps: from now on the engine reaches the need through yes/no questions only
-        (communication ladder, engine/ladder.py). Sticky, so stepping back up mid-dialogue keeps going."""
+        (adaptive communication's yes/no mode, engine/communication). Sticky, so stepping back up mid-dialogue keeps going."""
         if not self.yes_no:
             self.yes_no = True
-            self._record("ladder", "Switched to yes/no questions", "")
+            self._record("communication", "Switched to yes/no questions", "")
 
     @property
     def max_questions(self) -> int:

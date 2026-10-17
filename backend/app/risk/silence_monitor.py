@@ -92,18 +92,18 @@ class SilenceMonitor:
         for s in list(self.svc.sessions.values()):
             if s.status not in sm.MID_DIALOGUE:
                 continue
-            key = (s.id, s.prompted_at, s.ladder.level)   # a new level can shorten the timeout
+            key = (s.id, s.prompted_at, int(s.comm.mode))   # assisted communication shortens the timeout
             live.add(key)
             if key in self._fired:
                 continue
             if key not in self._timeouts:
                 self._timeouts[key] = sm.mid_dialogue_timeout(
-                    await self._latencies(s.patient["id"]), s.dialogue.fatigue(), self.cfg, s.ladder.level)
+                    await self._latencies(s.patient["id"]), s.dialogue.fatigue(), self.cfg, int(s.comm.mode))
             timeout, idle = self._timeouts[key], now.timestamp() - s.prompted_at
             prompt = (s.id, s.prompted_at)
             if idle >= timeout * self.cfg.mid_idle_step_fraction and prompt not in self._idle_stepped:
-                # Communication ladder: try an easier screen first. One step per prompt; the timer keeps
-                # running from the same prompt, so this never delays the escalation below.
+                # Adaptive communication: counts a missed response (usually an easier screen). Once per prompt;
+                # the timer keeps running from the same prompt, so this never delays the escalation below.
                 self._idle_stepped.add(prompt)
                 await self.svc.idle_step_down(s.id, idle)
                 if s.status not in sm.MID_DIALOGUE:
@@ -186,7 +186,7 @@ class SilenceMonitor:
         if kind == "tablet_check":
             await self.hub.publish(f"patient:{pid}", {
                 "type": "welfare_check", "id": lad.id, "patient_id": pid,
-                "requested_by": "SilentSignal (no recent activity)", "expires_in": self.cfg.tablet_timeout_s,
+                "requested_by": "MediCue (no recent activity)", "expires_in": self.cfg.tablet_timeout_s,
                 "respond_path": f"/api/risk/silence/ladders/{lad.id}/patient_ok"})
         elif kind == "nurse_alert":
             alert = self._nurse_alert(lad, now)

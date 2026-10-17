@@ -3,7 +3,7 @@
 import { CircleCheckBig, Eye, LogOut, Siren, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
 import { ShowSomeone } from '@/components/app/show-someone'
 import { UrgentButton } from '@/components/app/urgent-button'
@@ -13,20 +13,26 @@ import { useSettings } from '@/lib/store/settings'
 import { cn } from '@/lib/utils'
 import { AssistCard } from './assist-card'
 import { ConsultBanner } from './consult-banner'
-import { LevelBar, LevelTransition } from './level-bar'
+import { LanguageOffer, LevelBar, LevelTransition, OfferCard } from './level-bar'
 import { QuestionStage } from './question-stage'
 import { SummaryPanel } from './summary-panel'
 
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
-    signal, setLevel } = useLiveSession()
+    signal, setLevel, setLanguage, setAudio, answerOffer } = useLiveSession()
   const { user, logout } = useAuth()
-  const audio = useSettings((s) => s.spokenPrompts)
-  const updateSettings = useSettings((s) => s.update)
+  const audioPreference = useSettings((s) => s.spokenPrompts)
   const [showEngine, setShowEngine] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
-  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.ladder.level}` : ''
+  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.communication.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
+  // "Read aloud" chosen in Settings is an explicit accessibility preference: carry it into the session once.
+  const sentPreference = useRef<string | null>(null)
+  useEffect(() => {
+    if (!session || !audioPreference || sentPreference.current === session.session_id) return
+    sentPreference.current = session.session_id
+    if (!session.communication.audio_enabled) setAudio(true)
+  }, [session, audioPreference, setAudio])
   const [showToSomeone, setShowToSomeone] = useState(false)
 
   if (error && !session) {
@@ -45,10 +51,11 @@ export function TalkView() {
     return <p className="text-lg text-muted-foreground">Loading…</p>
   }
 
-  const mode = uiMode(session.mode, audio)
+  const comm = session.communication
+  const mode = uiMode(session.mode, false)   // read aloud is a modifier on any mode (comm.presentation.audio)
   const step = buildStep(session, mode, tap, answerQuestion, { open: moreOpen, setOpen: setMoreOpen })
 
-  const level = session.ladder.level
+  const level = comm.level
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
   const lastMessage = session.trace.length > 0 ? session.trace[session.trace.length - 1].label : step?.prompt ?? 'Nothing to show yet.'
 
@@ -92,11 +99,18 @@ export function TalkView() {
         </div>
       </div>
 
-      {/* Communication ladder: the backend steps the level down when answering gets harder, up when it
-          gets easier again (backend/app/engine/ladder.py). Bigger buttons come with level 2. */}
-      <LevelBar ladder={session.ladder} audio={audio} onLevel={setLevel} onAudio={(on) => updateSettings({ spokenPrompts: on })} />
-      <LevelTransition level={level} />
-      {level === 4 && !done && <AssistCard assist={session.ladder.assist} />}
+      {/* Adaptive communication: the backend decides how to ask (backend/app/engine/communication); this page
+          only renders it. Urgent help (above) stays one tap away in every mode. */}
+      <LevelBar comm={comm} onLevel={setLevel} onAudio={setAudio} onLanguage={setLanguage} />
+      <LevelTransition message={comm.message} />
+      {!done && <LanguageOffer comm={comm} onLanguage={setLanguage} />}
+      {!done && <OfferCard comm={comm} onAnswer={answerOffer} />}
+      {level === 4 && !done && <AssistCard comm={comm} />}
+      {comm.language !== 'en' && !comm.translated && !done && (
+        <p className="rounded-2xl bg-surface px-4 py-3 text-base text-muted-foreground">
+          Some words are still in English while translation is unavailable. Buttons and choices are translated.
+        </p>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-6">
@@ -140,11 +154,14 @@ export function TalkView() {
           ) : step ? (
             <AnimatePresence mode="wait" initial={false}>
               <QuestionStage
-                key={`${step.id}-${mode}-${level}`}
+                key={`${step.id}-${mode}-${level}-${comm.language}`}
                 step={step}
                 stepNumber={session.taps + 1}
                 mode={mode}
                 level={level}
+                presentation={comm.presentation}
+                language={comm.language}
+                text={comm.text}
                 canUndo={session.can_go_back}
                 onUndo={goBack}
                 onSignal={signal}

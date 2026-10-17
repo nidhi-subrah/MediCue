@@ -3,6 +3,9 @@
 MediCue turns a few taps from a patient who can't speak into a precise, structured clinical message, and
 says how certain it is. Behind the interface, a decision engine picks the best next move each time: ask the
 patient a yes/no question, look up their chart, consult someone who knows them, or escalate to a nurse now.
+The **Adaptive Communication Engine** decides how to ask: when answering gets harder, the tablet simplifies
+itself (fewer, bigger choices, then one yes/no question at a time, then someone to help) without losing anything
+the patient has said. See [docs/ADAPTIVE_COMMUNICATION.md](docs/ADAPTIVE_COMMUNICATION.md).
 
 Built for Hack the Valley. **Prototype with synthetic patient data. A communication aid, not a diagnostic device.**
 
@@ -17,8 +20,8 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd frontend && npm install && npm run dev       # open http://localhost:3000
 ```
 
-Sign in with a demo account (the login page has one-tap buttons for them): nurse `nurse@medicare.demo` / `nurse`,
-patient `patient@medicare.demo` / `patient`. Set `DEMO_NURSE_PASSWORD` / `DEMO_PATIENT_PASSWORD` to change them.
+Sign in with a demo account (the login page has one-tap buttons for them): nurse `nurse@medicue.demo` / `nurse`,
+patient `patient@medicue.demo` / `patient`. Set `DEMO_NURSE_PASSWORD` / `DEMO_PATIENT_PASSWORD` to change them.
 
 No database or API key is needed: it falls back to an in-memory store and template text.
 Set `DATABASE_URL` (Tiger Data) and `GEMINI_API_KEY` to turn those on (see `backend/.env.example`).
@@ -31,7 +34,8 @@ flowchart LR
   P[Patient tablet<br/>taps / yes-no / scan] -->|REST| S[Session service]
   S --> B[Belief engine<br/>Bayes over 20 needs]
   B --> D{Decision engine<br/>Ask · Look up · Consult · Escalate · Send}
-  D -->|ask| P
+  D -->|ask Q| AC[Adaptive communication<br/>signals → policy → how to ask Q]
+  AC --> P
   D -->|look up| C[(Mock chart)]
   D -->|consult| F[Family / regular nurse<br/>phone view]
   D -->|escalate / send| A[Alert + SBAR]
@@ -52,6 +56,10 @@ flowchart LR
   (missing chest pain costs 12.5× confusing thirst with cold).
 - **Safety floor**: if P(any high-risk need) ≥ 25%, it escalates at once. This rule is deterministic and works
   offline, and chart data can't override a patient's own signal. Full list in `backend/README.md`.
+- **Adaptive communication** (`backend/app/engine/communication/`): signal detection (slowdown against this session's
+  or the patient's own baseline, corrections, uncertainty, silence) → a deterministic policy (Standard → Simplified →
+  Yes / No → Assisted, plus bigger targets, confirmation, simpler wording, read aloud, language) → the tablet renders it.
+  Escalation always comes first; Gemini only rewords and translates, validated, with catalog fallbacks.
 - **Calibrated output**: split conformal prediction gives the smallest set of needs containing the true one 90% of the time.
 
 Synthetic evaluation (`python -m app.sim.evaluate`): on scripted scenarios, 96% top-1 accuracy, 100% of high-risk

@@ -64,7 +64,7 @@ export function LoginView() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              placeholder="you@medicare.demo"
+              placeholder="you@medicue.demo"
             />
           </div>
 
@@ -115,8 +115,8 @@ export function LoginView() {
           </div>
         ) : (
           <p className="text-center text-sm leading-relaxed text-muted-foreground">
-            Demo accounts — patient: <span className="font-mono">patient@medicare.demo</span>, nurse:{' '}
-            <span className="font-mono">nurse@medicare.demo</span>
+            Demo accounts — patient: <span className="font-mono">patient@medicue.demo</span>, nurse:{' '}
+            <span className="font-mono">nurse@medicue.demo</span>
           </p>
         )}
       </div>

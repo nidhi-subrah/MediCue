@@ -4,7 +4,7 @@ const memory = new Map<string, string>()
 
 function canUseLocalStorage() {
   try {
-    const key = '__silentsignal_probe__'
+    const key = '__medicue_probe__'
     window.localStorage.setItem(key, '1')
     window.localStorage.removeItem(key)
     return true

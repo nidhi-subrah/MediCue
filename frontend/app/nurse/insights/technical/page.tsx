@@ -5,7 +5,7 @@ import { AppShell } from '@/components/app/app-shell'
 import { HydrationGate } from '@/components/app/hydration-gate'
 import { LeadTimeline } from '@/components/risk/lead-timeline'
 
-export const metadata = { title: 'How this works — SilentSignal' }
+export const metadata = { title: 'How this works — MediCue' }
 
 /** The Tiger Data internals behind Unit insights and Care forecast (formerly /analytics). */
 export default function HowThisWorksPage() {

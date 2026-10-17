@@ -9,7 +9,9 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   HandoffPatient, HandoffSummary, LearnedSignal, PatientLearning, LearningSession, LearningDemo,
   CasePacket, StopReason, NextStepCode, CaseFeedback, CaseRecord, DecisionActionRow,
   BeliefEvolutionPoint, CompressionStat, HypertableStat, PatientAnalytics, TigerDataOverview,
-  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, LadderLevel, LadderChange, LadderState, LadderPatient,
+  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, CommunicationLevel, CommunicationState, CommunicationChange, CommunicationPatient,
+  CommunicationHistoryItem, CommunicationSummary, Presentation, InteractionSignals, AdaptationDecision,
+  CommunicationModifier,
   GaugeLevel, UnitPatientRef, NeedGroupRef, HeatCell, InsightsGauge, UnitInsights, InsightsCell,
   ForecastHour, RiskProjection, ForecastPatient, CareForecast } from '@shared/types'
 
@@ -17,7 +19,7 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
  *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to
  *  the backend as `grid`. A backend `scan` session is shown as `easy`. */
 export type InputMode = 'standard' | 'easy' | 'audio'
-export type Language = 'en' | 'es' | 'fr'
+export type Language = 'en' | 'es' | 'fr' | 'zh'
 
 /** One selectable thing on screen — a body region, a feeling, a need, a yes/no choice.
  *  Generic so the same ChoiceCard/QuestionStage/BodyMap render any real step. */
@@ -28,7 +30,8 @@ export interface ChoiceItem {
   icon?: LucideIcon
   tone?: 'default' | 'urgent' | 'unsure' | 'primary' | 'control'
   selected?: boolean
-  onSelect: () => void
+  /** confirmMs: time spent confirming this choice ("Is that right?"), when a confirmation was shown. */
+  onSelect: (confirmMs?: number) => void
 }
 
 export type StepKind = 'body' | 'choice' | 'yesno' | 'single'

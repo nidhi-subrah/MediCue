@@ -52,7 +52,7 @@ export function FallbackScreen({ onRetry }: { onRetry?: () => void }) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 bg-background p-6 text-foreground">
       <header className="flex flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">SilentSignal · Simple mode</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">MediCue · Simple mode</p>
         <h1 className="text-balance text-3xl font-bold">Tap a phrase to say it out loud</h1>
         <p className="text-pretty leading-relaxed text-muted-foreground">
           The full app could not load, so this simple board is ready instead. Every phrase is spoken and shown large.

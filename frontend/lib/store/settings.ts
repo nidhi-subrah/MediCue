@@ -41,6 +41,7 @@ export const useSettings = create<SettingsState>()(
       resetAll: () => set({ ...defaults, onboarded: true }),
     }),
     {
+      // The product's old name, kept on purpose: renaming the key would drop everyone's saved accessibility settings.
       name: 'silentsignal-settings',
       version: 2,
       // v1 removed the Single-Switch mode and its scan speed (saved settings fall back to Standard);

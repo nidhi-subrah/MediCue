@@ -16,7 +16,9 @@ Unit insights: what HAS happened (24 h / 7 days / 14 days, no predictions)
    ``patient_hourly_needs`` re-bucketed into local days, plus the ``chart_events`` hypertable.
 4. Communication gauges: seconds per tap in the last 24 h vs the patient's own previous week (Toolkit
    ``percentile_agg``), corrected taps and "not sure" answers, longest quiet stretch while awake (Toolkit
-   ``heartbeat_agg`` / ``dead_ranges``). Green / amber / red, always with the number and words.
+   ``heartbeat_agg`` / ``dead_ranges``), and how often adaptive communication had to simplify the screen this
+   week vs the week before (``communication_mode_changed`` events). Green / amber / red, always with the
+   number and words. Worded as communication effort, never as cognition.
 
 Care forecast: what is LIKELY to happen next (only a faint lead-in of the past)
 -----------------------------------------------------------------------------
@@ -58,7 +60,11 @@ log = logging.getLogger(__name__)
 UNIT = [p["id"] for p in PATIENTS]
 INTERACTIONS = ("tap", "answer", "silence_check_answered")   # things only the patient does (as silence_monitor)
 TIMELINE = {"nurse_confirmed": "request", "escalated": "urgent", "unresponsive_escalated": "urgent",
-            "consult_requested": "consult", "level_changed": "change", "mode_changed": "change"}
+            "consult_requested": "consult", "level_changed": "change", "mode_changed": "change",
+            "communication_mode_changed": "change", "assisted_communication_started": "change"}
+# Adaptive communication events (engine/communication) behind the "simpler screens" trend
+ADAPTATION_EVENTS = ("session_started", "communication_mode_changed", "assisted_communication_started", "ui_signal",
+                     "language_changed")
 RANGES = {"24h": (1, "1 hour"), "7d": (7, "1 day"), "14d": (14, "1 day")}
 WAKING_FROM = 7    # local hour the "longest quiet stretch" window starts
 WAKING_TO = 22
@@ -180,8 +186,10 @@ class NurseViews:
         if kind == "consult_requested":
             person = PERSON_BY_ID.get(p.get("person"), {})
             return f"Asked {person.get('name', 'a family member')}"
-        if kind == "level_changed":
+        if kind in ("level_changed", "communication_mode_changed"):
             return f"Screen changed to {p.get('to_label', 'a different level')}"
+        if kind == "assisted_communication_started":
+            return "Help communicating started"
         if kind == "mode_changed":
             return {"large": "Switched to larger buttons", "scan": "Switched to scanning",
                     "grid": "Switched to standard buttons"}.get(p.get("to"), "Input changed")
@@ -225,7 +233,48 @@ class NurseViews:
             "markers": sorted(markers, key=lambda m: m["time"]),
         }
 
+    async def _adaptation(self, now: datetime) -> dict[str, dict]:
+        """Per patient, this week vs the week before: share of sessions where the tablet had to simplify
+        (Simplified or lower), had to go to yes/no, help-communicating episodes, read-aloud use, language
+        changes. From the events table; every number is counted, none is modelled."""
+        week = timedelta(days=7)
+        events = await self.store.events_between(now - 2 * week, now, list(ADAPTATION_EVENTS), UNIT)
+        out = {}
+        for pid in UNIT:
+            stats = []
+            for start, end in ((now - week, now), (now - 2 * week, now - week)):
+                ev = [e for e in events if e["patient_id"] == pid and start <= e["time"] < end]
+                sessions = {e["session_id"] for e in ev if e["event_type"] == "session_started"}
+                simpler = {e["session_id"] for e in ev if e["event_type"] == "communication_mode_changed"
+                           and (e["payload"] or {}).get("to", 1) >= 2 and (e["payload"] or {}).get("reason") != "RECOVERED"}
+                binary = {e["session_id"] for e in ev if e["event_type"] == "communication_mode_changed"
+                          and (e["payload"] or {}).get("to", 1) >= 3}
+                stats.append({
+                    "sessions": len(sessions),
+                    "simpler_pct": round(100 * len(simpler & sessions) / len(sessions)) if sessions else None,
+                    "binary_pct": round(100 * len(binary & sessions) / len(sessions)) if sessions else None,
+                    "assisted": sum(e["event_type"] == "assisted_communication_started" for e in ev),
+                    "read_aloud": sum(e["event_type"] == "ui_signal" and (e["payload"] or {}).get("kind") == "read_aloud"
+                                      for e in ev),
+                    "language_changes": sum(e["event_type"] == "language_changed" for e in ev)})
+            now_w, before = stats
+            pct, prev = now_w["simpler_pct"], before["simpler_pct"]
+            # Compared with the patient's own previous week, in percentage points. With no sessions last week there
+            # is nothing to compare with, so only a high share counts.
+            rise = pct - prev if pct is not None and prev is not None else None
+            if pct is None:
+                level, words = "unknown", "No sessions this week"
+            elif pct >= 30 and (rise is None or rise >= 20):
+                level, words = "red", "Communication effort has increased compared with recent interactions"
+            elif pct >= 15 and rise is not None and rise >= 10:
+                level, words = "amber", "Needing simpler screens more often than last week"
+            else:
+                level, words = "green", "About their usual"
+            out[pid] = {"this_week": now_w, "last_week": before, "level": level, "words": words}
+        return out
+
     async def _gauges(self, now: datetime) -> list[dict]:
+        adaptation = await self._adaptation(now)
         recent = now - timedelta(hours=24)
         taps = {r["patient_id"]: r for r in await self.store.tap_stats(UNIT, now - timedelta(days=8), recent)}
         unsure = await self.store.unsure_answers(UNIT, recent)
@@ -267,6 +316,7 @@ class NurseViews:
                           "level": _level(quiet_ratio, 1.5, 2.0) if quiet_ratio else "unknown",
                           "since": _iso(start),
                           "words": f"Longest quiet stretch since {WAKING_FROM} am" if end > start else "Overnight"},
+                "adaptation": adaptation[pid],
             })
         return out
 

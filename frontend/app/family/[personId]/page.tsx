@@ -1,7 +1,7 @@
 import { Brand } from '@/components/app/brand'
 import { FamilyView } from '@/components/family/family-view'
 
-export const metadata = { title: 'Helper view — SilentSignal' }
+export const metadata = { title: 'Helper view — MediCue' }
 
 /** A minimal shell, not the staff AppShell: this is opened by a family member on their own
  *  device, the same way the old frontend hid the nurse/research nav for the family page. */

@@ -61,7 +61,7 @@ export function UrgentOverlay() {
             {text}
           </DialogTitle>
           <DialogDescription className="max-w-2xl text-pretty text-lg leading-relaxed text-urgent-foreground/85">
-            Show this screen to anyone nearby. SilentSignal does not contact emergency services
+            Show this screen to anyone nearby. MediCue does not contact emergency services
             on its own — use the call button if you need them.
           </DialogDescription>
           {notice && (

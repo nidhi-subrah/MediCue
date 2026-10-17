@@ -48,7 +48,7 @@ export const ChoiceCard = forwardRef<
     <button
       ref={ref}
       type="button"
-      onClick={item.onSelect}
+      onClick={() => item.onSelect()}
       tabIndex={tabbable ? 0 : -1}
       aria-pressed={item.selected || undefined}
       data-highlighted={highlighted || undefined}

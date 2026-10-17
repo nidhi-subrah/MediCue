@@ -2,10 +2,10 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'SilentSignal — Communication that adapts to you',
-    short_name: 'SilentSignal',
+    name: 'MediCue — Communication that adapts to you',
+    short_name: 'MediCue',
     description:
-      'SilentSignal helps people communicate when speaking, typing, seeing, or touching a screen becomes difficult.',
+      'MediCue helps people communicate when speaking, typing, seeing, or touching a screen becomes difficult.',
     start_url: '/home',
     display: 'standalone',
     background_color: '#f7f6f3',

@@ -43,6 +43,15 @@ class Translations(BaseModel):
     translations: list[str]
 
 
+class RewriteItem(BaseModel):
+    id: str
+    text: str
+
+
+class RewriteModel(BaseModel):
+    items: list[RewriteItem]
+
+
 class TextModel(BaseModel):
     text: str
 
@@ -274,27 +283,29 @@ class Gemini:
         out = await self._json(prompt, TextModel)
         return out.text if out else fallback
 
-    # ---- communication ladder (engine/ladder.py) ---------------------------------------------------
+    # ---- adaptive communication (services/communication_language.py validates everything here) ------
 
-    async def simplify(self, texts: list[str], level: int) -> list[str] | None:
-        """Shorter wording of tile labels and yes/no questions for ladder level 2 or 3, same order and count.
-        None when Gemini is off or the reply doesn't fit; callers keep the original wording."""
-        if not texts:
-            return []
-        words = LADDER_WORDS[level]
+    async def simplify_questions(self, items: list[dict], language: str = "en") -> dict[str, str] | None:
+        """Presentation text for questions and labels at a target complexity. Each item is structured:
+        {"id", "semantic_intent", "original_text", "target_complexity": "simple" | "binary",
+         "allowed_answers", "max_words"}. Returns {id: text}; the caller validates every string and keeps its
+        own fallback for anything missing or rejected. None when Gemini is off or the call fails."""
+        if not items:
+            return {}
         prompt = (
-            "Rewrite each string for a hospital patient who is tired or finding it hard to read. "
-            f"Use at most {words} words each, very plain and kind. Keep EXACTLY the same meaning and scope: "
-            "a yes/no question must stay a yes/no question that a 'yes' answers in exactly the same cases "
-            "(do not narrow 'drink, food, temperature or position' to just one of them, and do not widen). "
-            "Keep the same order and count. Return JSON.\n\n"
-            f"{json.dumps(texts, ensure_ascii=False)}")
-        out = await self._json(prompt, Translations, timeout=LONG_TIMEOUT_S)
-        if not out or len(out.translations) != len(texts):
+            "You reword questions and button labels for a hospital patient who cannot speak and is tired or "
+            "finding it hard to read. For each item write `text`: very plain, kind, at most `max_words` words, in "
+            f"{LANGUAGE_NAMES.get(language, language)}. Keep EXACTLY the meaning and scope of `semantic_intent`: "
+            "a yes/no question must stay a yes/no question that a 'yes' answers in exactly the same cases. Do not "
+            "narrow ('drink, food, temperature or position' must not become just one of them), do not widen, do "
+            "not add body parts, symptoms or answer choices that are not in the original, do not diagnose. "
+            "Return JSON: {\"items\": [{\"id\", \"text\"}]} with every id.\n\n"
+            f"{json.dumps(items, ensure_ascii=False)}")
+        out = await self._json(prompt, RewriteModel, timeout=LONG_TIMEOUT_S)
+        if not out:
             return None
-        # A rewrite that grew, or came back empty, isn't simpler: keep the original for that string.
-        return [new.strip() if new.strip() and len(new.split()) <= max(words, len(old.split())) else old
-                for old, new in zip(texts, out.translations)]
+        known = {i["id"] for i in items}
+        return {x.id: x.text for x in out.items if x.id in known}
 
     async def level_explanation(self, patient_name: str, change: dict) -> str | None:
         """One line for the nurse station on why the tablet changed level. None = keep the template."""
@@ -470,7 +481,7 @@ def template_sbar(ctx: dict) -> dict:
     urgent = ctx["priority"] == "urgent"
     tapped = " → ".join(t for t in ctx.get("taps", []) if t and t != "-")
     return {
-        "situation": f"{ctx['patient_name']} (room {ctx['room']}) signalled a need via SilentSignal"
+        "situation": f"{ctx['patient_name']} (room {ctx['room']}) signalled a need via MediCue"
                      + (f": tapped {tapped}" if tapped else "") + ". "
                      f"Most likely: {lead['label']} ({_pct(lead['p'])}).",
         "background": f"{ctx['diagnosis']} Chart: {chart}.",

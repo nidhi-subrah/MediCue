@@ -22,7 +22,7 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
       <header className="flex flex-col gap-1 border-b border-border pb-3">
         <h2 id="learn-h" className="text-xl font-bold">Learned from confirmations</h2>
         <p className="text-sm text-muted-foreground">
-          Each time a nurse confirms what {firstName} needed, SilentSignal remembers the taps that led there and reads
+          Each time a nurse confirms what {firstName} needed, MediCue remembers the taps that led there and reads
           them that way next time. Learning only changes the interpretation. The urgent-escalation check always reads
           taps the standard way.
         </p>

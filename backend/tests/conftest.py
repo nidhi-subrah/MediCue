@@ -4,10 +4,10 @@ from fastapi.testclient import TestClient
 
 
 def login_as_nurse(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"email": "nurse@medicare.demo", "password": "nurse"})
+    r = client.post("/api/auth/login", json={"email": "nurse@medicue.demo", "password": "nurse"})
     assert r.status_code == 200, r.text
 
 
 def login_as_patient(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"email": "patient@medicare.demo", "password": "patient"})
+    r = client.post("/api/auth/login", json={"email": "patient@medicue.demo", "password": "patient"})
     assert r.status_code == 200, r.text

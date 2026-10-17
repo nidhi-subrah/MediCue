@@ -49,16 +49,20 @@ def _make_user(id: str, email: str, password: str, role: str, name: str, patient
 USERS_BY_EMAIL: dict[str, DemoUser] = {}
 
 
+LEGACY_DOMAIN = "@medicare.demo"   # the demo accounts' old addresses still sign in (saved logins, old docs)
+
+
 def _register(user: DemoUser) -> None:
     USERS_BY_EMAIL[user.email] = user
+    USERS_BY_EMAIL[user.email.replace("@medicue.demo", LEGACY_DOMAIN)] = user
 
 
 _register(_make_user(
-    "u-patient-demo", "patient@medicare.demo", os.getenv("DEMO_PATIENT_PASSWORD", "patient"),
+    "u-patient-demo", "patient@medicue.demo", os.getenv("DEMO_PATIENT_PASSWORD", "patient"),
     "patient", "Demo Patient", DEMO_PATIENT_ID,
 ))
 _register(_make_user(
-    "u-nurse-demo", "nurse@medicare.demo", os.getenv("DEMO_NURSE_PASSWORD", "nurse"),
+    "u-nurse-demo", "nurse@medicue.demo", os.getenv("DEMO_NURSE_PASSWORD", "nurse"),
     "nurse", "Demo Nurse",
 ))
 
@@ -68,9 +72,9 @@ def demo_accounts() -> list[dict]:
     environment, so a deployment with its own passwords never shows them."""
     out = []
     if not os.getenv("DEMO_NURSE_PASSWORD"):
-        out.append({"role": "nurse", "email": "nurse@medicare.demo", "password": "nurse"})
+        out.append({"role": "nurse", "email": "nurse@medicue.demo", "password": "nurse"})
     if not os.getenv("DEMO_PATIENT_PASSWORD"):
-        out.append({"role": "patient", "email": "patient@medicare.demo", "password": "patient"})
+        out.append({"role": "patient", "email": "patient@medicue.demo", "password": "patient"})
     return out
 
 

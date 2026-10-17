@@ -4,6 +4,7 @@ export const SPEECH_LANG: Record<Language, string> = {
   en: 'en-US',
   es: 'es-ES',
   fr: 'fr-FR',
+  zh: 'zh-CN',
 }
 
 export function canSpeak() {

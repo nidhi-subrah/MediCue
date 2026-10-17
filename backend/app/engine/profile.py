@@ -31,8 +31,8 @@ person_available   (hours required)            The engine only consults them ins
 person_preferred   (hours optional)            Their consult cost is halved (inside the hours, if given).
 access             large, scan                 The mode the tablet switches to when the patient tires
                                                (default: large tiles).
-start_level        simplified, yes_no          Communication ladder level the tablet starts at
-                                               (engine/ladder.py). Optional hours window.
+start_level        simplified, yes_no          Communication mode the tablet starts in
+                                               (engine/communication). Optional hours window.
 signal             higher, lower               Patient's own tap reliability ± 0.05 (before the usual clip).
 note               free text                   Display only: shown to nurses, no engine effect.
 =================  ==========================  ==============================================================
@@ -62,9 +62,9 @@ Fatigue model (``engine/dialogue.py``)
   patient had strongly signalled), plus 0.5 for each "not sure".
 * ``sensitivity``: from a ``fatigue`` profile item, 1.0 if none.
 * After ``max_inconsistent_answers`` (2) the engine stops asking the patient and consults or sends.
-* Fatigue sensitivity also scales the communication ladder's strain points (``engine/ladder.py``), so a
-  patient who tires quickly gets a simpler screen sooner. From ladder level 2 the tablet uses the
-  profile's ``access`` mode (or large tiles).
+* Fatigue is one of adaptive communication's signals (``engine/communication``): high fatigue plus one slow
+  response is enough to simplify the screen, so a patient who tires quickly gets a simpler screen sooner.
+  From Simplified on, the tablet uses the profile's ``access`` mode (or large tiles).
 
 Related features
 ----------------

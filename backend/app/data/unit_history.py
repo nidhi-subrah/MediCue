@@ -8,7 +8,10 @@ Unit insights and Care forecast show the 6 unit patients, so this module fills i
 in Tiger Data (or the in-memory store), without touching either existing generator's output:
 
   events        session_started, tap (latency_ms, mistap), fatigue, notified / escalated, nurse_confirmed,
-                one session per existing `confirmations` row: same time, same need, same seconds per tap
+                one session per existing `confirmations` row: same time, same need, same seconds per tap;
+                communication_mode_changed wherever the real adaptive-communication policy
+                (engine/communication) would have simplified that session's screen, judged against the
+                patient's own earlier sessions, so the "simpler screens" trend is computed, not placed
   chart_events  meals, fluids, medication rounds, vitals (Mai's chart model), plus each patient's own chart
                 events from `data/patients.py` (e.g. "Gabapentin reduced 300 → 100 mg")
   risk_scores   the 6 patients scored hour by hour by the unchanged risk engine (`risk/engine.py`)
@@ -35,6 +38,8 @@ from datetime import datetime, timedelta, timezone
 from ..catalog import Catalog
 from ..config import settings
 from ..risk.signals import NIGHT_HOURS
+from ..engine.communication import policy as cp
+from ..engine.communication.signals import CORRECTION, RESPONSE, Interaction, PersonalBaseline, detect
 from ..risk.synthetic import DAYS, Spec, _clip, _pick, _Sim
 from .patients import PATIENT_BY_ID
 
@@ -83,6 +88,7 @@ class _UnitSim(_Sim):
         self.requests = requests
         self.start = now - timedelta(days=story.history_days)
         self.cutoff = now
+        self.past_s: list[float] = []   # seconds per tap in earlier sessions: the personal baseline
         if story.storyline != "control":
             onset = now - timedelta(days=story.onset_days_ago)
             if pid == "p-chen":   # his drift starts at the medication change on his chart
@@ -114,22 +120,49 @@ class _UnitSim(_Sim):
         clock, mistaps = start, 0
         # The request's own seconds per tap, slowed by the storyline the way Mai's simulator slows it.
         median_ms = max(row["mean_tap_interval"], 0.5) * 1000 * (e["latency_night"] * 1.15 if night else e["latency"])
+        circadian = 0.3 if night else 0.15 if confirmed_at.astimezone(settings.unit_tz).hour >= 18 else 0.0
+        log: list[Interaction] = []
+        taps_ms: list[float] = []
         for kind, vocab in (("area", self.areas), ("feeling", self.feelings)):
             right = _pick(rng, {k: v for k, v in self.cat.by_id[need][kind + "s"].items() if k in vocab})
             if rng.random() < min(p["mistap_rate"] * e["mistap"] * (1.3 if night else 1.0), 0.6):
                 clock = self._timed_tap(clock, sid, kind, rng.choice([x for x in vocab if x != right]), median_ms, e, True)
+                taps_ms.append(self._last_ms)
+                log += [Interaction(RESPONSE, 0, self._last_ms / 1000), Interaction(CORRECTION, 0)]
                 mistaps += 1
             clock = self._timed_tap(clock, sid, kind, right, median_ms, e, False)
-        circadian = 0.3 if night else 0.15 if confirmed_at.astimezone(settings.unit_tz).hour >= 18 else 0.0
+            taps_ms.append(self._last_ms)
+            log.append(Interaction(RESPONSE, 0, self._last_ms / 1000))
         fatigue = _clip(p["fatigue"] + circadian + e["fatigue"] + 0.2 * mistaps + rng.gauss(0, 0.12), 1.0, 3.5)
+        self._adapt(clock, sid, log, fatigue)
+        self.past_s += [ms / 1000 for ms in taps_ms]
         self._event(clock, sid, "fatigue", {"score": round(fatigue, 2)})
         self._event(clock + timedelta(seconds=1), sid, "escalated" if row["escalated"] else "notified",
                     {"need": row["predicted_need"]})
         self._event(confirmed_at, sid, "nurse_confirmed",
                     {"alert_id": None, "need": need, "predicted": row["predicted_need"], "nurse": NURSE})
 
+    def _adapt(self, clock, sid, log: list[Interaction], fatigue: float):
+        """What the live policy would have done in this session, step by step, with the patient's history so far."""
+        past = sorted(self.past_s)
+        personal = PersonalBaseline(past[len(past) // 2], len(past) // 2) if past else None
+        state, since = cp.CommunicationState(), 0
+        for i in range(1, len(log) + 1):
+            sig = detect(log[:i], since, personal, fatigue)
+            d = cp.decide(sig, state)
+            if not d.should_adapt or d.requires_patient_confirmation:
+                continue
+            before, state, since = state, cp.apply(state, d), i
+            if state.mode != before.mode:
+                self._event(clock, sid, "communication_mode_changed", {
+                    "from": int(before.mode), "to": int(state.mode), "from_mode": before.mode.name,
+                    "to_mode": state.mode.name, "from_label": cp.LABEL[before.mode], "to_label": cp.LABEL[state.mode],
+                    "reason": d.reason, "explanation": d.explanation, "source": "auto",
+                    "slowdown_ratio": round(sig.slowdown_ratio, 2) if sig.slowdown_ratio else None})
+
     def _timed_tap(self, clock, sid, kind, tap, median_ms, e, mistap):
         ms = min(median_ms * self.rng.lognormvariate(0, self.profile["latency_sigma"] + e["sigma"]), 60000)
+        self._last_ms = ms
         clock += timedelta(milliseconds=ms)
         self._event(clock, sid, "tap", {"kind": kind, "tap": tap, "latency_ms": round(ms), "mistap": mistap})
         return clock

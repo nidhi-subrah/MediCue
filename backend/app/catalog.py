@@ -19,6 +19,8 @@ class Question:
     text: str
     p_yes: list[float]          # P(yes | need), before patient-reliability mixing
     target: str | None = None   # need id or group id this question is about
+    short: str | None = None    # yes/no wording for the simplest presentation (adaptive communication);
+                                # same meaning, same evidence: only the text changes
 
 
 @dataclass
@@ -78,16 +80,16 @@ class Catalog:
         qs = []
         for g in self.raw["groups"]:
             qs.append(Question(f"group:{g['id']}", g["question"],
-                               [0.9 if grp == g["id"] else 0.08 for grp in self.group], g["id"]))
+                               [0.9 if grp == g["id"] else 0.08 for grp in self.group], g["id"], g.get("short")))
         for i, need in enumerate(self.needs):
             p = [0.92 if j == i else (0.15 if self.group[j] == need["group"] else 0.05) for j in range(self.n)]
-            qs.append(Question(f"need:{need['id']}", need["question"], p, need["id"]))
+            qs.append(Question(f"need:{need['id']}", need["question"], p, need["id"], need.get("short")))
         for eq in self.raw.get("extra_questions", []):
-            qs.append(Question(eq["id"], eq["text"], [eq["p_yes_by_risk"][r] for r in self.risk]))
+            qs.append(Question(eq["id"], eq["text"], [eq["p_yes_by_risk"][r] for r in self.risk], None, eq.get("short")))
         # Emergency screen: what the body map's chest tile and the "hard to breathe" feeling catch at once.
-        # Yes/no-only dialogues (communication ladder level 3+) ask it first, since they have no taps.
+        # Yes/no-only dialogues (adaptive communication, yes/no mode) ask it first, since they have no taps.
         qs.append(Question(SAFETY_QUESTION, "Is it your chest or your breathing?",
-                           [0.9 if high else 0.05 for high in self.high_risk]))
+                           [0.9 if high else 0.05 for high in self.high_risk], None, "Chest or breathing?"))
         return qs
 
     def _build_lookup(self, raw: dict) -> Lookup:

@@ -1,4 +1,4 @@
--- SilentSignal schema for Tiger Data (TimescaleDB). Applied idempotently at backend startup.
+-- MediCue schema for Tiger Data (TimescaleDB). Applied idempotently at backend startup.
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- Every patient input, question, lookup, consult, mode change, escalation and confirmation.

@@ -97,6 +97,27 @@ export function AlertCard({
         ))}
       </dl>
 
+      {alert.communication && (
+        // Assisted communication: the patient couldn't finish. What they did say, and what is still open.
+        <div className="grid gap-3 rounded-2xl border border-primary/30 bg-primary-soft p-4 text-sm sm:grid-cols-3">
+          <p className="sm:col-span-3 font-semibold">{alert.reason}</p>
+          <div>
+            <p className="font-semibold">Confirmed</p>
+            {alert.communication.confirmed.length
+              ? alert.communication.confirmed.map((c) => <p key={c.field}>{c.field}: {c.value}</p>)
+              : <p className="text-muted-foreground">Nothing yet</p>}
+          </div>
+          <div>
+            <p className="font-semibold">Unresolved</p>
+            {alert.communication.unresolved.map((u) => <p key={u.field}>{u.field}</p>)}
+          </div>
+          <div>
+            <p className="font-semibold">Current belief</p>
+            {alert.communication.belief.map((b) => <p key={b.label}>{b.label}: {pct(b.p)}</p>)}
+          </div>
+        </div>
+      )}
+
       {alert.kind === 'need' && (
         <details className="text-sm">
           <summary className="w-fit cursor-pointer text-primary">How it got here · {pct(alert.p_high)} high-risk</summary>

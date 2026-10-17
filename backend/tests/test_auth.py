@@ -13,13 +13,13 @@ def test_me_requires_a_session():
 
 def test_login_rejects_wrong_password():
     with TestClient(app) as client:
-        r = client.post("/api/auth/login", json={"email": "nurse@medicare.demo", "password": "wrong"})
+        r = client.post("/api/auth/login", json={"email": "nurse@medicue.demo", "password": "wrong"})
         assert r.status_code == 401
 
 
 def test_login_rejects_unknown_email():
     with TestClient(app) as client:
-        r = client.post("/api/auth/login", json={"email": "nobody@medicare.demo", "password": "nurse"})
+        r = client.post("/api/auth/login", json={"email": "nobody@medicue.demo", "password": "nurse"})
         assert r.status_code == 401
 
 
@@ -52,7 +52,7 @@ def test_nurse_only_endpoint_rejects_patient_with_403():
         login_as_patient(client)
         assert client.get("/api/patients").status_code == 403
         assert client.get("/api/alerts").status_code == 403
-        assert client.get("/api/ladder").status_code == 403
+        assert client.get("/api/communication").status_code == 403
 
 
 def test_nurse_only_endpoint_allows_nurse():

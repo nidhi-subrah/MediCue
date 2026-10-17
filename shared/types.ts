@@ -1,4 +1,4 @@
-// SilentSignal API contract. The backend's Pydantic/dict responses follow these shapes.
+// MediCue API contract. The backend's Pydantic/dict responses follow these shapes.
 // Keep this file and backend/app/models.py in sync when changing the API.
 
 export type RiskLevel = "high" | "medium" | "low";
@@ -52,7 +52,8 @@ export type SessionStatus =
 
 export interface SessionState {
   session_id: string; patient_id: string; status: SessionStatus; mode: ModeId; language: string;
-  question: { id: string; text: string; text_full: string; text_local: string } | null;  // text: reworded for the level
+  question: { id: string; text: string; text_full: string; text_local: string;   // text: reworded for the mode
+              wording: "standard" | "simple" | "binary" } | null;
   consult: { id: string; person_name: string; relation: string } | null;
   belief: BeliefItem[];               // sorted, top 6
   prediction_set: string[];           // conformal 90% set (need ids)
@@ -68,7 +69,7 @@ export interface SessionState {
   profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
   options: FeelingOptions | null;     // tailored second-step options (backend/app/engine/options.py)
   choice: OptionChoice | null;        // the option the patient picked
-  ladder: LadderState;                // communication ladder (backend/app/engine/ladder.py)
+  communication: CommunicationState;  // adaptive communication (backend/app/engine/communication)
   can_go_back: boolean;               // "Back" undoes the last input (only while nothing has been sent)
 }
 
@@ -92,6 +93,8 @@ export interface Alert {
   nurse_note: string | null;          // observation written at confirmation
   // Clinician copilot: set shortly after the alert when the episode ended without a confident answer
   // (full packet) or escalated on the safety floor (light packet). Also at GET /api/cases/{alert id}.
+  // "Needs help communicating" requests (adaptive communication, assisted mode): what is and isn't known.
+  communication?: CommunicationSummary | null;
   case?: CaseRecord | null;
   choice?: OptionChoice | null;       // what the patient picked at the second step
 }
@@ -287,7 +290,7 @@ export type WsMessage =
   | { type: "alert"; alert: Alert }
   | { type: "alert_updated"; alert: Alert }
   | { type: "session"; session: SessionState }
-  | { type: "level_changed"; patient_id: string; change: LadderChange }
+  | { type: "communication_changed"; patient_id: string; change: CommunicationChange }
   | { type: "consult"; consult: ConsultRequest }
   | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number;
       respond_path?: string }         // silence checks answer on their own endpoint
@@ -466,33 +469,94 @@ export interface OptionChoice {
   id: string; label: string; predicted: boolean; source: "gemini" | "engine" | null; send_now: boolean;
 }
 
-// ---- communication ladder (backend/app/engine/ladder.py) -------------------------------------------
+// ---- adaptive communication (backend/app/engine/communication, docs/ADAPTIVE_COMMUNICATION.md) ------
 
-export type LadderLevel = 1 | 2 | 3 | 4;   // 1 Full · 2 Simplified · 3 Yes / No · 4 Assisted
+export type CommunicationLevel = 1 | 2 | 3 | 4;   // 1 Standard · 2 Simplified · 3 Yes / No · 4 Assisted
+export type CommunicationModeName = "STANDARD" | "SIMPLIFIED" | "BINARY" | "ASSISTED";
+export type CommunicationModifier =
+  | "large_targets" | "extra_spacing" | "confirm_selections" | "simple_wording" | "audio" | "translated";
+export type AdaptationReason =
+  | "SLOW_RESPONSE" | "FREQUENT_CORRECTIONS" | "REPEATED_UNCERTAINTY" | "LANGUAGE_REQUEST" | "AUDIO_PREFERENCE"
+  | "REPEATED_INTERACTION_FAILURE" | "MISSED_RESPONSE" | "RECOVERED" | "EXPLICIT_REQUEST" | "PROFILE";
 
-export interface LadderChange {
-  id?: string; at?: string; t: number;
-  from: LadderLevel; to: LadderLevel; from_label: string; to_label: string;
-  source: "auto" | "idle" | "patient" | "nurse" | "profile";
-  reason: string;                     // template, e.g. "answers 2.4× slower than usual"
-  explanation?: string | null;        // Gemini's one line for nurses, when it has written one
+/** Layer 1 output: what was measured. */
+export interface InteractionSignals {
+  response_latency_s: number | null; current_latency_s: number | null; baseline_latency_s: number | null;
+  baseline_source: "session" | "personal" | null;
+  within_session_baseline_s: number | null; personal_baseline_latency_s: number | null;
+  baseline_status: "COLD_START" | "LEARNING" | "PERSONALIZED"; personal_baseline_available: boolean;
+  slowdown_ratio: number | null; slow_responses: number; sustained_slowdown: boolean;
+  correction_count: number; uncertainty_count: number; inconsistent_count: number;
+  missed_response_count: number; failed_input_attempts: number; read_aloud_count: number;
+  longest_idle_s: number | null; good_streak: number; responses_in_window: number;
+  fatigue_score: number; recent_mode_changes: number;
 }
 
-export interface LadderState {
-  level: LadderLevel; label: string;
-  floor: LadderLevel;                 // automatic recovery never goes harder than this (a manual choice)
-  strain: number;
-  changes: LadderChange[];
-  levels: Record<LadderLevel, string>;
-  options: { area: string[] } | null;           // level 2: the areas to show (chest always kept)
-  labels: Record<string, string> | null;        // level 2+: reworded labels, keys area:<id>, option:<id>, prompt:<area>
-  assist: { person_name: string; relation: string; status: string } | null;   // level 4: who was asked to help
+/** Layer 2 output: what the policy decided. */
+export interface AdaptationDecision {
+  should_adapt: boolean; reason: AdaptationReason | null; severity: number;
+  suggested_mode: CommunicationModeName | null; add_modifiers: CommunicationModifier[];
+  remove_modifiers: CommunicationModifier[]; requires_patient_confirmation: boolean;
+  offer: "audio_first" | "assisted" | null; patient_message: string | null; explanation: string;
+  language: string | null;
 }
 
-export interface LadderPatient {
-  patient_id: string; patient_name: string; room: string; session_id: string | null;
-  level: LadderLevel | null; label: string | null; active: boolean;
-  changes: LadderChange[];            // this shift, oldest first
+/** What layer 3 (the tablet) should draw. */
+export interface Presentation {
+  option_count: number; button_size: "regular" | "large" | "huge"; spacing: "normal" | "extra";
+  wording: "standard" | "simple" | "binary"; confirm_selections: boolean; audio: boolean; language: string;
+}
+
+export interface CommunicationChange {
+  id: string; at: string; source: "auto" | "patient" | "nurse" | "profile";
+  from: CommunicationLevel; to: CommunicationLevel; from_mode: CommunicationModeName; to_mode: CommunicationModeName;
+  from_label: string; to_label: string; reason: AdaptationReason | null; severity: number; explanation: string;
+  added: CommunicationModifier[]; removed: CommunicationModifier[]; slowdown_ratio: number | null;
+  baseline_status: string; signals: InteractionSignals; decision: AdaptationDecision;
+  renderer: { before: Presentation; after: Presentation };
+  note: string | null;                // Gemini's one line for nurses, when written
+}
+
+export interface CommunicationSummary {
+  confirmed: { field: string; value: string }[];
+  unresolved: { field: string; value: null | string }[];   // never filled in by the system
+  belief: { label: string; p: number }[];
+}
+
+export interface CommunicationState {
+  mode: CommunicationModeName; level: CommunicationLevel; label: string;
+  modifiers: CommunicationModifier[]; language: string; audio_enabled: boolean;
+  floor: CommunicationLevel; max_options: number;
+  levels: Record<CommunicationLevel, string>;
+  presentation: Presentation; wording: Presentation["wording"];
+  reason: AdaptationReason | null; severity: number; explanation: string | null;
+  message: { id: string; text: string } | null;          // "I've simplified the choices." (in the patient's language)
+  offer: { id: string; offer: "audio_first" | "assisted"; message: string;
+           choices: ("accept" | "decline" | "get_nurse" | "ask_caregiver" | "keep_trying")[] } | null;
+  signals: InteractionSignals; baseline_status: InteractionSignals["baseline_status"];
+  options: { area: string[] | null; feeling: string[] | null };   // which choices are on screen
+  text: Record<string, string>;       // every on-screen string for this wording level and language
+  translated: boolean;
+  languages: Record<string, string>;
+  suggested_language: string | null;  // from the chart: offered, never applied automatically
+  summary: CommunicationSummary;
+  assist: { help: "nurse" | "caregiver" | "nurse_present" | null; person_name: string | null;
+            relation: string | null; status: string | null } | null;
+  changes: CommunicationChange[];
+}
+
+export interface CommunicationHistoryItem {
+  event: string; at: string; session_id: string | null; id?: string;
+  from_label?: string; to_label?: string; reason?: string; explanation?: string;
+  added?: CommunicationModifier[]; source?: string; note?: string | null;
+}
+
+export interface CommunicationPatient {
+  patient_id: string; patient_name: string; room: string; session_id: string | null; active: boolean;
+  level?: CommunicationLevel; label?: string; mode?: { modifiers: CommunicationModifier[]; language: string };
+  signals?: InteractionSignals; presentation?: Presentation;
+  last_change?: CommunicationChange | null; summary?: CommunicationSummary | null;
+  changes: CommunicationHistoryItem[];   // this shift, oldest first
 }
 
 // ---- nurse views: Unit insights (past) and Care forecast (ahead) — backend/app/services/nurse_views.py ----
@@ -506,6 +570,12 @@ export interface InsightsGauge extends UnitPatientRef {
   tap_speed: { ratio: number | null; recent_s: number | null; usual_s: number | null; level: GaugeLevel; words: string };
   corrections: { count: number; level: GaugeLevel; words: string };
   quiet: { seconds: number | null; usual_seconds: number | null; level: GaugeLevel; since: string; words: string };
+  // Adaptive communication, this week vs the week before (counted from communication_mode_changed events)
+  adaptation: { this_week: AdaptationWeek; last_week: AdaptationWeek; level: GaugeLevel; words: string };
+}
+export interface AdaptationWeek {
+  sessions: number; simpler_pct: number | null; binary_pct: number | null;
+  assisted: number; read_aloud: number; language_changes: number;
 }
 export interface UnitInsights {
   range: "24h" | "7d" | "14d"; bucket: "1 hour" | "1 day"; since: string; until: string; generated_at: string;

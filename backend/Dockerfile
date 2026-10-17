@@ -1,4 +1,4 @@
-# Build from the repo root:  docker build -f backend/Dockerfile -t silentsignal .
+# Build from the repo root:  docker build -f backend/Dockerfile -t medicue .
 # Stage 1 builds the frontend so one container serves API + UI.
 FROM node:22-slim AS web
 WORKDIR /src

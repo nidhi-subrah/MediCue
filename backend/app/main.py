@@ -1,4 +1,4 @@
-"""SilentSignal API.
+"""MediCue API.
 
     uvicorn app.main:app --reload        (from backend/)
 """
@@ -45,7 +45,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("silentsignal")
+log = logging.getLogger("medicue")
 
 
 @asynccontextmanager
@@ -87,9 +87,9 @@ async def lifespan(app: FastAPI):
         except Exception:
             log.exception("profile extraction failed")
         try:
-            await app.state.svc.warm_simple()
+            await app.state.svc.lang.warm()
         except Exception:
-            log.exception("ladder wording failed (original wording kept)")
+            log.exception("adaptive wording failed (catalog wording kept)")
         try:
             await app.state.research.ensure_demo_observation()
             await app.state.research.cycle()
@@ -121,7 +121,7 @@ async def _research_ticker(agent: ResearchAgent):
             log.exception("research cycle failed")
 
 
-app = FastAPI(title="SilentSignal", lifespan=lifespan)
+app = FastAPI(title="MediCue", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
 app.include_router(risk_router)
 
@@ -233,6 +233,7 @@ class TapBody(BaseModel):
     kind: str          # "area" | "feeling"
     tap_id: str
     option_id: str | None = None   # which tailored option sent this feeling tap (engine/options.py)
+    confirm_ms: int = 0            # time spent on an "Is that right?" confirmation (not counted as slowness)
 
 
 class AnswerBody(BaseModel):
@@ -245,7 +246,22 @@ class ModeBody(BaseModel):
 
 
 class SignalBody(BaseModel):
-    kind: Literal["miss", "correction", "deletion"]
+    kind: Literal["miss", "correction", "deletion", "read_aloud"]
+
+
+class LanguageBody(BaseModel):
+    language: str
+    by: Literal["patient", "nurse"] = "patient"
+
+
+class AudioBody(BaseModel):
+    enabled: bool
+    by: Literal["patient", "nurse"] = "patient"
+
+
+class OfferBody(BaseModel):
+    offer: Literal["audio_first", "assisted"]
+    choice: Literal["accept", "decline", "get_nurse", "ask_caregiver", "keep_trying"]
 
 
 class LevelBody(BaseModel):
@@ -285,7 +301,7 @@ async def get_session(sid: str, user: DemoUser = Depends(_require_session_access
 
 @app.post("/api/sessions/{sid}/tap")
 async def tap(sid: str, body: TapBody, user: DemoUser = Depends(_require_session_access)):
-    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id))
+    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id, body.confirm_ms))
 
 
 @app.post("/api/sessions/{sid}/answer")
@@ -300,20 +316,38 @@ async def mode(sid: str, body: ModeBody, user: DemoUser = Depends(_require_sessi
 
 @app.post("/api/sessions/{sid}/signal")
 async def signal(sid: str, body: SignalBody, user: DemoUser = Depends(_require_session_access)):
-    """A missed tap or a correction the tablet noticed; feeds the communication ladder."""
+    """A missed tap, a correction or a "read aloud" press: adaptive communication's signal detection."""
     return await _call(svc().signal(sid, body.kind))
 
 
 @app.post("/api/sessions/{sid}/level")
 async def set_level(sid: str, body: LevelBody, user: DemoUser = Depends(_require_session_access)):
-    """Manual "make it easier / harder" from the patient or a nurse."""
+    """Manual "make it easier / harder" from the patient or a nurse (communication mode 1-4)."""
     return await _call(svc().set_level(sid, body.level, body.by))
 
 
-@app.get("/api/ladder")
-async def ladder(hours: int = 12, user: DemoUser = Depends(require_nurse)):
-    """Each patient's communication level and today's level changes, for the nurse station."""
-    return await svc().ladder_overview(hours)
+@app.post("/api/sessions/{sid}/communication/language")
+async def set_language(sid: str, body: LanguageBody, user: DemoUser = Depends(_require_session_access)):
+    """Explicit language choice. The only way the tablet's language changes; never inferred."""
+    return await _call(svc().set_language(sid, body.language, body.by))
+
+
+@app.post("/api/sessions/{sid}/communication/audio")
+async def set_audio(sid: str, body: AudioBody, user: DemoUser = Depends(_require_session_access)):
+    """Read aloud on or off (audio-first), by the patient's or a nurse's explicit choice."""
+    return await _call(svc().set_audio(sid, body.enabled, body.by))
+
+
+@app.post("/api/sessions/{sid}/communication/offer")
+async def answer_offer(sid: str, body: OfferBody, user: DemoUser = Depends(_require_session_access)):
+    """The patient's answer to an adaptation that needs their yes: audio-first, or help communicating."""
+    return await _call(svc().respond_offer(sid, body.offer, body.choice))
+
+
+@app.get("/api/communication")
+async def communication(hours: int = 12, user: DemoUser = Depends(require_nurse)):
+    """Each patient's communication mode, why it changed (signals, policy, renderer), and this shift's changes."""
+    return await svc().communication_overview(hours)
 
 
 @app.post("/api/sessions/{sid}/skip_consult")
