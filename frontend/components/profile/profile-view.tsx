@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePatientProfile } from '@/lib/live/profile'
 import { timeAgo } from '@/lib/services/backend'
@@ -44,9 +43,6 @@ export function ProfileView({ patientId }: { patientId: string }) {
             <span className="font-mono">{patient.room}</span> · {patient.diagnosis}
           </p>
         </div>
-        <Link href={`/talk/${patient.id}`} className="text-base font-semibold text-primary underline-offset-4 hover:underline">
-          Open bedside tablet
-        </Link>
       </header>
 
       <div className="grid gap-8 lg:grid-cols-2">

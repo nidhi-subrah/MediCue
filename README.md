@@ -96,7 +96,8 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
 
 ## Demo script (≈3 min)
 
-1. Open `#/nurse` on a laptop and `#/patient/p-chen` on a tablet, with "Show engine" on.
+1. Sign in as the nurse on a laptop (lands on `/nurse`) and as the patient on a tablet, or in a private window (lands on
+   `/talk/p-chen`), with "Show engine" on. Nurses can't open the bedside tablet: it is the patient's own screen.
 2. **Emergency**: tap *Chest*. The nurse gets an urgent alert within a second, with no questions asked. Then tap
    *Hurts*: the open alert refines in place.
 3. **Routine with clarification**: start again, tap *Washroom → Need to go*. The engine weighs asking against

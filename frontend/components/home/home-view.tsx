@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, BedDouble, NotebookPen, Tablet, Users } from 'lucide-react'
+import { BedDouble, NotebookPen, Users } from 'lucide-react'
 import { motion } from 'motion/react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
@@ -23,7 +23,7 @@ export function HomeView() {
       <header className="flex flex-col gap-3">
         <h1 className="text-4xl font-bold leading-tight tracking-tight text-balance md:text-5xl">Patients</h1>
         <p className="max-w-xl text-lg leading-relaxed text-muted-foreground text-pretty">
-          Open a patient&apos;s bedside tablet, or a family member&apos;s view. Requests reach the nurse station in real time.
+          Open a patient&apos;s notes and profile, or a family member&apos;s view. Requests from bedside tablets reach the nurse station in real time.
         </p>
       </header>
 
@@ -51,14 +51,6 @@ export function HomeView() {
                 <span className="text-base leading-relaxed text-muted-foreground">{p.diagnosis}</span>
               </div>
               <div className="mt-auto flex flex-wrap gap-2">
-                <Link
-                  href={`/talk/${p.id}`}
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                >
-                  <Tablet className="size-4" aria-hidden="true" />
-                  Bedside tablet
-                  <ArrowRight className="size-4" aria-hidden="true" />
-                </Link>
                 <Link
                   href={`/profile/${p.id}`}
                   className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold hover:border-primary/40"

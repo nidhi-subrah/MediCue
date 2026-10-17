@@ -9,7 +9,7 @@ import { Brand } from './brand'
 import { UrgentButton } from './urgent-button'
 
 const NAV = [
-  { href: '/home', label: 'Patients', icon: Users, match: ['/home', '/talk', '/family'] },
+  { href: '/home', label: 'Patients', icon: Users, match: ['/home', '/family'] },
   { href: '/nurse', label: 'Nurse station', icon: Stethoscope, match: ['/nurse'] },
   { href: '/research', label: 'Pattern review', icon: FlaskConical, match: ['/research'] },
   { href: '/settings', label: 'Settings', icon: Settings2, match: ['/settings'] },
