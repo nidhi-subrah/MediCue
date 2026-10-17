@@ -375,4 +375,6 @@ export interface CaseRecord {
   packet: CasePacket;
   sbar: SBAR; sbar_source: "template" | "gemini";   // recommendation is always packet.next_step
   feedback: CaseFeedback | null;
+  // "I've read this and I'm on it" (POST /api/cases/{id}/acknowledge). Does not close the alert.
+  acknowledged: { by: string; at: string } | null;
 }
