@@ -13,6 +13,7 @@ from app.services.hub import Hub
 from app.services.predictions import PredictionService
 from app.services.sessions import SessionService
 from app.store.memory import MemoryStore
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 
@@ -36,6 +37,7 @@ def test_every_area_option_sends_a_known_feeling():
 
 def test_head_options_are_tailored_and_something_else_holds_the_rest():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client), "area", "head")
         assert s["status"] == "feeling"
         o = s["options"]
@@ -66,6 +68,7 @@ def test_gemini_ranking_is_limited_to_the_areas_options():
 
 def test_washroom_area_sends_straight_away():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client), "area", "toilet")
         assert s["status"] == "sent" and s["questions_asked"] == 0
         alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
@@ -74,6 +77,7 @@ def test_washroom_area_sends_straight_away():
 
 def test_pain_medicine_option_sends_straight_away_and_alert_names_the_choice():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client), "area", "back")
         meds = next(x for x in s["options"]["predicted"] + s["options"]["more"] if x["id"] == "back.meds")
         s = tap(client, s, "feeling", "medicine", meds["id"])
@@ -86,6 +90,7 @@ def test_pain_medicine_option_sends_straight_away_and_alert_names_the_choice():
 
 def test_option_must_match_what_was_offered():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client), "area", "head")
         r = client.post(f"/api/sessions/{s['session_id']}/tap",
                         json={"kind": "feeling", "tap_id": "pain", "option_id": "chest.hurts"})
@@ -94,6 +99,7 @@ def test_option_must_match_what_was_offered():
 
 def test_chest_still_escalates_and_offers_detail_options():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client, "p-chen"), "area", "chest")
         assert s["status"] == "escalated" and s["questions_asked"] == 0
         shown = {x["id"] for x in s["options"]["predicted"]}
@@ -142,6 +148,7 @@ def back(client, s):
 
 def test_back_from_second_step_returns_to_where_is_it():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s0 = start(client)
         assert s0["can_go_back"] is False
         s = tap(client, s0, "area", "head")
@@ -157,6 +164,7 @@ def test_back_from_second_step_returns_to_where_is_it():
 
 def test_back_from_a_question_restores_the_previous_step_and_choice():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client), "area", "mouth_throat")
         opt = next(x for x in s["options"]["predicted"] + s["options"]["more"] if x["id"] == "mouth_throat.thirsty")
         q = tap(client, s, "feeling", "thirsty", opt["id"])
@@ -168,6 +176,7 @@ def test_back_from_a_question_restores_the_previous_step_and_choice():
 
 def test_back_is_refused_once_something_was_sent():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = tap(client, start(client), "area", "toilet")
         assert s["status"] == "sent" and s["can_go_back"] is False
         assert back(client, s).status_code == 409

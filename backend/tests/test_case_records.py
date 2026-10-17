@@ -9,6 +9,7 @@ from app.main import app
 from app.store.memory import MemoryStore
 from tests.test_case_packet import SEND, cat, dialogue, packet
 from tests.test_case_sbar import receive, unclear_session
+from tests.conftest import login_as_nurse
 
 
 def chest(client):
@@ -45,78 +46,89 @@ def test_memory_store_round_trip():
 
 
 def test_case_is_pushed_stored_and_served():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = chest(client)
-        case = receive(nurse, s["alert_id"], "case")
-        assert case["id"] == case["alert_id"] == s["alert_id"]
-        assert client.get(f"/api/cases/{s['alert_id']}").json() == case
-        assert asyncio.run(app.state.store.get_case(s["alert_id"]))["packet"] == case["packet"]
-        assert client.get("/api/cases/nope").status_code == 404
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            s = chest(client)
+            case = receive(nurse, s["alert_id"], "case")
+            assert case["id"] == case["alert_id"] == s["alert_id"]
+            assert client.get(f"/api/cases/{s['alert_id']}").json() == case
+            assert asyncio.run(app.state.store.get_case(s["alert_id"]))["packet"] == case["packet"]
+            assert client.get("/api/cases/nope").status_code == 404
 
 
 # ---- feedback through confirmation -----------------------------------------------------------------
 
 def test_feedback_rides_on_the_normal_confirmation_and_feeds_learning():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = unclear_session(client)
-        case = receive(nurse, s["alert_id"], "case")
-        top = case["packet"]["top_needs"][0]["need"]
-        store = app.state.store
-        before_rows = len(store.rows)
-        before_rel = asyncio.run(store.get_reliability("patient:p-chen"))
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            s = unclear_session(client)
+            case = receive(nurse, s["alert_id"], "case")
+            top = case["packet"]["top_needs"][0]["need"]
+            store = app.state.store
+            before_rows = len(store.rows)
+            before_rel = asyncio.run(store.get_reliability("patient:p-chen"))
 
-        r = client.post(f"/api/alerts/{s['alert_id']}/confirm",
-                        json={"need_id": top, "nurse": "Priya", "case_helpful": True})
-        assert r.status_code == 200 and r.json()["status"] == "confirmed"
-        updated = receive(nurse, s["alert_id"], "case")
-        fb = updated["feedback"]
-        assert fb["helpful"] is True and fb["actual_need"] == top and fb["actual_rank"] == 1 and fb["by"] == "Priya"
-        assert client.get(f"/api/cases/{s['alert_id']}").json()["feedback"] == fb
-        # the same confirmation fed the existing learning: a confirmations row and a reliability update
-        assert len(store.rows) == before_rows + 1 and store.rows[-1]["confirmed_need"] == top
-        assert asyncio.run(store.get_reliability("patient:p-chen")) != before_rel
-        # and a second confirmation is still refused (no double counting)
-        assert client.post(f"/api/alerts/{s['alert_id']}/confirm", json={"need_id": top}).status_code == 409
+            r = client.post(f"/api/alerts/{s['alert_id']}/confirm",
+                            json={"need_id": top, "nurse": "Priya", "case_helpful": True})
+            assert r.status_code == 200 and r.json()["status"] == "confirmed"
+            updated = receive(nurse, s["alert_id"], "case")
+            fb = updated["feedback"]
+            assert fb["helpful"] is True and fb["actual_need"] == top and fb["actual_rank"] == 1 and fb["by"] == "Priya"
+            assert client.get(f"/api/cases/{s['alert_id']}").json()["feedback"] == fb
+            # the same confirmation fed the existing learning: a confirmations row and a reliability update
+            assert len(store.rows) == before_rows + 1 and store.rows[-1]["confirmed_need"] == top
+            assert asyncio.run(store.get_reliability("patient:p-chen")) != before_rel
+            # and a second confirmation is still refused (no double counting)
+            assert client.post(f"/api/alerts/{s['alert_id']}/confirm", json={"need_id": top}).status_code == 409
 
 
 def test_not_helpful_and_a_need_the_packet_called_less_likely():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = unclear_session(client)
-        case = receive(nurse, s["alert_id"], "case")
-        pkt = case["packet"]
-        actual = (pkt["less_likely"][0]["need"] if pkt["less_likely"]
-                  else next(n for n in cat.need_ids if n not in {t["need"] for t in pkt["top_needs"]}))
-        client.post(f"/api/alerts/{s['alert_id']}/confirm", json={"need_id": actual, "case_helpful": False})
-        fb = receive(nurse, s["alert_id"], "case")["feedback"]
-        assert fb["helpful"] is False and fb["actual_rank"] is None
-        assert fb["actual_was_less_likely"] == bool(pkt["less_likely"])
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            s = unclear_session(client)
+            case = receive(nurse, s["alert_id"], "case")
+            pkt = case["packet"]
+            actual = (pkt["less_likely"][0]["need"] if pkt["less_likely"]
+                      else next(n for n in cat.need_ids if n not in {t["need"] for t in pkt["top_needs"]}))
+            client.post(f"/api/alerts/{s['alert_id']}/confirm", json={"need_id": actual, "case_helpful": False})
+            fb = receive(nurse, s["alert_id"], "case")["feedback"]
+            assert fb["helpful"] is False and fb["actual_rank"] is None
+            assert fb["actual_was_less_likely"] == bool(pkt["less_likely"])
 
 
 def test_confirming_without_a_verdict_still_records_what_was_needed():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = chest(client)
-        receive(nurse, s["alert_id"], "case")
-        client.post(f"/api/alerts/{s['alert_id']}/confirm", json={"need_id": "pain_chest"})
-        fb = receive(nurse, s["alert_id"], "case")["feedback"]
-        assert fb["helpful"] is None and fb["actual_need"] == "pain_chest"
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            s = chest(client)
+            receive(nurse, s["alert_id"], "case")
+            client.post(f"/api/alerts/{s['alert_id']}/confirm", json={"need_id": "pain_chest"})
+            fb = receive(nurse, s["alert_id"], "case")["feedback"]
+            assert fb["helpful"] is None and fb["actual_need"] == "pain_chest"
 
 
 def test_welfare_alerts_have_no_case_and_confirm_as_before():
     with TestClient(app) as client:
+        login_as_nurse(client)
         w = client.post("/api/welfare", json={"patient_id": "p-chen", "requested_by": "fam-lin"}).json()
         assert client.post(f"/api/welfare/{w['id']}/respond").json()["status"] == "responded"
 
 
 def test_acknowledge_records_once_pushes_and_keeps_the_alert_open():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        s = chest(client)
-        receive(nurse, s["alert_id"], "case")
-        r = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Priya"})
-        assert r.status_code == 200 and r.json()["acknowledged"]["by"] == "Priya"
-        assert receive(nurse, s["alert_id"], "case")["acknowledged"]["by"] == "Priya"
-        again = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Sam"}).json()
-        assert again["acknowledged"]["by"] == "Priya"                     # the first acknowledgement stands
-        assert asyncio.run(app.state.store.get_case(s["alert_id"]))["acknowledged"]["by"] == "Priya"
-        alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
-        assert alert["status"] == "open"                                  # still needs "They needed …"
-        assert client.post("/api/cases/nope/acknowledge", json={}).status_code == 404
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            s = chest(client)
+            receive(nurse, s["alert_id"], "case")
+            r = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Priya"})
+            assert r.status_code == 200 and r.json()["acknowledged"]["by"] == "Priya"
+            assert receive(nurse, s["alert_id"], "case")["acknowledged"]["by"] == "Priya"
+            again = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Sam"}).json()
+            assert again["acknowledged"]["by"] == "Priya"                     # the first acknowledgement stands
+            assert asyncio.run(app.state.store.get_case(s["alert_id"]))["acknowledged"]["by"] == "Priya"
+            alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
+            assert alert["status"] == "open"                                  # still needs "They needed …"
+            assert client.post("/api/cases/nope/acknowledge", json={}).status_code == 404

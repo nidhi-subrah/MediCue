@@ -16,6 +16,7 @@ from app.services.hub import Hub
 from app.services.profiles import ProfileService
 from app.services.sessions import SessionService
 from app.store.memory import MemoryStore
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 cfg = settings.engine
@@ -218,6 +219,7 @@ def test_nurse_note_suggestions_need_approval():
 
 def test_profile_routes_and_shift_summary_without_gemini():
     with TestClient(app) as client:
+        login_as_nurse(client)
         p = client.get("/api/patients/p-chen/profile").json()
         assert p["source"] == "none" and p["items"] == []
         h = client.get("/api/handoff").json()

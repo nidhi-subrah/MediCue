@@ -1,9 +1,10 @@
 """Risk and silence-detection API. Risk responses carry the synthetic-data and not-a-diagnosis notice."""
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from ..auth import DemoUser, require_nurse
 from ..data.patients import PATIENT_BY_ID
 from .config import DEFAULT, LEVELS, SIGNALS
 from .silence_monitor import utcnow
@@ -44,7 +45,7 @@ async def _people(store) -> dict[str, dict]:
 
 
 @router.get("/patients")
-async def patients(request: Request):
+async def patients(request: Request, user: DemoUser = Depends(require_nurse)):
     """Latest score per patient and risk, most concerning patients first."""
     store = _store(request)
     people = await _people(store)
@@ -69,7 +70,7 @@ async def patients(request: Request):
 
 
 @router.get("/patients/{pid}")
-async def patient(pid: str, request: Request, hours: int = 72):
+async def patient(pid: str, request: Request, hours: int = 72, user: DemoUser = Depends(require_nurse)):
     """Latest per risk, hourly history for the last `hours` of data, 6-hourly trend and every fired flag."""
     store = _store(request)
     latest = await store.latest_scores(pid)
@@ -127,7 +128,7 @@ class StartCheckBody(BaseModel):
 
 
 @router.post("/silence/ladders")
-async def silence_start(body: StartCheckBody, request: Request):
+async def silence_start(body: StartCheckBody, request: Request, user: DemoUser = Depends(require_nurse)):
     """Start an inactivity check now, from the nurse station (also how the demo shows the ladder)."""
     monitor = _silence(request)
     if body.patient_id not in PATIENT_BY_ID:
@@ -154,7 +155,8 @@ async def silence_ack(lid: str, body: AckBody, request: Request):
 
 
 @router.get("/silence/audit")
-async def silence_audit(request: Request, patient_id: str | None = None, ladder_id: str | None = None):
+async def silence_audit(request: Request, patient_id: str | None = None, ladder_id: str | None = None,
+                        user: DemoUser = Depends(require_nurse)):
     monitor = _silence(request)
     try:
         return await monitor.store.silence_audit(patient_id, ladder_id)
@@ -164,7 +166,7 @@ async def silence_audit(request: Request, patient_id: str | None = None, ladder_
 
 
 @router.get("/silence/status")
-async def silence_status(request: Request):
+async def silence_status(request: Request, user: DemoUser = Depends(require_nurse)):
     """Per live patient: time since last interaction, the limit for this time of day, and why."""
     return {"notice": "Detects missing interaction only; it cannot tell why.", "patients": _silence(request).status()}
 
@@ -196,7 +198,7 @@ async def _case(store, cohort: dict, outcome: dict) -> dict:
 
 
 @router.get("/timeline")
-async def timeline_cases(request: Request):
+async def timeline_cases(request: Request, user: DemoUser = Depends(require_nurse)):
     """Every synthetic storyline with how early its own risk flag fired."""
     store = _store(request)
     cohort = {p["id"]: p for p in await store.list_cohort()}
@@ -210,7 +212,7 @@ async def timeline_cases(request: Request):
 
 
 @router.get("/timeline/{pid}")
-async def timeline(pid: str, request: Request, days: int = 7):
+async def timeline(pid: str, request: Request, days: int = 7, user: DemoUser = Depends(require_nurse)):
     """Hourly score and signal drift (z in the risky direction) for the week before the outcome."""
     store = _store(request)
     cohort = {p["id"]: p for p in await store.list_cohort()}

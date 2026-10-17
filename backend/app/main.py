@@ -6,7 +6,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .auth import (
+    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session,
+    current_user, destroy_session, require_nurse, user_for_session_id, verify_password,
+)
 from .catalog import get_catalog
 from .config import settings
 from .data import seed
@@ -135,15 +139,49 @@ async def catalog():
     return app.state.cat.public()
 
 
+# ---- auth -------------------------------------------------------------------------------------------
+
+class LoginBody(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginBody, response: Response):
+    user = USERS_BY_EMAIL.get(body.email.strip().lower())
+    if not user or not verify_password(user, body.password):
+        raise HTTPException(401, "incorrect email or password")
+    session_id = create_session(user.email)
+    response.set_cookie(
+        SESSION_COOKIE, session_id, httponly=True, samesite="lax", max_age=SESSION_TTL_S, path="/",
+    )
+    return user.public()
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response):
+    session_id = request.cookies.get(SESSION_COOKIE)
+    if session_id:
+        destroy_session(session_id)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+async def me(user: DemoUser = Depends(current_user)):
+    return user.public()
+
+
 @app.get("/api/patients")
-async def patients():
+async def patients(user: DemoUser = Depends(require_nurse)):
     return [await svc().patient_view(p["id"]) for p in PATIENTS]
 
 
 @app.get("/api/patients/{pid}")
-async def patient(pid: str):
+async def patient(pid: str, user: DemoUser = Depends(current_user)):
     if pid not in PATIENT_BY_ID:
         raise HTTPException(404, "unknown patient")
+    check_patient_access(pid, user)
     return await svc().patient_view(pid)
 
 
@@ -199,57 +237,65 @@ async def _call(coro):
         raise HTTPException(403, str(e)) from e
 
 
+async def _require_session_access(sid: str, user: DemoUser = Depends(current_user)) -> DemoUser:
+    """A session belongs to one patient; nurses may touch any, a patient only their own."""
+    s = _need(svc().sessions.__getitem__, sid)
+    check_patient_access(s.patient["id"], user)
+    return user
+
+
 @app.post("/api/sessions")
-async def start_session(body: StartBody):
+async def start_session(body: StartBody, user: DemoUser = Depends(current_user)):
+    check_patient_access(body.patient_id, user)
     return await _call(svc().start(body.patient_id, body.language, body.mode))
 
 
 @app.get("/api/sessions/{sid}")
-async def get_session(sid: str):
+async def get_session(sid: str, user: DemoUser = Depends(_require_session_access)):
     s = _need(svc().sessions.__getitem__, sid)
     return await svc().state(s)
 
 
 @app.post("/api/sessions/{sid}/tap")
-async def tap(sid: str, body: TapBody):
+async def tap(sid: str, body: TapBody, user: DemoUser = Depends(_require_session_access)):
     return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id))
 
 
 @app.post("/api/sessions/{sid}/answer")
-async def answer(sid: str, body: AnswerBody):
+async def answer(sid: str, body: AnswerBody, user: DemoUser = Depends(_require_session_access)):
     return await _call(svc().answer(sid, body.question_id, body.answer))
 
 
 @app.post("/api/sessions/{sid}/mode")
-async def mode(sid: str, body: ModeBody):
+async def mode(sid: str, body: ModeBody, user: DemoUser = Depends(_require_session_access)):
     return await _call(svc().set_mode(sid, body.mode))
 
 
 @app.post("/api/sessions/{sid}/signal")
-async def signal(sid: str, body: SignalBody):
+async def signal(sid: str, body: SignalBody, user: DemoUser = Depends(_require_session_access)):
     """A missed tap or a correction the tablet noticed; feeds the communication ladder."""
     return await _call(svc().signal(sid, body.kind))
 
 
 @app.post("/api/sessions/{sid}/level")
-async def set_level(sid: str, body: LevelBody):
+async def set_level(sid: str, body: LevelBody, user: DemoUser = Depends(_require_session_access)):
     """Manual "make it easier / harder" from the patient or a nurse."""
     return await _call(svc().set_level(sid, body.level, body.by))
 
 
 @app.get("/api/ladder")
-async def ladder(hours: int = 12):
+async def ladder(hours: int = 12, user: DemoUser = Depends(require_nurse)):
     """Each patient's communication level and today's level changes, for the nurse station."""
     return await svc().ladder_overview(hours)
 
 
 @app.post("/api/sessions/{sid}/skip_consult")
-async def skip_consult(sid: str):
+async def skip_consult(sid: str, user: DemoUser = Depends(_require_session_access)):
     return await _call(svc().skip_consult(sid))
 
 
 @app.post("/api/sessions/{sid}/back")
-async def back(sid: str):
+async def back(sid: str, user: DemoUser = Depends(_require_session_access)):
     """Undo the patient's last input (only while they're still answering; nothing sent yet)."""
     return await _call(svc().back(sid))
 
@@ -264,14 +310,14 @@ class ConfirmBody(BaseModel):
 
 
 @app.get("/api/alerts")
-async def alerts(status: str | None = None):
+async def alerts(status: str | None = None, user: DemoUser = Depends(require_nurse)):
     items = [a for a in svc().alerts.values() if status is None or a["status"] == status]
     items.sort(key=lambda a: a["created_at"], reverse=True)
     return sorted(items, key=lambda a: (a["status"] != "open", a["priority"] != "urgent"))
 
 
 @app.post("/api/alerts/{aid}/confirm")
-async def confirm(aid: str, body: ConfirmBody):
+async def confirm(aid: str, body: ConfirmBody, user: DemoUser = Depends(require_nurse)):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
     return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
@@ -282,13 +328,13 @@ class CaseAckBody(BaseModel):
 
 
 @app.post("/api/cases/{cid}/acknowledge")
-async def case_acknowledge(cid: str, body: CaseAckBody):
+async def case_acknowledge(cid: str, body: CaseAckBody, user: DemoUser = Depends(require_nurse)):
     """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
     return await _call(svc().acknowledge_case(cid, body.nurse))
 
 
 @app.post("/api/cases/{cid}/gemini")
-async def case_gemini(cid: str):
+async def case_gemini(cid: str, user: DemoUser = Depends(require_nurse)):
     """Ask Gemini again to word a case's SBAR (checked as always; the template stays if it fails or Gemini is off)."""
     return await _call(svc().regenerate_case_sbar(cid))
 
@@ -298,13 +344,13 @@ class DemoRunBody(BaseModel):
 
 
 @app.get("/api/demo/scenarios")
-async def demo_scenarios():
+async def demo_scenarios(user: DemoUser = Depends(require_nurse)):
     from .sim.demo_scenarios import SCENARIOS
     return [{k: getattr(sc, k) for k in ("id", "title", "patient_id", "hour", "description")} for sc in SCENARIOS.values()]
 
 
 @app.post("/api/demo/scenarios/{scenario_id}")
-async def demo_run(scenario_id: str, body: DemoRunBody):
+async def demo_run(scenario_id: str, body: DemoRunBody, user: DemoUser = Depends(require_nurse)):
     """Play a scripted scenario through the real session service (synthetic patient; the engine decides)."""
     from .sim.demo_scenarios import SCENARIOS, run_live
     sc = SCENARIOS.get(scenario_id)
@@ -316,7 +362,7 @@ async def demo_run(scenario_id: str, body: DemoRunBody):
 
 
 @app.get("/api/cases/{cid}")
-async def case(cid: str):
+async def case(cid: str, user: DemoUser = Depends(require_nurse)):
     """A clinician-copilot case record (id = alert id): packet, SBAR and the nurse's feedback."""
     alert = svc().alerts.get(cid)
     found = (alert or {}).get("case") or await app.state.store.get_case(cid)
@@ -333,14 +379,14 @@ async def _trends():
 
 
 @app.get("/api/analytics/tigerdata")
-async def analytics_tigerdata(patient_id: str | None = None, days: int = 8):
+async def analytics_tigerdata(patient_id: str | None = None, days: int = 8, user: DemoUser = Depends(require_nurse)):
     if patient_id and patient_id not in PATIENT_BY_ID:
         raise HTTPException(404, "unknown patient")
     return await tigerdata_overview(app.state.store, patient_id, days)
 
 
 @app.get("/api/analytics/sessions/{sid}/decision-trace")
-async def analytics_decision_trace(sid: str):
+async def analytics_decision_trace(sid: str, user: DemoUser = Depends(require_nurse)):
     store = app.state.store
     actions = await get_decision_action_history(store, sid)
     belief = await get_belief_evolution(store, app.state.cat, sid)
@@ -350,12 +396,12 @@ async def analytics_decision_trace(sid: str):
 
 
 @app.get("/api/trends")
-async def trends():
+async def trends(user: DemoUser = Depends(require_nurse)):
     return await _trends()
 
 
 @app.get("/api/handoff")
-async def handoff(hours: int = 12):
+async def handoff(hours: int = 12, user: DemoUser = Depends(require_nurse)):
     return await build_handoff(app.state.cat, app.state.store, svc(), app.state.profiles, app.state.gemini,
                                await _trends(), max(1, min(hours, 48)))
 
@@ -384,7 +430,7 @@ class LearningDemoBody(BaseModel):
 
 
 @app.get("/api/patients/{pid}/learning")
-async def patient_learning(pid: str):
+async def patient_learning(pid: str, user: DemoUser = Depends(require_nurse)):
     """What this patient's own gestures have come to mean, learned from nurse confirmations."""
     if pid not in PATIENT_BY_ID:
         raise HTTPException(404, "unknown patient")
@@ -392,7 +438,7 @@ async def patient_learning(pid: str):
 
 
 @app.post("/api/patients/{pid}/learning/demo")
-async def patient_learning_demo(pid: str, body: LearningDemoBody):
+async def patient_learning_demo(pid: str, body: LearningDemoBody, user: DemoUser = Depends(require_nurse)):
     """Replay one gesture over several sessions with the real engine (in memory, nothing stored)."""
     if pid not in PATIENT_BY_ID:
         raise HTTPException(404, "unknown patient")
@@ -400,13 +446,13 @@ async def patient_learning_demo(pid: str, body: LearningDemoBody):
 
 
 @app.get("/api/patients/{pid}/profile")
-async def get_profile(pid: str):
+async def get_profile(pid: str, user: DemoUser = Depends(require_nurse)):
     _patient_or_404(pid)
     return app.state.profiles.public(pid)
 
 
 @app.post("/api/patients/{pid}/notes")
-async def set_notes(pid: str, body: NotesBody):
+async def set_notes(pid: str, body: NotesBody, user: DemoUser = Depends(require_nurse)):
     _patient_or_404(pid)
     if not body.notes.strip():
         raise HTTPException(422, "notes are empty")
@@ -414,20 +460,20 @@ async def set_notes(pid: str, body: NotesBody):
 
 
 @app.post("/api/patients/{pid}/profile/refresh")
-async def refresh_profile(pid: str):
+async def refresh_profile(pid: str, user: DemoUser = Depends(require_nurse)):
     _patient_or_404(pid)
     await app.state.profiles.extract(pid)
     return app.state.profiles.public(pid)
 
 
 @app.get("/api/suggestions")
-async def suggestions(status: str | None = None):
+async def suggestions(status: str | None = None, user: DemoUser = Depends(require_nurse)):
     items = await app.state.profiles.list_suggestions()
     return [s for s in items if status is None or s["status"] == status]
 
 
 @app.post("/api/suggestions/{sid}/review")
-async def review_suggestion(sid: str, body: SuggestionReviewBody):
+async def review_suggestion(sid: str, body: SuggestionReviewBody, user: DemoUser = Depends(require_nurse)):
     return await _call(app.state.profiles.review(sid, body.approve, body.reviewer))
 
 
@@ -487,51 +533,66 @@ class ReviewBody(BaseModel):
 
 
 @app.get("/api/research/clinicians")
-async def research_clinicians():
+async def research_clinicians(user: DemoUser = Depends(require_nurse)):
     return {"staff": [{k: s[k] for k in ("id", "name", "role", "patients")} for s in STAFF], "lead": CLINICAL_LEAD}
 
 
 @app.get("/api/research/hypotheses")
-async def hypotheses():
+async def hypotheses(user: DemoUser = Depends(require_nurse)):
     return await agent().hypotheses()
 
 
 @app.get("/api/research/inquiries")
-async def inquiries(status: str | None = None):
+async def inquiries(status: str | None = None, user: DemoUser = Depends(require_nurse)):
     return await agent().inquiries(status)
 
 
 @app.get("/api/research/digest")
-async def digest():
+async def digest(user: DemoUser = Depends(require_nurse)):
     return await agent().digest()
 
 
 @app.post("/api/research/observations")
-async def add_observation(body: ObservationBody):
+async def add_observation(body: ObservationBody, user: DemoUser = Depends(require_nurse)):
     if not body.text.strip():
         raise HTTPException(422, "observation text is empty")
     return await _call(agent().add_observation(body.text.strip(), body.clinician_id, body.patient_id))
 
 
 @app.post("/api/research/inquiries/{iid}/answer")
-async def answer_inquiry(iid: str, body: InquiryAnswerBody):
+async def answer_inquiry(iid: str, body: InquiryAnswerBody, user: DemoUser = Depends(require_nurse)):
     return await _call(agent().answer_inquiry(iid, body.response, body.note))
 
 
 @app.post("/api/research/hypotheses/{hid}/review")
-async def review(hid: str, body: ReviewBody):
+async def review(hid: str, body: ReviewBody, user: DemoUser = Depends(require_nurse)):
     return await _call(agent().review(hid, body.decision, body.reviewer, body.note))
 
 
 @app.post("/api/research/cycle")
-async def research_cycle():
+async def research_cycle(user: DemoUser = Depends(require_nurse)):
     return await agent().cycle()
 
 
 # ---- realtime -------------------------------------------------------------------------------------
 
+def _can_subscribe(channel: str, user: DemoUser | None) -> bool:
+    """`nurse` carries alerts and case packets; `patient:{id}` carries that one patient's session/welfare
+    pushes. `family:{id}` stays open, same as the rest of the unauthenticated family/contact flow."""
+    if channel == "nurse":
+        return bool(user and user.role == "nurse")
+    if channel.startswith("patient:"):
+        pid = channel.split(":", 1)[1]
+        return bool(user) and (user.role == "nurse" or user.patient_id == pid)
+    return True
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket, channel: str):
+    user = user_for_session_id(websocket.cookies.get(SESSION_COOKIE))
+    if not _can_subscribe(channel, user):
+        await websocket.close(code=4403)
+        return
     await websocket.accept()
     hub: Hub = app.state.hub
     hub.subscribe(channel, websocket)

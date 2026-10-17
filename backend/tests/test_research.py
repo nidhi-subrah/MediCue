@@ -7,6 +7,7 @@ from app.engine.research_decision import (Clinician, ResearchConfig, eig_clinici
 from app.main import app
 from app.services.research import template_digest
 from app.services.research_data import parse_observation, validate_test
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 cfg = ResearchConfig()
@@ -75,6 +76,7 @@ def test_digest_fallback_text():
 
 def test_demo_observation_runs_check_data_then_asks_another_clinician():
     with TestClient(app) as client:
+        login_as_nurse(client)
         hs = client.get("/api/research/hypotheses").json()
         h = next(x for x in hs if x["origin"] == "clinician")
         kinds = [t["kind"] for t in h["timeline"]]
@@ -87,6 +89,7 @@ def test_demo_observation_runs_check_data_then_asks_another_clinician():
 
 def test_clinician_answer_then_lead_review_completes_lifecycle():
     with TestClient(app) as client:
+        login_as_nurse(client)
         inq = next(i for i in client.get("/api/research/inquiries?status=pending").json() if "family visits" in i["question"])
         h = client.post(f"/api/research/inquiries/{inq['id']}/answer", json={"response": "agree", "note": "seen it"}).json()
         assert h["status"] == "SUPPORTED_PENDING_REVIEW" and h["evidence"][-1]["source"] == "clinician"
@@ -100,6 +103,7 @@ def test_clinician_answer_then_lead_review_completes_lifecycle():
 
 def test_new_observation_and_rejection_are_preserved_across_cycles():
     with TestClient(app) as client:
+        login_as_nurse(client)
         h = client.post("/api/research/observations", json={
             "text": "Irena Kowalski seems more anxious in the evening.", "clinician_id": "psw-joe"}).json()
         assert h["observation_text"] == "Irena Kowalski seems more anxious in the evening."
@@ -115,5 +119,6 @@ def test_new_observation_and_rejection_are_preserved_across_cycles():
 
 def test_observation_validation():
     with TestClient(app) as client:
+        login_as_nurse(client)
         assert client.post("/api/research/observations", json={"text": " ", "clinician_id": "rn-priya"}).status_code == 422
         assert client.post("/api/research/observations", json={"text": "x", "clinician_id": "nobody"}).status_code == 404

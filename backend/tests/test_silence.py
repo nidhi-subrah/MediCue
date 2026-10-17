@@ -258,6 +258,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.risk.silence_monitor import utcnow  # noqa: E402
+from tests.conftest import login_as_nurse
 
 
 def receive(ws, msg_type):
@@ -269,24 +270,27 @@ def receive(ws, msg_type):
 
 
 def test_mode_a_escalates_a_stalled_request_with_its_label():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        monitor = app.state.silence
-        s = client.post("/api/sessions", json={"patient_id": "p-patel", "language": "en"}).json()
-        s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "mouth_throat"}).json()
-        assert s["status"] == "feeling"
-        app.state.svc.sessions[s["session_id"]].prompted_at = time.time() - 100
-        client.portal.call(monitor.tick, utcnow())
-        alert = receive(nurse, "alert")["alert"]
-        assert alert["priority"] == "urgent" and alert["label"] == "Patient stopped responding mid-request"
-        assert alert["sbar"]["situation"].startswith("Patient stopped responding mid-request.")
-        assert alert["top"] and alert["prediction_set"]                     # the current belief, with uncertainty
-        assert client.get(f"/api/sessions/{s['session_id']}").json()["status"] == "escalated"
-        rows = client.get("/api/risk/silence/audit?patient_id=p-patel").json()
-        assert any(r["mode"] == "A" and r["event"] == "mid_dialogue_escalated" for r in rows)
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            monitor = app.state.silence
+            s = client.post("/api/sessions", json={"patient_id": "p-patel", "language": "en"}).json()
+            s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "mouth_throat"}).json()
+            assert s["status"] == "feeling"
+            app.state.svc.sessions[s["session_id"]].prompted_at = time.time() - 100
+            client.portal.call(monitor.tick, utcnow())
+            alert = receive(nurse, "alert")["alert"]
+            assert alert["priority"] == "urgent" and alert["label"] == "Patient stopped responding mid-request"
+            assert alert["sbar"]["situation"].startswith("Patient stopped responding mid-request.")
+            assert alert["top"] and alert["prediction_set"]                     # the current belief, with uncertainty
+            assert client.get(f"/api/sessions/{s['session_id']}").json()["status"] == "escalated"
+            rows = client.get("/api/risk/silence/audit?patient_id=p-patel").json()
+            assert any(r["mode"] == "A" and r["event"] == "mid_dialogue_escalated" for r in rows)
 
 
 def test_mode_a_does_not_fire_while_the_patient_is_responding():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = client.post("/api/sessions", json={"patient_id": "p-patel", "language": "en"}).json()
         s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "mouth_throat"}).json()
         client.portal.call(app.state.silence.tick, utcnow())
@@ -294,42 +298,45 @@ def test_mode_a_does_not_fire_while_the_patient_is_responding():
 
 
 def test_ladder_end_to_end_contact_concern_then_nurse_acknowledges():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=patient:p-chen") as tablet, \
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=patient:p-chen") as tablet, \
             client.websocket_connect("/ws?channel=family:fam-lin") as lin:
-        monitor = app.state.silence
-        t0 = utcnow()
-        lad = client.portal.call(monitor.start_ladder, "p-chen", t0, "test: no interaction")
-        check = receive(tablet, "welfare_check")
-        assert check["respond_path"] == f"/api/risk/silence/ladders/{lad.id}/patient_ok"
+            monitor = app.state.silence
+            t0 = utcnow()
+            lad = client.portal.call(monitor.start_ladder, "p-chen", t0, "test: no interaction")
+            check = receive(tablet, "welfare_check")
+            assert check["respond_path"] == f"/api/risk/silence/ladders/{lad.id}/patient_ok"
 
-        client.portal.call(monitor.tick, t0 + timedelta(seconds=CFG.tablet_timeout_s))
-        assert receive(lin, "silence_check")["ladder"]["current"] == "contact"
-        r = client.post(f"/api/risk/silence/ladders/{lad.id}/ack",
-                        json={"step": "contact", "role": "contact", "actor": "fam-someone"})
-        assert r.status_code == 403
-        r = client.post(f"/api/risk/silence/ladders/{lad.id}/ack",
-                        json={"step": "contact", "role": "contact", "actor": "fam-lin", "outcome": "concern"})
-        assert r.json()["current"] == "nurse" and r.json()["active"]
+            client.portal.call(monitor.tick, t0 + timedelta(seconds=CFG.tablet_timeout_s))
+            assert receive(lin, "silence_check")["ladder"]["current"] == "contact"
+            r = client.post(f"/api/risk/silence/ladders/{lad.id}/ack",
+                            json={"step": "contact", "role": "contact", "actor": "fam-someone"})
+            assert r.status_code == 403
+            r = client.post(f"/api/risk/silence/ladders/{lad.id}/ack",
+                            json={"step": "contact", "role": "contact", "actor": "fam-lin", "outcome": "concern"})
+            assert r.json()["current"] == "nurse" and r.json()["active"]
 
-        alert = next(a for a in client.get("/api/alerts?status=open").json() if a["id"] == r.json()["alert_id"])
-        assert alert["kind"] == "welfare" and "reported a concern" in alert["sbar"]["situation"]
-        assert client.post(f"/api/risk/silence/ladders/{lad.id}/patient_ok").json()["active"]  # late: no cancel
+            alert = next(a for a in client.get("/api/alerts?status=open").json() if a["id"] == r.json()["alert_id"])
+            assert alert["kind"] == "welfare" and "reported a concern" in alert["sbar"]["situation"]
+            assert client.post(f"/api/risk/silence/ladders/{lad.id}/patient_ok").json()["active"]  # late: no cancel
 
-        client.post(f"/api/alerts/{alert['id']}/confirm", json={"nurse": "Priya"})   # the dashboard button
-        client.portal.call(monitor.tick, utcnow())
-        done = client.get(f"/api/risk/silence/ladders?patient_id=p-chen").json()[0]
-        assert not done["active"] and done["steps"][-1]["ack_by"] == "Priya"
-        events = [r["event"] for r in client.get(f"/api/risk/silence/audit?ladder_id={lad.id}").json()]
-        assert events == ["ladder_started", "step_started",            # tablet check
-                          "step_timed_out", "step_started",            # -> trusted contact
-                          "step_acknowledged", "step_started",         # contact: concern -> nurse now
-                          "step_acknowledged",                         # late patient answer, recorded only
-                          "step_acknowledged", "ladder_closed"]        # nurse closes it
-        assert client.post(f"/api/risk/silence/ladders/{lad.id}/patient_ok").status_code == 409
+            client.post(f"/api/alerts/{alert['id']}/confirm", json={"nurse": "Priya"})   # the dashboard button
+            client.portal.call(monitor.tick, utcnow())
+            done = client.get(f"/api/risk/silence/ladders?patient_id=p-chen").json()[0]
+            assert not done["active"] and done["steps"][-1]["ack_by"] == "Priya"
+            events = [r["event"] for r in client.get(f"/api/risk/silence/audit?ladder_id={lad.id}").json()]
+            assert events == ["ladder_started", "step_started",            # tablet check
+                              "step_timed_out", "step_started",            # -> trusted contact
+                              "step_acknowledged", "step_started",         # contact: concern -> nurse now
+                              "step_acknowledged",                         # late patient answer, recorded only
+                              "step_acknowledged", "ladder_closed"]        # nurse closes it
+            assert client.post(f"/api/risk/silence/ladders/{lad.id}/patient_ok").status_code == 409
 
 
 def test_patient_answering_the_tablet_check_closes_it_and_counts_as_interaction():
     with TestClient(app) as client:
+        login_as_nurse(client)
         monitor = app.state.silence
         lad = client.portal.call(monitor.start_ladder, "p-patel", utcnow(), "test")
         body = client.post(f"/api/risk/silence/ladders/{lad.id}/patient_ok").json()

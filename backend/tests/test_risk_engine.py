@@ -11,6 +11,7 @@ from app.risk.engine import NOTICE, LevelState, advance, raw_level, score_patien
 from app.risk.evaluate import evaluate, summarize
 from app.risk.signals import Feature, PatientSignals
 from app.risk.synthetic import generate, holdout_ids, tuning_ids
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 cohort = generate(cat)
@@ -128,6 +129,7 @@ def test_start_never_raises(monkeypatch):
 def test_api_labels_synthetic_and_explains():
     from app.main import app
     with TestClient(app) as client:
+        login_as_nurse(client)
         body = client.get("/api/risk/patients").json()
         assert "Synthetic data" in body["notice"] and "not diagnoses" in body["notice"]
         assert len(body["patients"]) == 22 and all(p["synthetic"] for p in body["patients"])
@@ -140,6 +142,7 @@ def test_api_labels_synthetic_and_explains():
 def test_dashboard_endpoints_for_the_ui():
     from app.main import app
     with TestClient(app) as client:
+        login_as_nurse(client)
         p = client.get("/api/risk/patients").json()["patients"][0]
         for r in p["risks"].values():
             assert 0 < len(r["spark"]) <= 28 and r["thresholds"]["watch"] < r["thresholds"]["elevated"]
