@@ -240,7 +240,7 @@ export function HypothesisCard({
             placeholder="Add a note (optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="h-11 min-w-[220px] flex-1 rounded-xl border-2 border-input bg-background px-3 text-base"
+            className="h-11 w-full flex-1 rounded-xl border-2 border-input bg-background px-3 text-base sm:min-w-[220px]"
           />
           <button
             type="button"

@@ -30,6 +30,11 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'SilentSignal',
+  },
 }
 
 export const viewport: Viewport = {

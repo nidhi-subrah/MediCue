@@ -97,7 +97,7 @@ export function AnalyticsView() {
           <p className="text-sm text-muted-foreground">Choose a patient to see their response-time and needs trends.</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <Sparkline values={responseValues} label="Seconds per tap (8 days)" format={(v) => `${v.toFixed(1)}s`} flagged={false} />
               <Sparkline values={needsValues} label="Confirmed needs per day" format={(v) => v.toFixed(0)} flagged={false} />
             </div>

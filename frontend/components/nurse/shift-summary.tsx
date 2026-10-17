@@ -70,7 +70,7 @@ export function ShiftSummary({ onClose }: { onClose: () => void }) {
             </header>
             <p className="text-base font-semibold">{p.headline}</p>
             <dl className="grid gap-1.5 text-sm">
-              <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
                 <dt className="text-muted-foreground">Requests</dt>
                 <dd>
                   {p.requests} this shift{p.urgent > 0 && `, ${p.urgent} urgent`}
@@ -84,25 +84,25 @@ export function ShiftSummary({ onClose }: { onClose: () => void }) {
                 </dd>
               </div>
               {comm && (
-                <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
                   <dt className="text-muted-foreground">Communication</dt>
                   <dd>{comm}</dd>
                 </div>
               )}
               {p.trends.length > 0 && (
-                <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
                   <dt className="text-muted-foreground">Trends</dt>
                   <dd>{p.trends.map((t) => t.message).join(' ')}</dd>
                 </div>
               )}
               {p.profile.length > 0 && (
-                <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
                   <dt className="text-muted-foreground">From the notes</dt>
                   <dd>{p.profile.map((q) => `“${q}”`).join(' ')}</dd>
                 </div>
               )}
               {p.watch_for && (
-                <div className="grid grid-cols-[7.5rem_1fr] gap-3">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
                   <dt className="text-muted-foreground">Watch for</dt>
                   <dd>{p.watch_for}</dd>
                 </div>

@@ -67,7 +67,7 @@ export function BodyMap({ items }: { items: ChoiceItem[] }) {
       </div>
 
       {others.length > 0 && (
-        <ul className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Other places">
+        <ul className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Other places">
           {others.map((item) => (
             <li key={item.id}>
               <ChoiceCard item={item} />
