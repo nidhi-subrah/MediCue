@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import type { InputMode } from '@/lib/types'
 
 export type SignalKind = 'delay' | 'correction' | 'deletion' | 'miss'
-export type Suggestion = 'easy' | 'switch' | null
+export type Suggestion = 'easy' | null
 
 interface Signal { id: string; kind: SignalKind; at: number; simulated: boolean }
 
@@ -32,10 +32,7 @@ export const useUiAssist = create<UiAssistState>((set, get) => ({
     const signals = [...get().signals, signal].slice(-40)
     let suggestion = get().suggestion
     const recent = signals.filter((s) => s.at > get().lastDecisionAt).length
-    if (!suggestion && recent >= SIGNAL_THRESHOLD) {
-      if (mode === 'standard') suggestion = 'easy'
-      else if (mode === 'easy') suggestion = 'switch'
-    }
+    if (!suggestion && recent >= SIGNAL_THRESHOLD && mode === 'standard') suggestion = 'easy'
     set({ signals, suggestion })
   },
 

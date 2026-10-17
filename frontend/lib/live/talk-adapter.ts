@@ -1,17 +1,17 @@
 import type { InputMode, ModeId, SessionState, Step } from '@/lib/types'
 import { CATALOG_ICONS, catalog } from './catalog'
 
-/** UI input mode -> the three the backend understands. `audio` rides on `grid`. */
+/** UI input mode -> what the backend understands. `audio` rides on `grid`. */
 export function backendMode(mode: InputMode): ModeId {
-  if (mode === 'easy') return 'large'
-  if (mode === 'switch') return 'scan'
-  return 'grid'
+  return mode === 'easy' ? 'large' : 'grid'
 }
 
-export function uiMode(mode: ModeId): InputMode {
-  if (mode === 'large') return 'easy'
-  if (mode === 'scan') return 'switch'
-  return 'standard'
+/** What the patient sees. Audio is client-only, so it comes from the `spokenPrompts` setting and wins
+ *  over the backend's mode (even if the backend moved a tiring patient to larger tiles). The UI has no
+ *  scanning mode: a backend `scan` session is shown as Easy Touch. */
+export function uiMode(mode: ModeId, audio = false): InputMode {
+  if (audio) return 'audio'
+  return mode === 'large' || mode === 'scan' ? 'easy' : 'standard'
 }
 
 /** Builds the one on-screen step QuestionStage should render for the session's current

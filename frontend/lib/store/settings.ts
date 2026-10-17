@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { isInputMode } from '@/lib/modes'
 import { safeStorage } from './safe-storage'
 import type { InputMode, Language } from '@/lib/types'
 
@@ -15,7 +16,6 @@ export interface SettingsState {
   preferredMode: InputMode
   spokenPrompts: boolean
   language: Language
-  scanSpeed: number
   buttonSize: ButtonSize
   speechRate: number
   onboarded: boolean
@@ -30,7 +30,6 @@ const defaults = {
   preferredMode: 'standard' as InputMode,
   spokenPrompts: false,
   language: 'en' as Language,
-  scanSpeed: 1800,
   buttonSize: 'regular' as ButtonSize,
   speechRate: 0.95,
   onboarded: false,
@@ -45,6 +44,14 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'silentsignal-settings',
+      version: 1,
+      // v1 removed the Single-Switch mode and its scan speed: saved settings fall back to Standard.
+      migrate: (saved) => {
+        const s = { ...(saved as Record<string, unknown>) }
+        delete s.scanSpeed
+        if (!isInputMode(s.preferredMode)) s.preferredMode = 'standard'
+        return s as unknown as SettingsState
+      },
       storage: createJSONStorage(() => safeStorage),
       skipHydration: true,
     },

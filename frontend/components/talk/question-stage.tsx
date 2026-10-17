@@ -1,16 +1,13 @@
 'use client'
 
-import { ArrowLeft, ChevronsRight, Siren } from 'lucide-react'
+import { ChevronsRight } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useSpeaker } from '@/hooks/use-speaker'
 import { useUiAssist } from '@/lib/live/ui-assist'
-import { useUrgent } from '@/lib/live/urgent'
-import { useSettings } from '@/lib/store/settings'
 import type { ChoiceItem, InputMode, Step } from '@/lib/types'
 import { BodyMap } from './body-map'
 import { ChoiceCard } from './choice-card'
-import { ScanningList } from './scanning-list'
 
 const SOFT_EASE = [0.22, 1, 0.36, 1] as const
 const EASY_PAGE = 4
@@ -29,10 +26,8 @@ export function QuestionStage({
   canUndo: boolean
   onUndo: () => void
 }) {
-  const spokenPrompts = useSettings((s) => s.spokenPrompts)
   const { say, stop } = useSpeaker()
   const recordSignal = useUiAssist((s) => s.recordSignal)
-  const openUrgent = useUrgent((s) => s.openUrgent)
   const [page, setPage] = useState(0)
 
   const items: ChoiceItem[] = step.options.map((opt) => ({
@@ -44,20 +39,17 @@ export function QuestionStage({
   }))
 
   useEffect(() => {
-    if (mode === 'switch') return
     const timer = setTimeout(() => recordSignal('delay', mode), DELAY_MS)
     return () => clearTimeout(timer)
   }, [step.id, mode, recordSignal])
 
+  // Audio First is the only mode that speaks: the question, then each numbered choice.
   useEffect(() => {
-    if (mode === 'audio') {
-      const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
-      say(`${step.prompt}. ${list}`)
-    } else if (spokenPrompts) {
-      say(step.prompt)
-    }
+    if (mode !== 'audio') return
+    const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
+    say(`${step.prompt}. ${list}`)
     return () => stop()
-  }, [step, mode, spokenPrompts, say, stop])
+  }, [step, mode, say, stop])
 
   useEffect(() => {
     if (mode !== 'audio') return
@@ -115,70 +107,58 @@ export function QuestionStage({
         )}
       </div>
 
-      {mode === 'switch' ? (
-        <ScanningList
-          items={[
-            ...items,
-            ...(canUndo ? [{ id: '__back', label: 'Go back', icon: ArrowLeft, tone: 'control' as const, onSelect: onUndo }] : []),
-            { id: '__urgent', label: 'Urgent help', icon: Siren, tone: 'urgent' as const, onSelect: () => openUrgent() },
-          ]}
-        />
-      ) : (
-        <>
-          {step.kind === 'body' && mode !== 'audio' && (
-            <div className="flex justify-center rounded-2xl bg-surface p-4">
-              <BodyMap items={items} />
-            </div>
-          )}
+      {step.kind === 'body' && mode !== 'audio' && (
+        <div className="flex justify-center rounded-2xl bg-surface p-4">
+          <BodyMap items={items} />
+        </div>
+      )}
 
-          {mode === 'audio' && (
-            <p className="rounded-xl bg-surface p-4 text-base leading-relaxed text-muted-foreground">
-              Press a number key to answer. Press <kbd className="font-mono font-semibold">R</kbd> to
-              repeat, <kbd className="font-mono font-semibold">Backspace</kbd> to go back.
-            </p>
-          )}
+      {mode === 'audio' && (
+        <p className="rounded-xl bg-surface p-4 text-base leading-relaxed text-muted-foreground">
+          Press a number key to answer. Press <kbd className="font-mono font-semibold">R</kbd> to
+          repeat, <kbd className="font-mono font-semibold">Backspace</kbd> to go back.
+        </p>
+      )}
 
-          {!(step.kind === 'body' && mode !== 'audio') && (
-            <ul
-              className={
-                mode === 'easy'
-                  ? 'grid grid-cols-1 gap-4 sm:grid-cols-2'
-                  : step.kind === 'yesno'
-                    ? 'grid grid-cols-1 gap-3 sm:grid-cols-3'
-                    : 'grid grid-cols-1 gap-3 sm:grid-cols-2'
-              }
+      {!(step.kind === 'body' && mode !== 'audio') && (
+        <ul
+          className={
+            mode === 'easy'
+              ? 'grid grid-cols-1 gap-4 sm:grid-cols-2'
+              : step.kind === 'yesno'
+                ? 'grid grid-cols-1 gap-3 sm:grid-cols-3'
+                : 'grid grid-cols-1 gap-3 sm:grid-cols-2'
+          }
+        >
+          {visible.map((item, i) => (
+            <motion.li
+              key={`${page}-${item.id}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 + i * 0.04, duration: 0.3, ease: SOFT_EASE }}
             >
-              {visible.map((item, i) => (
-                <motion.li
-                  key={`${page}-${item.id}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 + i * 0.04, duration: 0.3, ease: SOFT_EASE }}
-                >
-                  <ChoiceCard
-                    item={item}
-                    size={mode === 'easy' ? 'large' : 'regular'}
-                    number={mode === 'audio' ? items.indexOf(item) + 1 : undefined}
-                  />
-                </motion.li>
-              ))}
-              {mode === 'easy' && pageCount > 1 && (
-                <li className="sm:col-span-2">
-                  <ChoiceCard
-                    size="large"
-                    item={{
-                      id: '__more',
-                      label: page + 1 < pageCount ? 'More choices' : 'Back to first choices',
-                      icon: ChevronsRight,
-                      tone: 'control',
-                      onSelect: () => setPage((p) => (p + 1) % pageCount),
-                    }}
-                  />
-                </li>
-              )}
-            </ul>
+              <ChoiceCard
+                item={item}
+                size={mode === 'easy' ? 'large' : 'regular'}
+                number={mode === 'audio' ? items.indexOf(item) + 1 : undefined}
+              />
+            </motion.li>
+          ))}
+          {mode === 'easy' && pageCount > 1 && (
+            <li className="sm:col-span-2">
+              <ChoiceCard
+                size="large"
+                item={{
+                  id: '__more',
+                  label: page + 1 < pageCount ? 'More choices' : 'Back to first choices',
+                  icon: ChevronsRight,
+                  tone: 'control',
+                  onSelect: () => setPage((p) => (p + 1) % pageCount),
+                }}
+              />
+            </li>
           )}
-        </>
+        </ul>
       )}
     </motion.section>
   )
