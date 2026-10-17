@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
-import type { Alert, PatientTrend } from '@/lib/types'
+import type { Alert, PatientTrend, ProfileSuggestion } from '@/lib/types'
 
 function beep() {
   try {
@@ -20,11 +20,13 @@ function beep() {
 export function useNurseStation() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [trends, setTrends] = useState<PatientTrend[]>([])
+  const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([])
 
   const loadTrends = useCallback(() => api.get<PatientTrend[]>('/api/trends').then(setTrends), [])
 
   useEffect(() => {
     api.get<Alert[]>('/api/alerts').then(setAlerts)
+    api.get<ProfileSuggestion[]>('/api/suggestions').then(setSuggestions)
     void loadTrends()
     const t = window.setInterval(loadTrends, 60000)
     return () => window.clearInterval(t)
@@ -39,11 +41,26 @@ export function useNurseStation() {
       setAlerts((a) => a.map((x) => (x.id === m.alert.id ? m.alert : x)))
       if (m.alert.status === 'confirmed') void loadTrends()
     }
+    if (m.type === 'suggestions') {
+      // Gemini's profile suggestions from a nurse's note, or a review result: upsert, newest first.
+      setSuggestions((all) => {
+        const ids = new Set(m.suggestions.map((s) => s.id))
+        return [...m.suggestions, ...all.filter((s) => !ids.has(s.id))].sort((a, b) =>
+          b.created_at.localeCompare(a.created_at),
+        )
+      })
+    }
   })
 
-  const confirm = useCallback(async (alertId: string, needId: string | null) => {
-    await api.post(`/api/alerts/${alertId}/confirm`, { need_id: needId })
+  /** `note` is the nurse's optional observation; Gemini proposes profile changes from it for approval. */
+  const confirm = useCallback(async (alertId: string, needId: string | null, note: string | null) => {
+    await api.post(`/api/alerts/${alertId}/confirm`, { need_id: needId, note })
   }, [])
 
-  return { alerts, trends, confirm }
+  const reviewSuggestion = useCallback(async (id: string, approve: boolean) => {
+    const s = await api.post<ProfileSuggestion>(`/api/suggestions/${id}/review`, { approve })
+    setSuggestions((all) => all.map((x) => (x.id === s.id ? s : x)))
+  }, [])
+
+  return { alerts, trends, suggestions, confirm, reviewSuggestion }
 }

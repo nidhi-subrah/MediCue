@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 import { RiskPanel } from '@/components/risk/risk-panel'
 import { SilencePanel } from '@/components/risk/silence-panel'
 import { AlertCard } from './alert-card'
+import { ShiftSummary } from './shift-summary'
+import { SuggestionsPanel } from './suggestions-panel'
 import { Sparkline } from './sparkline'
 
 const SPARKS: { metric: string; label: string; format: (v: number) => string }[] = [
@@ -16,8 +18,9 @@ const SPARKS: { metric: string; label: string; format: (v: number) => string }[]
 ]
 
 export function NurseView() {
-  const { alerts, trends, confirm } = useNurseStation()
+  const { alerts, trends, suggestions, confirm, reviewSuggestion } = useNurseStation()
   const [showDone, setShowDone] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
 
   const open = alerts
     .filter((a) => a.status === 'open')
@@ -30,6 +33,7 @@ export function NurseView() {
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-10">
+      {showSummary && <ShiftSummary onClose={() => setShowSummary(false)} />}
       <SilencePanel />
       <section aria-labelledby="alerts-h" className="flex flex-col gap-4">
         <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-3">
@@ -37,6 +41,15 @@ export function NurseView() {
           <p className="text-sm text-muted-foreground">
             {open.length === 0 ? 'None open' : `${open.length} open`}
             {urgentCount > 0 && <span className="font-semibold text-urgent"> · {urgentCount} urgent</span>}
+            {!showSummary && (
+              <button
+                type="button"
+                onClick={() => setShowSummary(true)}
+                className="ml-3 inline-flex h-9 items-center rounded-full border border-border bg-card px-3 text-sm font-semibold text-foreground hover:border-primary/40"
+              >
+                Shift summary
+              </button>
+            )}
           </p>
         </header>
 
@@ -45,7 +58,7 @@ export function NurseView() {
             Nothing waiting. Requests from bedside tablets appear here as they&apos;re sent.
           </p>
         )}
-        {open.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId) => confirm(a.id, needId)} />)}
+        {open.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note) => confirm(a.id, needId, note)} />)}
 
         {doneAlerts.length > 0 && (
           <button
@@ -56,11 +69,12 @@ export function NurseView() {
             {showDone ? 'Hide' : 'Show'} {doneAlerts.length} confirmed
           </button>
         )}
-        {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId) => confirm(a.id, needId)} />)}
+        {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note) => confirm(a.id, needId, note)} />)}
       </section>
       </div>
 
       <div className="flex min-w-0 flex-col gap-10">
+      <SuggestionsPanel items={suggestions} onReview={reviewSuggestion} />
       <RiskPanel />
       <section aria-labelledby="trends-h" className="flex flex-col gap-4">
         <header className="flex flex-col gap-1 border-b border-border pb-3">

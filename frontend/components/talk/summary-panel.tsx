@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { needLabel } from '@/lib/live/catalog'
 import { pct } from '@/lib/services/backend'
 import type { SessionState } from '@/lib/types'
+import { ProfileList } from '@/components/profile/profile-list'
 import { BeliefBars } from './belief-bars'
 
 const KIND_LABEL: Record<string, string> = {
@@ -94,6 +95,18 @@ export function SummaryPanel({
             {session.prior_reasons.length > 0 && (
               <p className="mt-1 text-xs text-muted-foreground">Prior shaped by {session.prior_reasons.join(', ')}</p>
             )}
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-bold">Patient profile</h3>
+            <ProfileList items={session.profile ?? []} empty="No profile (Gemini off or nothing in the notes)." />
+            <p className="mt-2 text-xs text-muted-foreground">
+              {session.baseline_interval
+                ? `Usual pace ${session.baseline_interval.toFixed(1)}s between inputs`
+                : 'No personal pace baseline yet'}
+              {session.inconsistencies > 0 &&
+                ` · ${session.inconsistencies} inconsistent answer${session.inconsistencies === 1 ? '' : 's'}`}
+            </p>
           </div>
 
           {d && (
