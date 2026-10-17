@@ -309,3 +309,48 @@ export interface LearningDemo {
   patient_id: string; area: string; feeling: string; need: string; need_label: string; high_risk: boolean;
   sessions: LearningSession[];
 }
+
+// ---- clinician copilot: case packet for an ambiguous episode (backend/app/services/case_packet.py) ----
+// Every field comes from structured engine data. Probabilities are 0-1.
+
+export type StopReason =
+  | "RESOLVED"               // the top need is likely enough to act on
+  | "SAFETY_FLOOR"           // a high-risk need was possible, so it escalated without more questions
+  | "FATIGUE_HIGH"           // the patient was tiring or answers became inconsistent
+  | "INFO_GAIN_BELOW_COST"   // no further question was worth the patient's effort
+  | "PATIENT_TIMEOUT"        // the patient stopped responding mid-request
+  | "MAX_QUESTIONS"          // the question limit was reached
+  | "CONSULT_PENDING";       // a trusted contact was asked and has not answered
+
+export type NextStepCode = "ASK_YES_NO" | "SHOW_PAIN_SCALE" | "ASK_CONTACT" | "RECHECK_LATER" | "WATCH_FOR_GESTURES";
+
+export interface CaseSelection {
+  t: string;                          // ISO time of the input
+  kind: "tap_area" | "tap_feeling" | "answer";
+  text: string;                       // e.g. "Tapped area: Belly" or "Do you need the washroom? → no"
+}
+
+export interface CaseNeed { need: string; label: string; p: number; in_set: boolean; risk: RiskLevel }
+
+/** "Less likely given answers": never "ruled out"; the system cannot rule a need out. */
+export interface LessLikelyNeed {
+  need: string; label: string; from_p: number; to_p: number;
+  cause: { kind: "tap" | "answer" | "consult" | "chart"; text: string; t: string };
+}
+
+/** A chart field that actually moved a probability during the dialogue. */
+export interface ChartChange {
+  lookup: string; label: string; value: string | null; flagged: boolean;
+  need: string; need_label: string; from_p: number; to_p: number; direction: "up" | "down";
+}
+
+export interface CasePacket {
+  session_id: string; patient_id: string; created_at: string;
+  selections: CaseSelection[];
+  top_needs: CaseNeed[];              // top 3, with 90% conformal-set membership
+  less_likely: LessLikelyNeed[];
+  chart_context: ChartChange[];
+  stop_reason: { code: StopReason; text: string };
+  uncertainty: { set_size: number; top_p: number; p_high: number; text: string };
+  next_step: { code: NextStepCode; text: string; need: string | null };   // fixed whitelist; never treatment
+}
