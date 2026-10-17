@@ -84,6 +84,18 @@ class OptionRankingModel(BaseModel):
     areas: list[AreaRanking]
 
 
+class ForecastAdjustment(BaseModel):
+    patient_id: str
+    group: str
+    label: Literal["lower", "same", "higher", "much_higher"]
+    reason: str          # one sentence for the nurse
+    evidence: str        # an exact quote of one of the facts given for that patient
+
+
+class ForecastAdjustmentsModel(BaseModel):
+    adjustments: list[ForecastAdjustment]
+
+
 class HandoffLine(BaseModel):
     patient_id: str
     headline: str
@@ -362,6 +374,21 @@ class Gemini:
         if not out:
             return None
         return {a.area: [{"option_id": r.option_id, "reason": r.reason} for r in a.ranked] for a in out.areas}
+
+    # ---- care forecast (services/nurse_views.py validates every adjustment) ----------------------
+
+    async def forecast_adjustments(self, patients: list[dict], groups: list[tuple[str, str]]) -> list[dict] | None:
+        """Nudges to each patient's pattern-based forecast for the next 12 hours, one need type at a time."""
+        prompt = (
+            "A nursing unit forecasts how often each patient will ask for help in the next 12 hours, from their own "
+            "past pattern at those hours. For each patient and need type, say whether today's facts make requests "
+            "lower, the same, higher or much_higher than that pattern. Only adjust when a fact clearly supports it; "
+            "otherwise use 'same'. Give a one-sentence reason for a nurse, and copy the fact you relied on, word for "
+            "word, into 'evidence'. Use only the patient ids and need types given. Do not diagnose.\n\n"
+            "Need types: " + ", ".join(f"{gid} ({label})" for gid, label in groups) + "\n\n"
+            f"Patients (JSON):\n{json.dumps(patients, default=str, ensure_ascii=False)}")
+        out = await self._json(prompt, ForecastAdjustmentsModel, LONG_TIMEOUT_S)
+        return [a.model_dump() for a in out.adjustments] if out else None
 
     # ---- shift summary ---------------------------------------------------------------------------
 

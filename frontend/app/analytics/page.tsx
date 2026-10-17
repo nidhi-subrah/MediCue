@@ -1,15 +1,6 @@
-import { AnalyticsView } from '@/components/analytics/analytics-view'
-import { AppShell } from '@/components/app/app-shell'
-import { HydrationGate } from '@/components/app/hydration-gate'
+import { redirect } from 'next/navigation'
 
-export const metadata = { title: 'Tiger Data intelligence — SilentSignal' }
-
+/** Moved: the nurse-facing view is Unit insights; the Tiger Data internals are under "How this works". */
 export default function AnalyticsPage() {
-  return (
-    <AppShell wide>
-      <HydrationGate>
-        <AnalyticsView />
-      </HydrationGate>
-    </AppShell>
-  )
+  redirect('/nurse/insights')
 }
