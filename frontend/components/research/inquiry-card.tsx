@@ -13,11 +13,15 @@ export function InquiryCard({
 }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const answer = async (response: 'agree' | 'disagree' | 'unsure') => {
     setBusy(true)
+    setError(null)
     try {
       await onAnswer(response, note || null)
+    } catch (e) {
+      setError(String(e))
     } finally {
       setBusy(false)
     }
@@ -64,6 +68,8 @@ export function InquiryCard({
           Unsure
         </button>
       </div>
+      {busy && <p aria-live="polite" className="text-sm text-muted-foreground">Recording…</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </article>
   )
 }

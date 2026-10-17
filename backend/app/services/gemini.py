@@ -5,6 +5,7 @@ template fallback, used when no API key is set or a call fails or times out.
 import asyncio
 import json
 import logging
+import time
 
 from pydantic import BaseModel
 
@@ -12,6 +13,7 @@ from ..config import settings
 
 log = logging.getLogger(__name__)
 TIMEOUT_S = 12
+COOLDOWN_S = 60  # after a failure (e.g. 503 "high demand"), use templates for a while instead of waiting each time
 
 LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "zh": "Simplified Chinese",
                   "pa": "Punjabi (Gurmukhi)", "ar": "Arabic", "tl": "Tagalog"}
@@ -37,6 +39,7 @@ class Gemini:
         self.model = model
         self.client = None
         self._cache: dict[tuple[str, str], str] = {}
+        self._cooldown_until = 0.0
         if api_key:
             try:
                 from google import genai
@@ -49,7 +52,7 @@ class Gemini:
         return self.client is not None
 
     async def _json(self, prompt: str, schema: type[BaseModel]) -> BaseModel | None:
-        if not self.client:
+        if not self.client or time.monotonic() < self._cooldown_until:
             return None
         from google.genai import types
         try:
@@ -58,8 +61,9 @@ class Gemini:
                 config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=schema,
                                                    temperature=0.2)), TIMEOUT_S)
             return schema.model_validate(json.loads(resp.text))
-        except Exception:
-            log.exception("Gemini call failed; falling back to template")
+        except Exception as e:
+            self._cooldown_until = time.monotonic() + COOLDOWN_S
+            log.warning("Gemini call failed (%s); using templates for %ds", str(e)[:120], COOLDOWN_S)
             return None
 
     # ---- SBAR ------------------------------------------------------------------------------------

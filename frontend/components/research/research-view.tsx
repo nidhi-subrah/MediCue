@@ -11,8 +11,20 @@ const PENDING = new Set(['SUPPORTED_PENDING_REVIEW', 'REJECTED_PENDING_REVIEW'])
 const DONE = new Set(['VALIDATED', 'REJECTED'])
 
 export function ResearchView() {
-  const { hypotheses, inquiries, digest, staff, patients, running, runCycle, reviewHypothesis, answerInquiry, submitObservation } =
-    useResearch()
+  const {
+    hypotheses,
+    inquiries,
+    digest,
+    staff,
+    patients,
+    running,
+    notice,
+    dismissNotice,
+    runCycle,
+    reviewHypothesis,
+    answerInquiry,
+    submitObservation,
+  } = useResearch()
 
   const pending = hypotheses.filter((h) => PENDING.has(h.status))
   // Clinician observations first (a person is waiting on them), then the most decided.
@@ -113,6 +125,14 @@ export function ResearchView() {
               <h2 id="inq-h" className="text-xl font-bold">Questions for clinicians</h2>
               <span className="text-sm text-muted-foreground">{inquiries.length}</span>
             </header>
+            {notice && (
+              <p role="status" className="rounded-3xl border border-primary/30 bg-primary-soft p-4 text-base">
+                {notice}{' '}
+                <button type="button" onClick={dismissNotice} className="font-semibold text-primary underline underline-offset-2">
+                  Dismiss
+                </button>
+              </p>
+            )}
             {inquiries.length === 0 && (
               <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
                 The agent has no open questions.
