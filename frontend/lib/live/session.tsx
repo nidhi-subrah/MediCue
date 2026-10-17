@@ -18,6 +18,7 @@ interface LiveSessionValue {
   answerQuestion: (answer: 'yes' | 'no' | 'unsure') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
+  goBack: () => void
   respondWelfare: () => Promise<void>
 }
 
@@ -93,6 +94,7 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     },
     setMode: (mode) => void act('mode', { mode }),
     skipConsult: () => void act('skip_consult', {}),
+    goBack: () => void act('back', {}),
     respondWelfare: async () => {
       if (!welfare) return
       await api.post(welfare.respondPath ?? `/api/welfare/${welfare.id}/respond`)

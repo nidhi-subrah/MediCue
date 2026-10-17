@@ -11,7 +11,6 @@ function useApplySettings() {
   const buttonSize = useSettings((s) => s.buttonSize)
   const highContrast = useSettings((s) => s.highContrast)
   const reducedMotion = useSettings((s) => s.reducedMotion)
-  const language = useSettings((s) => s.language)
 
   useEffect(() => {
     const root = document.documentElement
@@ -19,8 +18,7 @@ function useApplySettings() {
     root.dataset.buttonSize = buttonSize
     root.classList.toggle('high-contrast', highContrast)
     root.classList.toggle('reduce-motion', reducedMotion)
-    root.lang = language
-  }, [textSize, buttonSize, highContrast, reducedMotion, language])
+  }, [textSize, buttonSize, highContrast, reducedMotion])
 }
 
 function rehydrate(store: { persist?: { rehydrate: () => unknown } }) {

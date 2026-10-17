@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { isInputMode } from '@/lib/modes'
 import { safeStorage } from './safe-storage'
-import type { InputMode, Language } from '@/lib/types'
+import type { InputMode } from '@/lib/types'
 
 export type TextSize = 'md' | 'lg' | 'xl' | 'xxl'
 export type ButtonSize = 'regular' | 'large' | 'xl'
@@ -15,7 +15,6 @@ export interface SettingsState {
   reducedMotion: boolean
   preferredMode: InputMode
   spokenPrompts: boolean
-  language: Language
   buttonSize: ButtonSize
   speechRate: number
   onboarded: boolean
@@ -29,7 +28,6 @@ const defaults = {
   reducedMotion: false,
   preferredMode: 'standard' as InputMode,
   spokenPrompts: false,
-  language: 'en' as Language,
   buttonSize: 'regular' as ButtonSize,
   speechRate: 0.95,
   onboarded: false,
@@ -44,11 +42,13 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'silentsignal-settings',
-      version: 1,
-      // v1 removed the Single-Switch mode and its scan speed: saved settings fall back to Standard.
+      version: 2,
+      // v1 removed the Single-Switch mode and its scan speed (saved settings fall back to Standard);
+      // v2 removed the language setting (the app and its speech are English).
       migrate: (saved) => {
         const s = { ...(saved as Record<string, unknown>) }
         delete s.scanSpeed
+        delete s.language
         if (!isInputMode(s.preferredMode)) s.preferredMode = 'standard'
         return s as unknown as SettingsState
       },

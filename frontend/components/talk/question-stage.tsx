@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronsRight } from 'lucide-react'
+import { ArrowLeft, ChevronsRight } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useSpeaker } from '@/hooks/use-speaker'
@@ -89,9 +89,24 @@ export function QuestionStage({
       className="flex flex-col gap-6 rounded-3xl border border-border bg-card p-5 md:p-8"
     >
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          Step {stepNumber} <span className="normal-case tracking-normal">· take your time</span>
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Step {stepNumber} <span className="normal-case tracking-normal">· take your time</span>
+          </p>
+          {canUndo && (
+            <button
+              type="button"
+              onClick={() => {
+                stop()
+                onUndo()
+              }}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+            >
+              <ArrowLeft className="size-5" aria-hidden="true" />
+              Back
+            </button>
+          )}
+        </div>
         <h1
           id="question-prompt"
           className={

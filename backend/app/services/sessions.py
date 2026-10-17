@@ -4,6 +4,7 @@ Ordering rule on the escalation path: build the alert from templates and push it
 logging and Gemini enrichment happen afterwards and may fail without affecting the alert.
 """
 import asyncio
+import copy
 import logging
 import time
 import uuid
@@ -75,7 +76,13 @@ class Session:
     auto_switched: bool = False
     options: dict | None = None      # tailored second-step options, fixed once shown (engine/options.py)
     choice: dict | None = None       # the option the patient picked: label, predicted or "something else"
+    history: list[dict] = field(default_factory=list)   # snapshots before each patient input, for "Back"
 
+
+# What "Back" restores. Everything else (alerts, consults, logs) is either not created yet while the patient
+# is still answering, or is an audit trail that should keep the undone input.
+UNDOABLE = ("status", "question_id", "options", "choice", "decision", "mode", "auto_switched")
+CAN_GO_BACK = ("feeling", "question")
 
 class SessionService:
     def __init__(self, cat: Catalog, cfg: EngineConfig, store, hub: Hub, gemini: Gemini, conformal: ConformalPredictor,
@@ -256,13 +263,15 @@ class SessionService:
         if not refining and s.status != kind:
             raise ValueError(f"expected a {s.status} input, got {kind} tap")
         finish = None
-        if kind == "feeling" and option_id:
-            s.choice = self._pick_option(s, option_id, tap_id)
-            if s.choice["send_now"]:
-                finish = f"Sent straight away: “{s.choice['label']}” needs no follow-up question."
+        choice = self._pick_option(s, option_id, tap_id) if kind == "feeling" and option_id else None
+        if choice and choice["send_now"]:
+            finish = f"Sent straight away: “{choice['label']}” needs no follow-up question."
         elif kind == "area" and opts.area_sends_now(self.cat, tap_id):
             finish = f"Sent straight away: “{self.cat.area_labels[tap_id]}” needs no follow-up question."
         latency = self._latency_ms(s)
+        self._remember(s)
+        if choice:
+            s.choice = choice
         s.dialogue.apply_tap(kind, tap_id)
         await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency,
                                      "option": s.choice if kind == "feeling" else None})
@@ -279,10 +288,35 @@ class SessionService:
         if s.status != "question" or s.question_id != question_id:
             raise ValueError("no such open question")
         latency = self._latency_ms(s)
+        self._remember(s)
         s.dialogue.apply_answer(question_id, answer)
         await self._event(s, "answer", {"question": question_id, "answer": answer, "latency_ms": latency})
         await self._log_belief(s)
         return await self._advance(s)
+
+    # ---- "Back": undo the patient's last input while they're still answering ----------------------
+
+    def _remember(self, s: Session):
+        # The catalog, config and learned model are shared and read-only: keep them out of the copy.
+        d = s.dialogue
+        memo = {id(d.cat): d.cat, id(d.cfg): d.cfg, id(d.personal): d.personal}
+        s.history.append({"dialogue": copy.deepcopy(d, memo)} | {k: copy.deepcopy(getattr(s, k)) for k in UNDOABLE})
+
+    async def back(self, sid: str) -> dict:
+        """Go back one step: the previous question, or "Where is it?" again. Only while nothing has been sent
+        to anyone yet (the status is "feeling" or "question"), so undoing can never retract an alert."""
+        s = self.sessions[sid]
+        if s.status not in CAN_GO_BACK or not s.history:
+            raise ValueError("nothing to go back to")
+        snap = s.history.pop()
+        s.dialogue = snap.pop("dialogue")
+        for k, v in snap.items():
+            setattr(s, k, v)
+        await self._event(s, "back", {"to": s.status})
+        await self._log_belief(s)
+        out = await self.state(s, publish=True)
+        s.prompted_at = time.time()
+        return out
 
     async def set_mode(self, sid: str, mode: str, reason: str = "user") -> dict:
         s = self.sessions[sid]
@@ -366,6 +400,7 @@ class SessionService:
             "baseline_interval": d.baseline_interval, "profile": self._profile_items(s.patient["id"]),
             "options": s.options if s.status == "feeling" or (s.status == "escalated" and d.feeling is None) else None,
             "choice": s.choice,
+            "can_go_back": s.status in CAN_GO_BACK and bool(s.history),
         }
         if publish:
             await self.hub.publish(f"patient:{s.patient['id']}", {"type": "session", "session": out})
@@ -531,6 +566,7 @@ class SessionService:
         person = PERSON_BY_ID[person_id]
         options = s.dialogue.consult_options()
         s.dialogue.mark_consulted(person_id)
+        s.history.clear()   # someone else is now involved: no undoing past this point
         labels = [self.cat.by_id[n]["label"] for n in options]
         taps = [self.cat.area_labels.get(s.dialogue.area, ""), self.cat.feeling_labels.get(s.dialogue.feeling, "")]
         c = {
