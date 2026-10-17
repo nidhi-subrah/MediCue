@@ -62,6 +62,7 @@ export interface SessionState {
   trace: TraceStep[];
   alert_id: string | null;
   ui_text: Record<string, string>;    // translated tile labels/prompts for the patient's language
+  prior_reasons: string[];            // why the prior looks the way it does (time of day, surgery, history)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -77,6 +78,7 @@ export interface Alert {
   consults: { person: string; answer: string }[];
   sbar: SBAR; sbar_source: "template" | "gemini";
   confirmed_need: string | null; seconds_to_alert: number;
+  reason: string;                     // the decision engine's explanation for this alert
 }
 
 export interface ConsultRequest {
