@@ -9,7 +9,7 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   HandoffPatient, HandoffSummary, LearnedSignal, PatientLearning, LearningSession, LearningDemo,
   CasePacket, StopReason, NextStepCode, CaseFeedback, CaseRecord, DecisionActionRow,
   BeliefEvolutionPoint, CompressionStat, HypertableStat, PatientAnalytics, TigerDataOverview,
-  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, LadderLevel, LadderChange, LadderState, LadderPatient } from '@shared/types'
+  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, LadderLevel, LadderChange, LadderState, LadderPatient, Forecast, ForecastPatient, ForecastRisk, ForecastChange } from '@shared/types'
 
 /** The UI's own notion of "how the person is answering right now". `standard` and `easy` map to
  *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to

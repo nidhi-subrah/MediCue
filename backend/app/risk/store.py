@@ -241,7 +241,7 @@ class TimescaleRiskStore:
                                "ORDER BY bucket, risk", (patient_id,))
 
     async def trend_all(self) -> list[dict]:
-        return await self._all("SELECT bucket, patient_id, risk, max_score FROM risk_scores_6h "
+        return await self._all("SELECT bucket, patient_id, risk, mean_score, max_score FROM risk_scores_6h "
                                "ORDER BY patient_id, risk, bucket")
 
     # ---- silence detection -----------------------------------------------------------------------

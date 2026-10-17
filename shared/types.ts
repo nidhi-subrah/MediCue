@@ -161,6 +161,44 @@ export interface RiskPatient {
 
 export interface RiskOverview { notice: string; config_version: string; patients: RiskPatient[] }
 
+/** Early warnings for nurses (GET /api/risk/forecast, backend/app/risk/forecast.py). */
+export interface ForecastChange {
+  signal: string;
+  what: string;                       // e.g. "Bathroom trips at night"
+  detail: string;                     // e.g. "4 in the last day, usually about 1"
+  check: string | null;               // a simple thing to check; never a diagnosis
+}
+
+export interface ForecastRisk {
+  risk: RiskKey; risk_word: string; level: RiskFlagLevel; level_word: "Low" | "Watch" | "High";
+  score: number; enough_data: boolean;
+  trend: { direction: "rising" | "steady" | "easing" | "unknown"; per_day: number | null };
+  outlook: { next_level: RiskFlagLevel | null; next_word: string | null;
+             eta_hours: number | null;    // hours to the next level if the trend continues (≤ 72)
+             projected_24h: number | null };
+  changes: ForecastChange[];
+  summary: string;                    // template sentence
+  summary_ai?: string | null;         // Gemini's wording of the same facts
+  needs_check: boolean;
+  thresholds: { watch: number; elevated: number };
+  history: { time: string; score: number }[];   // 6-hourly mean score, last 7 days (Tiger Data aggregate)
+  time: string;
+}
+
+export interface ForecastPatient {
+  patient_id: string; name: string; room: string; synthetic: boolean;
+  now: string;                        // time of the latest score
+  stale: boolean;                     // latest score is hours old (practice storylines stop at their event)
+  risks: ForecastRisk[];              // most urgent first
+  needs_check: boolean;
+}
+
+export interface Forecast {
+  notice: string; ward_summary: string; summary_source: "gemini" | "template"; ai_pending: boolean;
+  counts: { high: number; watch: number; rising: number; patients_to_check: number; patients: number };
+  patients: ForecastPatient[];
+}
+
 export interface TimelineCase {
   patient_id: string; name: string; room: string; storyline: string; split: "train" | "test";
   risk: RiskKey; label: string; headline: string; lead_days: number | null; flag_level: RiskFlagLevel | null;

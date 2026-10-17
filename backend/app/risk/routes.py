@@ -1,18 +1,25 @@
 """Risk and silence-detection API. Risk responses carry the synthetic-data and not-a-diagnosis notice."""
+import asyncio
+import hashlib
+import json
+import logging
 from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ..data.patients import PATIENT_BY_ID
+from . import forecast as fc
 from .config import DEFAULT, LEVELS, SIGNALS
 from .silence_monitor import utcnow
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
+log = logging.getLogger(__name__)
 
 NOTICE = "Synthetic data. Risk flags are prompts for clinician review, not diagnoses."
 RANK = {level: i for i, level in enumerate(LEVELS)}
 SPARK_DAYS = 7
+STALE_HOURS = 6     # older than this, the forecast says "last data …" instead of "now"
 OUTCOME_WORDS = {"fall": "fall", "dehydration": "dehydration", "delirium_infection_concern": "delirium/infection"}
 
 
@@ -86,6 +93,101 @@ async def patient(pid: str, request: Request, hours: int = 72):
         "flags": [{"time": r["time"], "risk": r["risk"], "level": r["flag"], "reason": r["reason"]}
                   for r in await store.flags(pid)],
     }
+
+
+# ---- early-warning forecast (risk/forecast.py) ------------------------------------------------------
+
+_briefings: dict[str, dict] = {}        # facts hash -> Gemini briefing
+_briefing_tasks: set[asyncio.Task] = set()
+
+
+def _briefing_facts(patients: list[dict]) -> list[dict]:
+    return [{"id": f"{p['patient_id']}:{r['risk']}", "patient": fc.short_name(p["name"]), "risk": r["risk_word"],
+             "level": r["level_word"], "direction": r["trend"]["direction"],
+             "next_level": r["outlook"]["next_word"] if r["outlook"]["eta_hours"] is not None else None,
+             "hours_until_next_level": r["outlook"]["eta_hours"],
+             "changes": [f"{c['what']} ({c['detail']})" for c in r["changes"]]}
+            for p in patients if p["needs_check"] for r in p["risks"] if r["needs_check"]]
+
+
+async def _brief(gemini, key: str, facts: list[dict]):
+    try:
+        out = await gemini.risk_briefing(facts)
+        if out:
+            _briefings[key] = out
+    except Exception:
+        log.exception("risk briefing failed (templates kept)")
+
+
+@router.get("/forecast")
+async def forecast_view(request: Request):
+    """Early warnings for nurses: per patient and risk, the level now, where it is heading, what changed
+    and what to check, plus a 7-day history from the 6-hourly aggregate. Most urgent first."""
+    store = _store(request)
+    people = await _people(store)
+    series: dict[tuple[str, str], list] = {}
+    for t in await store.trend_all():
+        series.setdefault((t["patient_id"], t["risk"]), []).append((t["bucket"], float(t["mean_score"])))
+    by_patient: dict[str, list] = {}
+    for row in await store.latest_scores():
+        by_patient.setdefault(row["patient_id"], []).append(row)
+
+    patients = []
+    for pid, rows in by_patient.items():
+        who = people.get(pid, {"name": pid, "room": "", "synthetic": True})
+        now = max(r["time"] for r in rows)
+        risks = []
+        for row in rows:
+            model = DEFAULT.models[row["risk"]]
+            pts = sorted(series.get((pid, row["risk"]), []))
+            tr = fc.trend(pts, now)
+            out = fc.outlook(row["level"], row["score"], model, tr)
+            ch = fc.changes(row["risk"], row["contributors"])
+            risks.append({
+                "risk": row["risk"], "risk_word": fc.RISK_WORD[row["risk"]], "level": row["level"],
+                "level_word": fc.LEVEL_WORD[row["level"]], "score": row["score"], "enough_data": row["enough_data"],
+                "trend": {k: tr[k] for k in ("direction", "per_day")}, "outlook": out, "changes": ch,
+                "summary": fc.summary(who["name"], row["risk"], row["level"], tr, out, ch),
+                "needs_check": fc.needs_check(row["level"], tr, out),
+                "thresholds": {"watch": model.watch, "elevated": model.elevated},
+                "history": [{"time": b, "score": round(v, 3)} for b, v in pts
+                            if (now - b).total_seconds() <= SPARK_DAYS * 86400],
+                "time": now,
+            })
+        risks.sort(key=lambda r: fc.priority(r["level"], r["outlook"]))
+        stale_h = (utcnow() - now).total_seconds() / 3600
+        patients.append({"patient_id": pid, **who, "now": now, "risks": risks,
+                         "stale": stale_h > STALE_HOURS,   # practice storylines stop at their event
+                         "needs_check": any(r["needs_check"] for r in risks)})
+    patients.sort(key=lambda p: (not p["needs_check"], fc.priority(p["risks"][0]["level"], p["risks"][0]["outlook"]),
+                                 p["room"]))
+
+    flagged = [r for p in patients for r in p["risks"]]
+    counts = {"high": sum(r["level"] == "elevated" for r in flagged), "watch": sum(r["level"] == "watch" for r in flagged),
+              "rising": sum(r["outlook"]["eta_hours"] is not None for r in flagged),
+              "patients_to_check": sum(p["needs_check"] for p in patients), "patients": len(patients)}
+    first = [f"{p['name']} ({p['risks'][0]['risk_word'].split(' (')[0].lower()})" for p in patients if p["needs_check"]][:3]
+    ward = (f"{counts['patients_to_check']} of {counts['patients']} patients need a check. Start with "
+            f"{', '.join(first)}." if first else "Nobody needs an extra check right now.")
+
+    facts = _briefing_facts(patients)
+    key = hashlib.sha1(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
+    gemini = getattr(request.app.state, "gemini", None)
+    brief = _briefings.get(key)
+    pending = False
+    if not brief and facts and gemini is not None and gemini.enabled and gemini.paused_for == 0:
+        if not any(not t.done() and t.get_name() == key for t in _briefing_tasks):
+            task = asyncio.create_task(_brief(gemini, key, facts), name=key)
+            _briefing_tasks.add(task)
+            task.add_done_callback(_briefing_tasks.discard)
+        pending = True
+    if brief:
+        ward = brief["ward"] or ward
+        for p in patients:
+            for r in p["risks"]:
+                r["summary_ai"] = brief["items"].get(f"{p['patient_id']}:{r['risk']}")
+    return {"notice": NOTICE, "ward_summary": ward, "summary_source": "gemini" if brief else "template",
+            "ai_pending": pending, "counts": counts, "patients": patients}
 
 
 # ---- silence detection ----------------------------------------------------------------------------

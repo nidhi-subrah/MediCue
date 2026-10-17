@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 export const LEVEL: Record<RiskFlagLevel, { label: string; icon: typeof Eye; rank: number; text: string; edge: string }> = {
   low: { label: 'Low', icon: CircleMinus, rank: 0, text: 'text-muted-foreground', edge: 'border-l-border' },
   watch: { label: 'Watch', icon: Eye, rank: 1, text: 'text-caution', edge: 'border-l-caution' },
-  elevated: { label: 'Elevated', icon: TriangleAlert, rank: 2, text: 'text-urgent', edge: 'border-l-urgent' },
+  elevated: { label: 'High', icon: TriangleAlert, rank: 2, text: 'text-urgent', edge: 'border-l-urgent' },
 }
 
 export function LevelBadge({ level, enough = true, className }: { level: RiskFlagLevel; enough?: boolean; className?: string }) {
