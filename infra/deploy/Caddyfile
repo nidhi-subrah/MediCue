@@ -1,0 +1,5 @@
+# Automatic HTTPS for the GoDaddy Registry domain. WebSockets are proxied transparently.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:8000
+}

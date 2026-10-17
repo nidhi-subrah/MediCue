@@ -1,0 +1,58 @@
+# Local or single-VM deployment: TimescaleDB + the app (API + built frontend) + optional Caddy for HTTPS.
+#
+#   cd infra && cp .env.example .env && docker compose up --build
+#   docker compose --profile domain up -d --build      # with Caddy + your domain (see deploy/vultr.md)
+#
+# To use Tiger Data (managed Timescale) instead of the local db, set DATABASE_URL in .env to the
+# Tiger connection string. The local db container still starts (app depends on it) but is unused.
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: silentsignal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-silentsignal}
+      POSTGRES_DB: silentsignal
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U silentsignal"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://silentsignal:${POSTGRES_PASSWORD:-silentsignal}@db:5432/silentsignal}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      UNIT_TZ: ${UNIT_TZ:-America/Toronto}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8
+    profiles: ["domain"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on: [app]
+    restart: unless-stopped
+
+volumes:
+  dbdata:
+  caddydata:
