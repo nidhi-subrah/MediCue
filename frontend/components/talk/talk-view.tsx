@@ -56,13 +56,15 @@ export function TalkView() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/home"
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
-          >
-            <X className="size-4" aria-hidden="true" />
-            Exit
-          </Link>
+          {user?.role !== 'patient' && (   // a patient has nowhere else to go; they get Log out instead
+            <Link
+              href="/home"
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+            >
+              <X className="size-4" aria-hidden="true" />
+              Exit
+            </Link>
+          )}
           <span className="inline-flex h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
             {patient.name} · {patient.room}
           </span>
@@ -86,7 +88,7 @@ export function TalkView() {
               Log out
             </button>
           )}
-          <UrgentButton compact />
+          <UrgentButton compact patientId={patient.id} />
         </div>
       </div>
 

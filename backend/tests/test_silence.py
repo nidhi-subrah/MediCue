@@ -324,7 +324,7 @@ def test_ladder_end_to_end_contact_concern_then_nurse_acknowledges():
             client.post(f"/api/alerts/{alert['id']}/confirm", json={"nurse": "Priya"})   # the dashboard button
             client.portal.call(monitor.tick, utcnow())
             done = client.get(f"/api/risk/silence/ladders?patient_id=p-chen").json()[0]
-            assert not done["active"] and done["steps"][-1]["ack_by"] == "Priya"
+            assert not done["active"] and done["steps"][-1]["ack_by"] == client.get("/api/auth/me").json()["name"]   # the logged-in nurse
             events = [r["event"] for r in client.get(f"/api/risk/silence/audit?ladder_id={lad.id}").json()]
             assert events == ["ladder_started", "step_started",            # tablet check
                               "step_timed_out", "step_started",            # -> trusted contact

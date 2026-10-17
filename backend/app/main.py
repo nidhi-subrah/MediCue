@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .auth import (
-    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session,
+    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session, demo_accounts,
     current_user, destroy_session, require_nurse, user_for_session_id, verify_password,
 )
 from .catalog import get_catalog
@@ -167,6 +167,12 @@ async def logout(request: Request, response: Response):
     return {"ok": True}
 
 
+@app.get("/api/auth/demo-accounts")
+async def auth_demo_accounts():
+    """Demo logins shown on the login page, only while the built-in demo passwords are in use."""
+    return demo_accounts()
+
+
 @app.get("/api/auth/me")
 async def me(user: DemoUser = Depends(current_user)):
     return user.public()
@@ -175,6 +181,15 @@ async def me(user: DemoUser = Depends(current_user)):
 @app.get("/api/patients")
 async def patients(user: DemoUser = Depends(require_nurse)):
     return [await svc().patient_view(p["id"]) for p in PATIENTS]
+
+
+@app.post("/api/patients/{pid}/urgent")
+async def patient_urgent(pid: str, user: DemoUser = Depends(current_user)):
+    """Urgent help pressed on this patient's tablet: alerts the nurse station at once."""
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    check_patient_access(pid, user)
+    return await svc().patient_urgent(pid, user.email)
 
 
 @app.get("/api/patients/{pid}")
@@ -304,7 +319,7 @@ async def back(sid: str, user: DemoUser = Depends(_require_session_access)):
 
 class ConfirmBody(BaseModel):
     need_id: str | None = None
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
     note: str | None = None      # optional observation; Gemini suggests profile changes from it
     case_helpful: bool | None = None   # verdict on the alert's case packet, if it has one
 
@@ -320,17 +335,17 @@ async def alerts(status: str | None = None, user: DemoUser = Depends(require_nur
 async def confirm(aid: str, body: ConfirmBody, user: DemoUser = Depends(require_nurse)):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
+    return await _call(svc().confirm(aid, body.need_id, user.name, body.note, body.case_helpful))
 
 
 class CaseAckBody(BaseModel):
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
 
 
 @app.post("/api/cases/{cid}/acknowledge")
 async def case_acknowledge(cid: str, body: CaseAckBody, user: DemoUser = Depends(require_nurse)):
     """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
-    return await _call(svc().acknowledge_case(cid, body.nurse))
+    return await _call(svc().acknowledge_case(cid, user.name))
 
 
 @app.post("/api/cases/{cid}/gemini")
