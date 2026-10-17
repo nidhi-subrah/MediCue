@@ -12,6 +12,8 @@ from .belief import (answer_likelihood, bayes_update, consult_likelihood, entrop
                      tap_likelihood, top_items)
 from .decision import Consultant, Decision, DecisionInput, consult_options, decide
 
+SURPRISING_ANSWER = 0.2   # an answer the belief gave less than this chance counts as inconsistent
+
 
 @dataclass
 class TraceStep:
@@ -36,6 +38,8 @@ class Dialogue:
     reliability: float
     consultants: list[Consultant] = field(default_factory=list)
     chart_flags: dict[str, bool] = field(default_factory=dict)
+    baseline_interval: float | None = None   # patient's usual seconds between inputs (from history)
+    fatigue_sensitivity: float = 1.0         # from the patient profile (engine/profile.py)
 
     def __post_init__(self):
         self.belief = list(self.prior)
@@ -52,6 +56,7 @@ class Dialogue:
         self.lookup_results: list[tuple[str, str, bool]] = []  # (id, label, flag)
         self.consulted: set[str] = set()
         self.consult_answers: list[tuple[str, str]] = []   # (person name, answer label)
+        self.inconsistencies = 0.0                         # surprising answers (+1) and "not sure" (+0.5)
         self._record("prior", "Prior from context", "")
 
     # ---- evidence ----------------------------------------------------------------------------
@@ -81,6 +86,12 @@ class Dialogue:
         self.questions_asked += 1
         self.asked.add(question_id)
         self.answers.append((q.text, answer))
+        if answer == "unsure":
+            self.inconsistencies += 0.5
+        else:
+            lik = answer_likelihood(q.p_yes, answer, self.reliability)
+            if sum(b * l for b, l in zip(self.belief, lik)) < SURPRISING_ANSWER:
+                self.inconsistencies += 1
         self._signal(answer_likelihood(q.p_yes, answer, self.reliability))
         self._record("answer", f"{q.text} → {answer}", question_id)
 
@@ -114,12 +125,19 @@ class Dialogue:
     # ---- decision loop -----------------------------------------------------------------------
 
     def fatigue(self) -> float:
+        """(1 + 0.35·questions) × slowdown × (1 + 0.3·inconsistencies) × sensitivity. See engine/profile.py."""
         base = 1.0 + 0.35 * self.questions_asked
         gaps = [b - a for a, b in zip(self.tap_times, self.tap_times[1:])]
         slowdown = 1.0
-        if len(gaps) >= 2 and gaps[0] > 0:
+        if gaps and self.baseline_interval:
+            slowdown = min(max(gaps[-1] / self.baseline_interval, 1.0), 3.0)
+        elif len(gaps) >= 2 and gaps[0] > 0:
             slowdown = min(max(gaps[-1] / gaps[0], 1.0), 3.0)
-        return base * slowdown
+        return base * slowdown * (1.0 + 0.3 * self.inconsistencies) * self.fatigue_sensitivity
+
+    @property
+    def patient_can_answer(self) -> bool:
+        return self.inconsistencies < self.cfg.max_inconsistent_answers
 
     def decision_input(self) -> DecisionInput:
         return DecisionInput(
@@ -127,7 +145,8 @@ class Dialogue:
             questions_asked=self.questions_asked, asked=self.asked, used_lookups=self.used_lookups,
             available_lookups=set(self.chart_flags) if self.chart_flags else set(),
             consultants=self.consultants, consulted=self.consulted, dialogue_open=self.dialogue_open,
-            signal_p_high=p_high_risk(self.cat, self.signal_belief))
+            signal_p_high=p_high_risk(self.cat, self.signal_belief),
+            patient_can_answer=self.patient_can_answer)
 
     def step(self) -> Decision:
         """Run near-free lookups until the best action needs the patient, a person, or ends the dialogue."""

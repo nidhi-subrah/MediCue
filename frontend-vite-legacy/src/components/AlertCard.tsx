@@ -3,6 +3,7 @@ import type { Alert } from "@shared/types";
 import { api, pct, timeAgo } from "../api";
 import { catalog, needLabel } from "../catalog";
 import BeliefBars from "./BeliefBars";
+import ProfileList from "./ProfileList";
 
 const SBAR_ROWS = [
   ["situation", "Situation"], ["background", "Background"], ["assessment", "Assessment"], ["recommendation", "Recommendation"],
@@ -10,6 +11,7 @@ const SBAR_ROWS = [
 
 export default function AlertCard({ alert }: { alert: Alert }) {
   const [other, setOther] = useState("");
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const urgent = alert.priority === "urgent";
   const open = alert.status === "open";
@@ -18,7 +20,7 @@ export default function AlertCard({ alert }: { alert: Alert }) {
   const confirm = async (needId: string | null) => {
     setBusy(true);
     try {
-      await api.post(`/api/alerts/${alert.id}/confirm`, { need_id: needId });
+      await api.post(`/api/alerts/${alert.id}/confirm`, { need_id: needId, note: note.trim() || null });
     } finally {
       setBusy(false);
     }
@@ -70,6 +72,21 @@ export default function AlertCard({ alert }: { alert: Alert }) {
         </details>
       )}
 
+      {alert.profile?.length > 0 && (
+        <details className="alert-more">
+          <summary>Patient profile · {alert.profile.length} item{alert.profile.length === 1 ? "" : "s"}</summary>
+          <ProfileList items={alert.profile} />
+          <a className="small-link" href={`#/profile/${alert.patient_id}`}>Notes and profile</a>
+        </details>
+      )}
+
+      {open && alert.kind === "need" && (
+        <label className="note-field">
+          <span>Observation (optional). Gemini suggests profile updates from it for a nurse to approve.</span>
+          <textarea rows={2} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. Took ages on the second question. Easier to ask his daughter after 8pm." />
+        </label>
+      )}
       {open ? (
         alert.kind === "need" ? (
           <div className="confirm-row" aria-label="Confirm what the patient needed">
@@ -87,7 +104,10 @@ export default function AlertCard({ alert }: { alert: Alert }) {
           <div className="confirm-row"><button className="btn btn-primary" disabled={busy} onClick={() => confirm(null)}>Acknowledge</button></div>
         )
       ) : (
-        <p className="confirmed">Confirmed{alert.confirmed_need ? `: ${needLabel(alert.confirmed_need)}` : ""}</p>
+        <>
+          <p className="confirmed">Confirmed{alert.confirmed_need ? `: ${needLabel(alert.confirmed_need)}` : ""}</p>
+          {alert.nurse_note && <p className="alert-note">Note: {alert.nurse_note}</p>}
+        </>
       )}
     </article>
   );

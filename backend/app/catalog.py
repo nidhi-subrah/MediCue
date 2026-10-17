@@ -100,7 +100,7 @@ class Catalog:
 
 def load_catalog(path: Path | None = None) -> Catalog:
     path = path or settings.shared_dir / "catalog.json"
-    return Catalog(json.loads(Path(path).read_text()), settings.engine.tap_background)
+    return Catalog(json.loads(Path(path).read_text(encoding="utf-8")), settings.engine.tap_background)
 
 
 @lru_cache
