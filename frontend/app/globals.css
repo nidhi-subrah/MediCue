@@ -14,6 +14,8 @@
   --color-urgent: var(--urgent);
   --color-urgent-foreground: var(--urgent-foreground);
   --color-urgent-soft: var(--urgent-soft);
+  --color-caution: var(--caution);
+  --color-caution-soft: var(--caution-soft);
   --color-primary-soft: var(--primary-soft);
   --color-surface: var(--surface);
 
@@ -72,6 +74,8 @@
   --urgent: oklch(0.47 0.19 15);
   --urgent-foreground: oklch(0.99 0 0);
   --urgent-soft: oklch(0.955 0.025 15);
+  --caution: oklch(0.52 0.13 70);          /* risk 'watch' level; never colour alone */
+  --caution-soft: oklch(0.96 0.03 80);
   --destructive: oklch(0.47 0.19 15);
   --border: oklch(0.905 0.008 95);
   --input: oklch(0.88 0.01 95);
@@ -109,6 +113,7 @@
   --accent-foreground: oklch(0.25 0.12 268);
   --success: oklch(0.36 0.09 165);
   --urgent: oklch(0.4 0.2 15);
+  --caution: oklch(0.42 0.12 70);
   --destructive: oklch(0.4 0.2 15);
   --border: oklch(0.35 0.01 265);
   --input: oklch(0.35 0.01 265);

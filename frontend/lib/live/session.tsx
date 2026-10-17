@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, useChannel } from '@/lib/services/backend'
 import type { ModeId, Patient, SessionState } from '@/lib/types'
 
-interface Welfare { id: string; requestedBy: string; expiresIn: number; startedAt: number }
+interface Welfare { id: string; requestedBy: string; expiresIn: number; startedAt: number; respondPath?: string }
 
 interface LiveSessionValue {
   patient: Patient | null
@@ -51,7 +51,8 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
   useChannel(`patient:${patientId}`, (m) => {
     if (m.type === 'session' && session && m.session.session_id === session.session_id) setSession(m.session)
     if (m.type === 'welfare_check') {
-      setWelfare({ id: m.id, requestedBy: m.requested_by, expiresIn: m.expires_in, startedAt: Date.now() })
+      setWelfare({ id: m.id, requestedBy: m.requested_by, expiresIn: m.expires_in, startedAt: Date.now(),
+                   respondPath: m.respond_path })   // inactivity checks answer on their own endpoint
     }
     if (m.type === 'welfare_resolved') setWelfare(null)
   })
@@ -94,7 +95,7 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     skipConsult: () => void act('skip_consult', {}),
     respondWelfare: async () => {
       if (!welfare) return
-      await api.post(`/api/welfare/${welfare.id}/respond`)
+      await api.post(welfare.respondPath ?? `/api/welfare/${welfare.id}/respond`)
       setWelfare(null)
     },
   }
