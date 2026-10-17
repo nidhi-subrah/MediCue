@@ -5,7 +5,7 @@ import {
   Hourglass, ListChecks, MessageCircleQuestion, MessageSquare, Scale, ShieldAlert, ThumbsDown, ThumbsUp,
   TimerOff, Users,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { api, pct } from '@/lib/services/backend'
 import type { Alert, CaseFeedback, CaseRecord, NextStepCode, StopReason } from '@/lib/types'
@@ -201,6 +201,84 @@ function NextStep({ record }: { record: CaseRecord }) {
   )
 }
 
+const SBAR_ROWS = [['situation', 'S'], ['background', 'B'], ['assessment', 'A'], ['recommendation', 'R']] as const
+
+const GEMINI_STATUS: Record<CaseRecord['gemini']['outcome'], string> = {
+  gemini: 'Gemini reworded the same facts. Every number, need and chart field was checked against the packet, '
+    + 'and the recommendation is the next step word for word.',
+  disabled: 'Gemini is off on this server (no API key), so there is no Gemini version: nurses see the template.',
+  pending: 'Gemini is writing its version…',
+  no_reply: 'Gemini did not reply (quota, timeout or error), so the template is shown to nurses.',
+  rejected: 'Gemini’s wording failed the checks, so the template is shown to nurses.',
+}
+
+/** The same packet as an SBAR: the template (Gemini off) or Gemini's wording (Gemini on). */
+function SbarCompare({ record }: { record: CaseRecord }) {
+  const [view, setView] = useState<'template' | 'gemini'>(record.sbar_source === 'gemini' ? 'gemini' : 'template')
+  const [asking, setAsking] = useState(false)
+  const g = record.gemini
+  const shown = view === 'template' ? record.sbar_template : g.sbar
+  const option = (value: 'template' | 'gemini', label: string) => (
+    <button type="button" aria-pressed={view === value} onClick={() => setView(value)}
+            className={cn('h-11 rounded-xl border-2 px-4 text-base font-semibold',
+                          view === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>
+      {label}
+    </button>
+  )
+  const askAgain = async () => {
+    setAsking(true)
+    try {
+      await api.post(`/api/cases/${record.id}/gemini`)   // the `case` push updates the card
+    } finally {
+      setAsking(false)
+    }
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="SBAR version">
+        {option('template', 'Gemini off: template')}
+        {option('gemini', 'Gemini on')}
+        <span className="text-base text-muted-foreground">
+          Nurses currently see: <strong className="text-foreground">{record.sbar_source === 'gemini' ? 'Gemini' : 'template'}</strong>
+        </span>
+      </div>
+      {view === 'gemini' && (
+        <div className="flex flex-col gap-1 text-base">
+          <p>{GEMINI_STATUS[g.outcome]}</p>
+          {g.outcome === 'rejected' && g.problems.length > 0 && (
+            <ul className="list-disc pl-6 text-muted-foreground">{g.problems.slice(0, 4).map((p) => <li key={p}>{p}</li>)}</ul>
+          )}
+          {(g.outcome === 'no_reply' || g.outcome === 'rejected') && (
+            <button type="button" onClick={askAgain} disabled={asking}
+                    className="self-start rounded-xl border-2 border-border bg-card px-3 py-1.5 text-base font-semibold disabled:opacity-50">
+              {asking ? 'Asking…' : 'Ask Gemini again'}
+            </button>
+          )}
+        </div>
+      )}
+      {shown && (
+        <dl className="grid gap-2 rounded-2xl border-2 border-border bg-card p-4">
+          {SBAR_ROWS.map(([k, letter]) => (
+            <div key={k} className="grid grid-cols-[2rem_1fr] gap-2">
+              <dt className="font-mono text-lg font-bold">{letter}</dt>
+              <dd className="text-lg leading-relaxed">{shown[k]}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <details className="text-base">
+        <summary className="w-fit cursor-pointer font-semibold text-primary">What Gemini is sent</summary>
+        <p className="mt-2 text-muted-foreground">
+          Only these structured facts. Gemini rewords them; it never chooses the needs, the stop reason or the next step.
+        </p>
+        <pre className="mt-2 max-h-72 overflow-auto rounded-xl border-2 border-border bg-surface p-3 font-mono text-sm leading-snug whitespace-pre-wrap">
+          {JSON.stringify(record.facts, null, 2)}
+        </pre>
+      </details>
+    </div>
+  )
+}
+
 // ---- the card ------------------------------------------------------------------------------------
 
 export function CasePacketCard({ alert }: { alert: Alert }) {
@@ -239,6 +317,7 @@ export function CasePacketCard({ alert }: { alert: Alert }) {
       <Section n={4} title="Chart context that mattered"><Chart record={record} /></Section>
       <Section n={5} title="Why we stopped asking"><WhyStopped record={record} /></Section>
       <Section n={6} title="Suggested next communication step"><NextStep record={record} /></Section>
+      <Section n={7} title="SBAR handoff"><SbarCompare record={record} /></Section>
 
       <footer className="flex flex-col gap-3 border-t-2 border-border pt-4">
         <div className="flex flex-wrap items-center gap-2 text-base text-muted-foreground">
@@ -313,10 +392,14 @@ function FeedbackLine({ fb }: { fb: CaseFeedback }) {
 }
 
 /** Compact summary on the alert card; the full Case packet card opens from it. */
-export function CaseSummary({ alert, helpful, onHelpful }: {
-  alert: Alert; helpful: boolean | null; onHelpful: (v: boolean | null) => void
+export function CaseSummary({ alert, helpful, onHelpful, initiallyOpen = false }: {
+  alert: Alert; helpful: boolean | null; onHelpful: (v: boolean | null) => void; initiallyOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(initiallyOpen)
+  // The demo's alert can reach the screen before the demo request returns, so open on the change too.
+  useEffect(() => {
+    if (initiallyOpen) setOpen(true)
+  }, [initiallyOpen])
   const record = alert.case as CaseRecord
   const light = record.packet.variant === 'light'
   const Icon = NEXT[record.packet.next_step.code]

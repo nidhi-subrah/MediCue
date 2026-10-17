@@ -20,9 +20,11 @@ const SBAR_ROWS = [
 export function AlertCard({
   alert,
   onConfirm,
+  openCase = false,
 }: {
   alert: Alert
   onConfirm: (needId: string | null, note: string | null, caseHelpful: boolean | null) => Promise<void>
+  openCase?: boolean                  // open the case packet card as soon as it arrives (demo)
 }) {
   const [other, setOther] = useState('')
   const [note, setNote] = useState('')
@@ -84,7 +86,7 @@ export function AlertCard({
         </div>
       )}
 
-      {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} />}
+      {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} initiallyOpen={openCase} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (

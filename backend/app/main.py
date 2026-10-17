@@ -248,6 +248,34 @@ async def case_acknowledge(cid: str, body: CaseAckBody):
     return await _call(svc().acknowledge_case(cid, body.nurse))
 
 
+@app.post("/api/cases/{cid}/gemini")
+async def case_gemini(cid: str):
+    """Ask Gemini again to word a case's SBAR (checked as always; the template stays if it fails or Gemini is off)."""
+    return await _call(svc().regenerate_case_sbar(cid))
+
+
+class DemoRunBody(BaseModel):
+    pause_s: float = 0.4          # between scripted inputs, so the tablet and nurse screen can be watched
+
+
+@app.get("/api/demo/scenarios")
+async def demo_scenarios():
+    from .sim.demo_scenarios import SCENARIOS
+    return [{k: getattr(sc, k) for k in ("id", "title", "patient_id", "hour", "description")} for sc in SCENARIOS.values()]
+
+
+@app.post("/api/demo/scenarios/{scenario_id}")
+async def demo_run(scenario_id: str, body: DemoRunBody):
+    """Play a scripted scenario through the real session service (synthetic patient; the engine decides)."""
+    from .sim.demo_scenarios import SCENARIOS, run_live
+    sc = SCENARIOS.get(scenario_id)
+    if not sc:
+        raise HTTPException(404, "unknown demo scenario")
+    out = await _call(run_live(svc(), sc, min(max(body.pause_s, 0.0), 3.0)))
+    out["scenario"] = {k: out["scenario"][k] for k in ("id", "title", "patient_id", "hour", "description")}
+    return out
+
+
 @app.get("/api/cases/{cid}")
 async def case(cid: str):
     """A clinician-copilot case record (id = alert id): packet, SBAR and the nurse's feedback."""
