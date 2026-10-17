@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
-import type { Forecast, Patient, RiskOverview, SilenceLadder, Timeline, TimelineCase } from '@/lib/types'
+import type { Patient, RiskOverview, SilenceLadder, Timeline, TimelineCase } from '@/lib/types'
 
 /** Latest risk per patient (synthetic cohort + demo patients), refreshed every 5 minutes. */
 export function useRiskOverview() {
@@ -14,33 +14,6 @@ export function useRiskOverview() {
     void load()
     const t = window.setInterval(load, 5 * 60000)
     return () => window.clearInterval(t)
-  }, [])
-
-  return { data, error }
-}
-
-/** Early warnings: refreshed every 5 minutes, and once more shortly after Gemini starts writing the summary. */
-export function useForecast() {
-  const [data, setData] = useState<Forecast | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let follow: number | undefined
-    let tries = 0   // Gemini may stay unavailable: follow up a few times, then wait for the next refresh
-    const load = () =>
-      api.get<Forecast>('/api/risk/forecast')
-        .then((f) => {
-          setData(f)
-          window.clearTimeout(follow)
-          if (f.ai_pending && tries++ < 3) follow = window.setTimeout(load, 8000)
-        })
-        .catch((e) => setError(String(e)))
-    void load()
-    const t = window.setInterval(load, 5 * 60000)
-    return () => {
-      window.clearInterval(t)
-      window.clearTimeout(follow)
-    }
   }, [])
 
   return { data, error }

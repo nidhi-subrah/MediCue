@@ -294,27 +294,6 @@ class Gemini:
         out = await self._json(prompt, TextModel)
         return out.text.strip() if out and out.text.strip() else None
 
-    # ---- early-warning briefing (risk/forecast.py) ---------------------------------------------------
-
-    async def risk_briefing(self, items: list[dict]) -> dict | None:
-        """Plain-English early warnings from the forecast facts: one sentence per item and a ward summary.
-        Returns {"ward": str, "items": {id: str}}, or None (callers keep the template sentences)."""
-        if not items:
-            return None
-        prompt = (
-            "You write early-warning notes for bedside nurses. For each item write ONE short sentence "
-            "(max 30 words) a busy nurse understands at a glance: the risk, its level, the direction and timing "
-            "exactly as given, and the main changes. Then write a ward summary (max 35 words) naming who needs "
-            "a check first. Rules: use only the facts given; never diagnose, never suggest medicines, never "
-            "invent numbers or times; say 'if this continues' for any timing. Plain words, no jargon, no "
-            "percentages, no 'SD'. Return JSON.\n\n"
-            f"{json.dumps(items, default=str)}")
-        out = await self._json(prompt, BriefingModel, timeout=LONG_TIMEOUT_S)
-        if not out:
-            return None
-        known = {i["id"] for i in items}
-        return {"ward": out.ward.strip(), "items": {x.id: x.text.strip() for x in out.items if x.id in known and x.text.strip()}}
-
     # ---- patient profiles (engine/profile.py validates everything returned here) -------------------
 
     @staticmethod
@@ -438,16 +417,6 @@ class Gemini:
             "factual, no causal claims, no diagnosis. Use these counts exactly.\n" + json.dumps(facts))
         out = await self._json(prompt, TextModel)
         return (out.text, "gemini") if out else (None, "template")
-
-
-class BriefingItem(BaseModel):
-    id: str
-    text: str
-
-
-class BriefingModel(BaseModel):
-    ward: str
-    items: list[BriefingItem]
 
 
 class ObservationSpec(BaseModel):
