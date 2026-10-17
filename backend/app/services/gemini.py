@@ -68,6 +68,20 @@ class UnitProfilesModel(BaseModel):
     patients: list[PatientItemsModel]
 
 
+class RankedOption(BaseModel):
+    option_id: str
+    reason: str          # why it's likely for this patient, max ~12 words
+
+
+class AreaRanking(BaseModel):
+    area: str
+    ranked: list[RankedOption]
+
+
+class OptionRankingModel(BaseModel):
+    areas: list[AreaRanking]
+
+
 class HandoffLine(BaseModel):
     patient_id: str
     headline: str
@@ -296,6 +310,24 @@ class Gemini:
         out = await self._json(prompt, ProfileItemsModel, LONG_TIMEOUT_S)
         return [i.model_dump() for i in out.items] if out else None
 
+    # ---- tailored second-step options (engine/options.py validates and pins high-risk) ------------
+
+    async def rank_area_options(self, facts: dict, areas: dict[str, list[dict]]) -> dict[str, list[dict]] | None:
+        """Every area's options, most likely first for this patient, with a short reason each."""
+        menu = "\n".join(f"- {area}: " + "; ".join(f"{o['id']} = {o['label']}" for o in opts)
+                         for area, opts in areas.items())
+        prompt = (
+            "A patient who cannot speak uses a tablet. They first tap WHERE (a body area), then choose WHAT from "
+            "that area's options. For each area, order its options from most to least likely for THIS patient "
+            "right now, using only the facts below (chart flags, notes, profile, recent confirmed needs, learned "
+            "gestures, time). Give each option a reason of at most 12 words. Use only the option ids listed; "
+            "include every option of every area. Do not diagnose.\n\n"
+            f"Areas and options:\n{menu}\n\nPatient facts (JSON):\n{json.dumps(facts, default=str)}")
+        out = await self._json(prompt, OptionRankingModel, LONG_TIMEOUT_S)
+        if not out:
+            return None
+        return {a.area: [{"option_id": r.option_id, "reason": r.reason} for r in a.ranked] for a in out.areas}
+
     # ---- shift summary ---------------------------------------------------------------------------
 
     async def handoff_lines(self, patients: list[dict]) -> dict[str, dict] | None:
@@ -374,8 +406,10 @@ def template_sbar(ctx: dict) -> dict:
     flagged = [l for l in ctx.get("lookups", []) if l["flag"]]
     chart = "; ".join(f"{l['label']} ({l['value']})" for l in flagged) or "no relevant chart flags"
     urgent = ctx["priority"] == "urgent"
+    tapped = " → ".join(t for t in ctx.get("taps", []) if t and t != "-")
     return {
-        "situation": f"{ctx['patient_name']} (room {ctx['room']}) signalled a need via SilentSignal. "
+        "situation": f"{ctx['patient_name']} (room {ctx['room']}) signalled a need via SilentSignal"
+                     + (f": tapped {tapped}" if tapped else "") + ". "
                      f"Most likely: {lead['label']} ({_pct(lead['p'])}).",
         "background": f"{ctx['diagnosis']} Chart: {chart}.",
         "assessment": f"90% set: {', '.join(ctx['prediction_set_labels'])}. Other possibilities: {alternatives}. "

@@ -109,6 +109,29 @@ export function SummaryPanel({
             </p>
           </div>
 
+          {session.options && (
+            <div>
+              <h3 className="mb-2 text-sm font-bold">
+                Suggested options · {session.options.source === 'gemini' ? 'ranked by Gemini' : 'ranked by the engine'}
+              </h3>
+              <ol className="flex flex-col gap-1.5 text-xs">
+                {session.options.predicted.map((o, i) => (
+                  <li key={o.id} className="flex flex-col">
+                    <span className="font-semibold">
+                      {i + 1}. {o.label}
+                      {o.high_risk && <span className="ml-1 font-normal text-urgent">(always shown: high risk)</span>}
+                      {o.send_now && <span className="ml-1 font-normal text-muted-foreground">(sends straight away)</span>}
+                    </span>
+                    {o.reason && <span className="text-muted-foreground">{o.reason}</span>}
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Behind “Something else”: {session.options.more.map((o) => o.label).join(', ')}
+              </p>
+            </div>
+          )}
+
           {d && (
             <div>
               <h3 className="mb-2 text-sm font-bold">Decision: {KIND_LABEL[d.chosen.kind] ?? d.chosen.kind}</h3>

@@ -3,7 +3,7 @@
 import { CircleCheckBig, Siren, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ModeSwitcher } from '@/components/app/mode-switcher'
 import { useLiveSession } from '@/lib/live/session'
 import { backendMode, buildStep, uiMode } from '@/lib/live/talk-adapter'
@@ -21,6 +21,9 @@ export function TalkView() {
   const audio = useSettings((s) => s.spokenPrompts)
   const updateSettings = useSettings((s) => s.update)
   const [showEngine, setShowEngine] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
+  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}` : ''
+  useEffect(() => setMoreOpen(false), [stepKey])
 
   if (error && !session) {
     return (
@@ -39,7 +42,7 @@ export function TalkView() {
   }
 
   const mode = uiMode(session.mode, audio)
-  const step = buildStep(session, mode, tap, answerQuestion)
+  const step = buildStep(session, mode, tap, answerQuestion, { open: moreOpen, setOpen: setMoreOpen })
 
   // Audio has no backend mode: it's the spokenPrompts setting, with the backend kept on `grid`.
   const chooseMode = (next: InputMode) => {

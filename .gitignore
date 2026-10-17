@@ -11,3 +11,5 @@ dist/
 AGENTS.md
 .DS_Store
 *.log
+*credentials*.env
+*credentials*.json

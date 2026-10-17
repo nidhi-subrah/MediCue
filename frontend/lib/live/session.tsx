@@ -14,7 +14,7 @@ interface LiveSessionValue {
   welfare: Welfare | null
   welfareSecondsLeft: number
   start: (mode?: ModeId) => Promise<void>
-  tap: (kind: 'area' | 'feeling', tapId: string) => void
+  tap: (kind: 'area' | 'feeling', tapId: string, optionId?: string) => void
   answerQuestion: (answer: 'yes' | 'no' | 'unsure') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
@@ -86,7 +86,7 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     welfare,
     welfareSecondsLeft: welfare ? Math.max(0, Math.ceil(welfare.expiresIn - (now - welfare.startedAt) / 1000)) : 0,
     start,
-    tap: (kind, tapId) => void act('tap', { kind, tap_id: tapId }),
+    tap: (kind, tapId, optionId) => void act('tap', { kind, tap_id: tapId, option_id: optionId }),
     answerQuestion: (answer) => {
       const q = session?.question
       if (q) void act('answer', { question_id: q.id, answer })

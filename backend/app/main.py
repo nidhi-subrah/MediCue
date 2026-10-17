@@ -17,9 +17,11 @@ from .config import settings
 from .data import seed
 from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
 from .risk import router as risk_router, start as start_risk, start_silence
+from .services.analytics import get_belief_evolution, get_decision_action_history, tigerdata_overview
 from .services.gemini import Gemini
 from .services.handoff import build_handoff
 from .services.hub import Hub
+from .services.predictions import PredictionService
 from .services.profiles import ProfileService
 from .services.research import ResearchAgent
 from .services.sessions import SessionService
@@ -38,6 +40,10 @@ async def lifespan(app: FastAPI):
     await store.init()
     if settings.seed_demo_data and await store.is_empty():
         rows, events = seed.generate(cat)
+        for r in rows:
+            r["origin"] = "synthetic_history"
+        for e in events:
+            e["origin"] = "synthetic_history"
         await store.bulk_seed(rows, events)
         log.info("seeded %d synthetic confirmations", len(rows))
     app.state.risk = await start_risk(store)
@@ -48,7 +54,9 @@ async def lifespan(app: FastAPI):
     app.state.cat, app.state.store, app.state.gemini = cat, store, gemini
     app.state.hub = Hub()
     app.state.profiles = ProfileService(cat, store, gemini, app.state.hub)
-    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles)
+    app.state.predictions = PredictionService(cat, store, gemini, app.state.profiles)
+    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles,
+                                   app.state.predictions)
     app.state.silence = start_silence(app.state.svc, app.state.risk)
     app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
 
@@ -153,6 +161,7 @@ class StartBody(BaseModel):
 class TapBody(BaseModel):
     kind: str          # "area" | "feeling"
     tap_id: str
+    option_id: str | None = None   # which tailored option sent this feeling tap (engine/options.py)
 
 
 class AnswerBody(BaseModel):
@@ -188,7 +197,7 @@ async def get_session(sid: str):
 
 @app.post("/api/sessions/{sid}/tap")
 async def tap(sid: str, body: TapBody):
-    return await _call(svc().tap(sid, body.kind, body.tap_id))
+    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id))
 
 
 @app.post("/api/sessions/{sid}/answer")
@@ -254,6 +263,23 @@ async def _trends():
     rows = await store.window_signals(8)
     changes = await store.mode_changes(24)
     return build_trends(rows, PATIENTS, changes)
+
+
+@app.get("/api/analytics/tigerdata")
+async def analytics_tigerdata(patient_id: str | None = None, days: int = 8):
+    if patient_id and patient_id not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    return await tigerdata_overview(app.state.store, patient_id, days)
+
+
+@app.get("/api/analytics/sessions/{sid}/decision-trace")
+async def analytics_decision_trace(sid: str):
+    store = app.state.store
+    actions = await get_decision_action_history(store, sid)
+    belief = await get_belief_evolution(store, app.state.cat, sid)
+    if not actions and not belief:
+        raise HTTPException(404, "no recorded decision data for this session")
+    return {"session_id": sid, "decision_actions": actions, "belief_evolution": belief}
 
 
 @app.get("/api/trends")

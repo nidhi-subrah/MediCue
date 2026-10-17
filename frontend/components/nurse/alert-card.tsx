@@ -63,6 +63,15 @@ export function AlertCard({
 
       {alert.label && <p className="text-base font-semibold">{alert.label}</p>}
 
+      {alert.choice && (
+        <p className="text-sm text-muted-foreground">
+          Patient chose <span className="font-semibold text-foreground">“{alert.choice.label}”</span>
+          {alert.choice.predicted
+            ? ` · a suggested option (ranked by ${alert.choice.source === 'gemini' ? 'Gemini' : 'the engine'})`
+            : ' · from “Something else”'}
+        </p>
+      )}
+
       {alert.kind === 'need' && lead && (
         <div className="flex flex-wrap items-baseline gap-2">
           <span className={cn('text-2xl font-bold tracking-tight', urgent && 'text-urgent')}>{lead.label}</span>
