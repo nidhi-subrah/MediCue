@@ -39,7 +39,7 @@ export default function AlertCard({ alert }: { alert: Alert }) {
       </dl>
       <p className="muted small">
         Summary: {alert.sbar_source === "gemini" ? "written by Gemini from the structured data" : "template"}
-        {alert.kind === "need" && <> · Engine: {alert.reason}</>}
+        {alert.kind === "need" && <> · Why {urgent ? "escalated" : "sent"} (at the time): {alert.reason}</>}
       </p>
 
       {alert.kind === "need" && (
