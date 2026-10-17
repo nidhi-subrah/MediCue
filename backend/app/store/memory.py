@@ -1,5 +1,6 @@
 """In-process store. Mirrors the Timescale queries in Python so the app runs with no database."""
 import copy
+import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -104,3 +105,52 @@ class MemoryStore:
 
     async def upsert_inquiry(self, inquiry):
         self.inquiries[inquiry["id"]] = dict(inquiry)
+
+    async def daily_confirmed_needs(self, patient_id, days):
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        mine = [r for r in self.rows if r["patient_id"] == patient_id and r["time"] > since]
+        buckets: dict[tuple, int] = defaultdict(int)
+        for r in mine:
+            key = (r["time"].date(), r["confirmed_need"], r["confirmed_group"])
+            buckets[key] += 1
+        return [{"bucket": d, "confirmed_need": need, "confirmed_group": group, "n": n}
+                for (d, need, group), n in sorted(buckets.items())]
+
+    async def last_activity(self, patient_id):
+        candidates = [{"time": e["time"], "kind": e["event_type"]} for e in self.events if e["patient_id"] == patient_id]
+        candidates += [{"time": r["time"], "kind": "confirmation"} for r in self.rows if r["patient_id"] == patient_id]
+        return max(candidates, key=lambda c: c["time"]) if candidates else None
+
+    async def interaction_baseline(self, patient_id, days):
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        mine = [r for r in self.rows if r["patient_id"] == patient_id and r["time"] > since]
+        if not mine:
+            return {"avg_tap_interval": None, "stddev_tap_interval": None, "avg_taps": None, "n": 0}
+        intervals = [r["mean_tap_interval"] for r in mine]
+        return {
+            "avg_tap_interval": statistics.mean(intervals),
+            "stddev_tap_interval": statistics.pstdev(intervals) if len(intervals) > 1 else 0.0,
+            "avg_taps": statistics.mean(r["taps"] for r in mine), "n": len(mine),
+        }
+
+    async def tigerdata_counts(self):
+        latest = max((e["time"] for e in self.events), default=None)
+        return {"events": len(self.events), "confirmations": len(self.rows), "belief_snapshots": len(self.beliefs),
+                "decision_actions": len(self.decision_actions), "latest_event_time": latest.isoformat() if latest else None}
+
+    async def tigerdata_hypertable_stats(self):
+        return []  # no real hypertables without Tiger Data; the API reports this explicitly
+
+    async def tigerdata_compression_stats(self):
+        return [{"table": t, "available": False} for t in
+                ("events", "confirmations", "belief_snapshots", "decision_actions")]
+
+    async def recent_sessions(self, patient_id, limit=10):
+        latest: dict[str, datetime] = {}
+        for r in self.decision_actions:
+            if r["patient_id"] != patient_id:
+                continue
+            if r["session_id"] not in latest or r["time"] > latest[r["session_id"]]:
+                latest[r["session_id"]] = r["time"]
+        ranked = sorted(latest.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+        return [{"session_id": sid, "time": t} for sid, t in ranked]

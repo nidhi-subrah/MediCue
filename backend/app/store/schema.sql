@@ -127,6 +127,25 @@ SELECT add_continuous_aggregate_policy('communication_hourly',
     start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour',
     schedule_interval => INTERVAL '15 minutes', if_not_exists => TRUE);
 
+-- Daily confirmed needs per patient, by need and group. The "Daily Patient Needs" rollup:
+-- only ever counts confirmed (nurse-confirmed) needs, never unconfirmed AI predictions.
+CREATE MATERIALIZED VIEW IF NOT EXISTS patient_daily_needs
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT time_bucket('1 day', time) AS bucket,
+       patient_id, confirmed_need, confirmed_group,
+       count(*) AS n
+FROM confirmations
+GROUP BY bucket, patient_id, confirmed_need, confirmed_group
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('patient_daily_needs',
+    start_offset => INTERVAL '60 days', end_offset => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '15 minutes', if_not_exists => TRUE);
+
+SELECT add_continuous_aggregate_policy('patient_daily_needs',
+    start_offset => INTERVAL '60 days', end_offset => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '15 minutes', if_not_exists => TRUE);
+
 -- Learned reliability of each signal source (patient taps, each family member, each nurse): Beta(a, b).
 CREATE TABLE IF NOT EXISTS source_reliability (
     key        TEXT PRIMARY KEY,

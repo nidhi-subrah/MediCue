@@ -16,6 +16,7 @@ from .catalog import get_catalog
 from .config import settings
 from .data import seed
 from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
+from .services.analytics import get_belief_evolution, get_decision_action_history, tigerdata_overview
 from .services.gemini import Gemini
 from .services.hub import Hub
 from .services.research import ResearchAgent
@@ -210,6 +211,23 @@ async def trends():
     rows = await store.window_signals(8)
     changes = await store.mode_changes(24)
     return build_trends(rows, PATIENTS, changes)
+
+
+@app.get("/api/analytics/tigerdata")
+async def analytics_tigerdata(patient_id: str | None = None, days: int = 8):
+    if patient_id and patient_id not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    return await tigerdata_overview(app.state.store, patient_id, days)
+
+
+@app.get("/api/analytics/sessions/{sid}/decision-trace")
+async def analytics_decision_trace(sid: str):
+    store = app.state.store
+    actions = await get_decision_action_history(store, sid)
+    belief = await get_belief_evolution(store, app.state.cat, sid)
+    if not actions and not belief:
+        raise HTTPException(404, "no recorded decision data for this session")
+    return {"session_id": sid, "decision_actions": actions, "belief_evolution": belief}
 
 
 # ---- family / consults / welfare ------------------------------------------------------------------
