@@ -1,0 +1,163 @@
+"""One patient dialogue: belief state + evidence + decision loop, with no I/O.
+
+Used by the live SessionService and by the simulator (calibration and evaluation), so both run
+exactly the same logic.
+"""
+import time
+from dataclasses import dataclass, field
+
+from ..catalog import Catalog
+from ..config import EngineConfig
+from .belief import (answer_likelihood, bayes_update, consult_likelihood, entropy, p_high_risk,
+                     tap_likelihood, top_items)
+from .decision import Consultant, Decision, DecisionInput, consult_options, decide
+
+
+@dataclass
+class TraceStep:
+    t: float
+    kind: str
+    label: str
+    detail: str
+    top: list[dict]
+    entropy: float
+    p_high: float
+
+    def public(self) -> dict:
+        return {"t": self.t, "kind": self.kind, "label": self.label, "detail": self.detail, "top": self.top[:3],
+                "entropy": round(self.entropy, 3), "p_high": round(self.p_high, 4)}
+
+
+@dataclass
+class Dialogue:
+    cat: Catalog
+    cfg: EngineConfig
+    prior: list[float]
+    reliability: float
+    consultants: list[Consultant] = field(default_factory=list)
+    chart_flags: dict[str, bool] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.belief = list(self.prior)
+        self.signal_belief = list(self.prior)   # patient + people evidence only (safety floor)
+        self.escalated = False
+        self.trace: list[TraceStep] = []
+        self.area: str | None = None
+        self.feeling: str | None = None
+        self.tap_times: list[float] = []
+        self.questions_asked = 0
+        self.asked: set[str] = set()
+        self.answers: list[tuple[str, str]] = []           # (question text, answer)
+        self.used_lookups: set[str] = set()
+        self.lookup_results: list[tuple[str, str, bool]] = []  # (id, label, flag)
+        self.consulted: set[str] = set()
+        self.consult_answers: list[tuple[str, str]] = []   # (person name, answer label)
+        self._record("prior", "Prior from context", "")
+
+    # ---- evidence ----------------------------------------------------------------------------
+
+    @property
+    def taps(self) -> int:
+        return len(self.tap_times)
+
+    @property
+    def dialogue_open(self) -> bool:
+        return self.area is not None and self.feeling is not None
+
+    def apply_tap(self, kind: str, tap_id: str, t: float | None = None):
+        self.tap_times.append(t if t is not None else time.time())
+        self._signal(tap_likelihood(self.cat, kind, tap_id, self.reliability))
+        if kind == "area":
+            self.area = tap_id
+            label = self.cat.area_labels[tap_id]
+        else:
+            self.feeling = tap_id
+            label = self.cat.feeling_labels[tap_id]
+        self._record("tap", f"Tapped {kind}: {label}", tap_id)
+
+    def apply_answer(self, question_id: str, answer: str, t: float | None = None):
+        q = self.cat.question_by_id[question_id]
+        self.tap_times.append(t if t is not None else time.time())
+        self.questions_asked += 1
+        self.asked.add(question_id)
+        self.answers.append((q.text, answer))
+        self._signal(answer_likelihood(q.p_yes, answer, self.reliability))
+        self._record("answer", f"{q.text} → {answer}", question_id)
+
+    def apply_lookup(self, lookup_id: str):
+        lk = self.cat.lookup_by_id[lookup_id]
+        flag = bool(self.chart_flags.get(lookup_id, False))
+        self.used_lookups.add(lookup_id)
+        self.lookup_results.append((lookup_id, lk.label, flag))
+        lik = lk.p_true if flag else [1 - p for p in lk.p_true]
+        self.belief = bayes_update(self.belief, lik)
+        self._record("lookup", f"Chart: {lk.label} → {'yes' if flag else 'no'}", lookup_id)
+
+    def mark_consulted(self, person_id: str):
+        self.consulted.add(person_id)
+
+    def apply_consult(self, person: Consultant, options: list[str], answer: str | None):
+        """answer = need id from options, None = 'something else', 'unsure' = no information."""
+        if answer == "unsure":
+            self.consult_answers.append((person.name, "unsure"))
+            self._record("consult", f"{person.name}: unsure", person.id)
+            return
+        self._signal(consult_likelihood(self.cat, options, answer, person.reliability))
+        label = self.cat.by_id[answer]["label"] if answer else "something else"
+        self.consult_answers.append((person.name, label))
+        self._record("consult", f"{person.name} says: {label}", person.id)
+
+    def _signal(self, lik: list[float]):
+        self.belief = bayes_update(self.belief, lik)
+        self.signal_belief = bayes_update(self.signal_belief, lik)
+
+    # ---- decision loop -----------------------------------------------------------------------
+
+    def fatigue(self) -> float:
+        base = 1.0 + 0.35 * self.questions_asked
+        gaps = [b - a for a, b in zip(self.tap_times, self.tap_times[1:])]
+        slowdown = 1.0
+        if len(gaps) >= 2 and gaps[0] > 0:
+            slowdown = min(max(gaps[-1] / gaps[0], 1.0), 3.0)
+        return base * slowdown
+
+    def decision_input(self) -> DecisionInput:
+        return DecisionInput(
+            belief=self.belief, reliability=self.reliability, fatigue=self.fatigue(),
+            questions_asked=self.questions_asked, asked=self.asked, used_lookups=self.used_lookups,
+            available_lookups=set(self.chart_flags) if self.chart_flags else set(),
+            consultants=self.consultants, consulted=self.consulted, dialogue_open=self.dialogue_open,
+            signal_p_high=p_high_risk(self.cat, self.signal_belief))
+
+    def step(self) -> Decision:
+        """Run near-free lookups until the best action needs the patient, a person, or ends the dialogue."""
+        while True:
+            d = decide(self.cat, self.cfg, self.decision_input())
+            if d.chosen.kind != "lookup":
+                if d.chosen.kind == "escalate":
+                    self.escalated = True
+                return d
+            self.apply_lookup(d.chosen.id)
+
+    def attach_context(self):
+        """After escalation, list the remaining chart fields for the nurse. Display only: they do not
+        update the belief, so chart context can't relabel what the patient signalled."""
+        for lk in self.cat.lookups:
+            if lk.id in self.chart_flags and lk.id not in self.used_lookups:
+                self.used_lookups.add(lk.id)
+                self.lookup_results.append((lk.id, lk.label, bool(self.chart_flags[lk.id])))
+
+    def consult_options(self) -> list[str]:
+        return consult_options(self.cat, self.belief)
+
+    # ---- views -------------------------------------------------------------------------------
+
+    def p_high(self) -> float:
+        return p_high_risk(self.cat, self.belief)
+
+    def top(self, k: int = 6) -> list[dict]:
+        return top_items(self.cat, self.belief, k)
+
+    def _record(self, kind: str, label: str, detail: str):
+        self.trace.append(TraceStep(time.time(), kind, label, detail, top_items(self.cat, self.belief, 3),
+                                    entropy(self.belief), p_high_risk(self.cat, self.belief)))
