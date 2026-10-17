@@ -111,6 +111,23 @@ class SessionService:
         belief = {nid: round(p, 5) for nid, p in zip(self.cat.need_ids, s.dialogue.belief)}
         await self._safe(self.store.log_belief(now(), s.patient["id"], s.id, s.belief_step, belief))
 
+    async def _log_decision(self, s: Session, d: Decision):
+        """Every candidate the decision engine scored this cycle, not just the one it chose — the raw
+        material for a nurse-facing decision trace and for the research agent's CHECK_DATA queries."""
+        cycle_id = uuid.uuid4().hex[:10]
+        rows = []
+        for rank, a in enumerate(d.ranked):
+            pub = a.public()
+            costs = dict(pub["costs"])
+            rows.append({
+                "time": now(), "patient_id": s.patient["id"], "session_id": s.id, "decision_cycle": cycle_id,
+                "kind": a.kind, "action_id": a.id, "label": a.label, "eig": pub["eig"],
+                "fatigue_cost": costs.pop("fatigue", None), "delay_cost": costs.pop("delay", None),
+                "other_costs": costs, "value": pub["value"], "score": pub["score"],
+                "selected": a is d.chosen, "rank": rank, "origin": "live_demo",
+            })
+        await self._safe(self.store.log_decision_actions(rows))
+
     async def reliability(self, key: str, default: tuple[float, float]) -> tuple[float, float]:
         try:
             return await self.store.get_reliability(key) or default
@@ -272,6 +289,7 @@ class SessionService:
         for lid, label, flag in s.dialogue.lookup_results[before:]:
             await self._event(s, "lookup", {"lookup": lid, "flag": flag})
         s.decision = d
+        self._spawn(self._log_decision(s, d))
         kind = d.chosen.kind
         s.question_id = None
         if (not s.auto_switched and s.mode == "grid" and s.mode != s.tired_mode
