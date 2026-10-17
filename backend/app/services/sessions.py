@@ -75,6 +75,7 @@ class Session:
     ladder: Ladder = field(default_factory=Ladder)   # communication ladder (engine/ladder.py)
     latencies: list[float] = field(default_factory=list)   # seconds from prompt to input, this session
     assist_consult: bool = False     # level 4 has asked family for help this session
+    option_walk: list[str] | None = None   # level 3+: the area's options still to ask about one by one
     options: dict | None = None      # tailored second-step options, fixed once shown (engine/options.py)
     choice: dict | None = None       # the option the patient picked: label, predicted or "something else"
 
@@ -290,6 +291,8 @@ class SessionService:
         s = self.sessions[sid]
         if s.status != "question" or s.question_id != question_id:
             raise ValueError("no such open question")
+        if question_id.startswith("option:"):
+            return await self._answer_option(s, question_id.removeprefix("option:"), answer)
         latency = self._latency_ms(s)
         surprising = s.dialogue.apply_answer(question_id, answer)
         await self._event(s, "answer", {"question": question_id, "answer": answer, "latency_ms": latency})
@@ -315,7 +318,7 @@ class SessionService:
         safety floor escalates. The value is the plain-language reason shown on the alert.
         keep_clock: a ladder change re-asked mid-request, so the silence timer keeps counting from the last
         real prompt (the communication ladder must never delay escalation)."""
-        if s.ladder.level >= 3:
+        if s.ladder.level >= 3 and not self._walking(s):
             s.dialogue.open_yes_no()
         before = len(s.dialogue.lookup_results)
         d = s.dialogue.step()
@@ -340,6 +343,10 @@ class SessionService:
             s.status = "feeling" if s.dialogue.area else "area"
             if s.status == "feeling" and s.options is None:
                 s.options = self._build_options(s)
+            if s.status == "feeling" and s.ladder.level >= 3:
+                if not self._walking(s):   # walked every option without a yes: the engine's questions
+                    return await self._advance(s, keep_clock=keep_clock)
+                s.status, s.question_id = "question", f"option:{self._next_option(s)}"
         elif kind == "ask":
             s.status, s.question_id = "question", d.chosen.id
         elif kind == "consult":
@@ -400,6 +407,10 @@ class SessionService:
         if not change:
             return await self.state(s)
         await self._level_changed(s, change)
+        if s.ladder.level < 3 and (s.question_id or "").startswith("option:"):
+            # Back up from yes/no: show the area's options as a grid again instead of one at a time.
+            s.status, s.question_id = "feeling", None
+            return await self.state(s, publish=True)
         needs_engine = (s.ladder.level >= 3 and s.status in ("area", "feeling")) or \
                        (s.ladder.level == 4 and not s.assist_consult and s.status in ("area", "feeling", "question"))
         if needs_engine:
@@ -438,6 +449,45 @@ class SessionService:
         status, question = s.status, s.question_id
         await self._create_consult(s, person.id)
         s.status, s.question_id = status, question
+
+    # Level 3+ after a body-area tap: the area's tailored options (engine/options.py) one at a time as
+    # yes/no questions, high-risk first, then in the order Gemini or the engine ranked them. A "yes" is
+    # exactly the option's tap; a "no" or "not sure" moves on without evidence (a no to one wording doesn't
+    # rule its feeling out). With every option declined, the engine's own yes/no questions take over.
+
+    def _walking(self, s: Session) -> bool:
+        d = s.dialogue
+        if d.area is None or d.feeling is not None or d.yes_no or not s.options:
+            return False
+        if s.option_walk is None:
+            ranked = [o for o in [*s.options["predicted"], *s.options["more"]] if o["feeling"] != opts.NONE_OF_THESE]
+            s.option_walk = [o["id"] for o in sorted(ranked, key=lambda o: not o["high_risk"])]
+        return bool(s.option_walk)
+
+    @staticmethod
+    def _next_option(s: Session) -> str:
+        return s.option_walk[0]
+
+    def _option(self, s: Session, option_id: str) -> dict:
+        o = s.options or {}
+        return next(x for x in [*o.get("predicted", []), *o.get("more", [])] if x["id"] == option_id)
+
+    async def _answer_option(self, s: Session, option_id: str, answer: str) -> dict:
+        latency = self._latency_ms(s)
+        await self._event(s, "answer", {"question": f"option:{option_id}", "answer": answer, "latency_ms": latency})
+        s.option_walk = [i for i in (s.option_walk or []) if i != option_id]
+        if answer != "yes":
+            await self._observe(s, latency, unsure=answer == "unsure")
+            return await self._advance(s)
+        o = self._option(s, option_id)
+        s.choice = self._pick_option(s, option_id, o["feeling"])
+        s.dialogue.apply_tap("feeling", o["feeling"])
+        await self._event(s, "tap", {"kind": "feeling", "tap": o["feeling"], "latency_ms": latency,
+                                     "option": s.choice, "via": "yes_no"})
+        await self._log_belief(s)
+        await self._observe(s, latency)
+        finish = f"Sent straight away: “{s.choice['label']}” needs no follow-up question." if s.choice["send_now"] else None
+        return await self._advance(s, finish)
 
     async def warm_simple(self):
         """Gemini rewrites of every tile label and question for ladder levels 2 and 3 (one request each)."""
@@ -506,8 +556,12 @@ class SessionService:
         question = None
         ui = await self.ui_text(s.language)
         if s.question_id:
-            full = self.cat.question_by_id[s.question_id].text
-            text = self.simple(full, s.ladder.level)
+            if s.question_id.startswith("option:"):
+                label = self._option(s, s.question_id.removeprefix("option:"))["label"]
+                full, text = f"{label}?", f"{self.simple(label, s.ladder.level).rstrip('?')}?"
+            else:
+                full = self.cat.question_by_id[s.question_id].text
+                text = self.simple(full, s.ladder.level)
             question = {"id": s.question_id, "text": text, "text_full": full,
                         "text_local": (await self.gemini.translate([text], s.language))[0]}
         consult = None

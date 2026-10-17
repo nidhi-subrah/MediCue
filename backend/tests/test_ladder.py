@@ -221,3 +221,70 @@ def test_silence_halfway_steps_down_and_escalation_is_not_delayed():
         session.prompted_at = prompted = time.time() - 31
         client.portal.call(monitor.check_mid_dialogue, utcnow())
         assert session.status == "escalated"
+
+
+# ---- Anni's tailored options at the yes/no level ----------------------------------------------------
+
+def _yes_no_after_area(client, area, pid="p-patel"):
+    s = _start(client, pid)
+    s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": area}).json()
+    assert s["status"] == "feeling" and s["options"]
+    return client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 3}).json()
+
+
+def test_yes_no_walks_the_areas_tailored_options_high_risk_first():
+    with TestClient(app) as client:
+        s = _yes_no_after_area(client, "mouth_throat")
+        assert s["status"] == "question" and s["question"]["id"].startswith("option:mouth_throat.")
+        spec = cat.raw["area_options"]["mouth_throat"]["options"]
+        first = next(o for o in spec if o["id"] == s["question"]["id"].removeprefix("option:"))
+        assert first.get("high_risk")                          # choking is screened before thirst
+        assert s["question"]["text"] == f"{first['label']}?"
+
+
+def test_a_yes_to_an_option_is_that_options_tap():
+    with TestClient(app) as client:
+        s = _yes_no_after_area(client, "mouth_throat")
+        sid = s["session_id"]
+        for _ in range(8):
+            oid = s["question"]["id"].removeprefix("option:")
+            option = next(o for o in cat.raw["area_options"]["mouth_throat"]["options"] if o["id"] == oid)
+            answer = "yes" if option["feeling"] == "thirsty" else "no"
+            s = client.post(f"/api/sessions/{sid}/answer", json={"question_id": s["question"]["id"], "answer": answer}).json()
+            if answer == "yes":
+                break
+        assert s["choice"]["id"] == oid
+        s = run_to_end(client, s, "thirsty")
+        assert s["status"] == "sent" and s["belief"][0]["need"] == "thirsty"
+
+
+def test_declining_every_option_falls_back_to_the_engines_questions():
+    with TestClient(app) as client:
+        s = _yes_no_after_area(client, "head")
+        sid = s["session_id"]
+        while s["status"] == "question" and s["question"]["id"].startswith("option:"):
+            s = client.post(f"/api/sessions/{sid}/answer", json={"question_id": s["question"]["id"], "answer": "no"}).json()
+        assert s["status"] in ("question", "waiting_consult", "sent", "escalated")
+        if s["status"] == "question":
+            assert s["question"]["id"] in cat.question_by_id   # the engine's own yes/no questions now
+
+
+def test_more_choices_from_the_walk_shows_the_options_grid_again():
+    with TestClient(app) as client:
+        s = _yes_no_after_area(client, "head")
+        s = client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 2}).json()
+        assert s["status"] == "feeling" and s["question"] is None and s["options"]
+
+
+def run_to_end(client, s, need):
+    i = cat.index[need]
+    for _ in range(12):
+        if s["status"] == "waiting_consult":
+            s = client.post(f"/api/sessions/{s['session_id']}/skip_consult").json()
+        elif s["status"] == "question":
+            q = cat.question_by_id[s["question"]["id"]]
+            s = client.post(f"/api/sessions/{s['session_id']}/answer",
+                            json={"question_id": q.id, "answer": "yes" if q.p_yes[i] >= 0.5 else "no"}).json()
+        else:
+            break
+    return s
