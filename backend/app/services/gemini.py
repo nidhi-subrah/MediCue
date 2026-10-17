@@ -190,6 +190,49 @@ class Gemini:
             return out.model_dump(), "gemini"
         return template_sbar(ctx), "template"
 
+    # ---- case packet SBAR (clinician copilot) -----------------------------------------------------
+
+    async def case_sbar(self, packet: dict, patient: dict, cat, timeout: float = TIMEOUT_S) -> tuple[dict, str]:
+        sbar, source, _, _ = await self.case_sbar_detail(packet, patient, cat, timeout)
+        return sbar, source
+
+    async def case_sbar_detail(self, packet: dict, patient: dict, cat,
+                               timeout: float = TIMEOUT_S) -> tuple[dict, str, str, list[str]]:
+        """SBAR handoff for an unclear request, written from a CasePacket (services/case_packet.py).
+
+        Returns (sbar, source, outcome, problems): outcome is "gemini", "disabled", "no_reply" (error,
+        timeout, quota or bad JSON) or "rejected" (failed the checks; problems lists why).
+
+        Gemini only rewords the packet. Its output is checked: every number, need name and chart field
+        must come from the packet, no treatment/diagnosis/certainty language, uncertainty kept. The
+        recommendation is always the packet's next step, word for word. Any failure, timeout, missing
+        key or failed check returns the template SBAR built from the same packet.
+        """
+        from .case_packet import case_facts, check_case_sbar, finalize_case_sbar, template_case_sbar
+        fallback = template_case_sbar(packet, patient)
+        if not self.enabled:
+            return fallback, "template", "disabled", []
+        prompt = (
+            "You write an SBAR handoff for a bedside nurse about a request from a patient who cannot speak, "
+            "where the communication aid could not tell for sure what the patient needs.\n"
+            "Rules:\n"
+            "- Use ONLY the facts in the JSON. Add no new facts, numbers, needs or chart details.\n"
+            "- Do not diagnose, name conditions, or suggest treatment or medication.\n"
+            "- Keep every percentage exactly as written, and keep the uncertainty: say what is likely or "
+            "possible, never that something is certain, confirmed or ruled out.\n"
+            "- recommendation: restate next_step and nothing else.\n"
+            "- Each field at most 2 short sentences, plain English.\n\n"
+            f"Facts (JSON):\n{json.dumps(case_facts(packet, patient), ensure_ascii=False)}")
+        out = await self._json(prompt, SBARModel, timeout)
+        if not out:
+            return fallback, "template", "no_reply", []
+        sbar = out.model_dump()
+        problems = check_case_sbar(sbar, packet, patient, cat)
+        if problems:
+            log.warning("Gemini case SBAR rejected (%s); using template", "; ".join(problems[:5]))
+            return fallback, "template", "rejected", problems
+        return finalize_case_sbar(sbar, packet), "gemini", "gemini", []
+
     # ---- translation -----------------------------------------------------------------------------
 
     async def translate(self, texts: list[str], lang: str) -> list[str]:

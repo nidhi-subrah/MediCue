@@ -41,6 +41,10 @@ export function useNurseStation() {
       setAlerts((a) => a.map((x) => (x.id === m.alert.id ? m.alert : x)))
       if (m.alert.status === 'confirmed') void loadTrends()
     }
+    if (m.type === 'case') {
+      // Clinician copilot: a case packet (or its Gemini wording, or the nurse's feedback) for an alert.
+      setAlerts((a) => a.map((x) => (x.id === m.case.alert_id ? { ...x, case: m.case } : x)))
+    }
     if (m.type === 'suggestions') {
       // Gemini's profile suggestions from a nurse's note, or a review result: upsert, newest first.
       setSuggestions((all) => {
@@ -52,9 +56,11 @@ export function useNurseStation() {
     }
   })
 
-  /** `note` is the nurse's optional observation; Gemini proposes profile changes from it for approval. */
-  const confirm = useCallback(async (alertId: string, needId: string | null, note: string | null) => {
-    await api.post(`/api/alerts/${alertId}/confirm`, { need_id: needId, note })
+  /** `note` is the nurse's optional observation; Gemini proposes profile changes from it for approval.
+   *  `caseHelpful` is the verdict on the alert's case packet, if it has one. */
+  const confirm = useCallback(async (alertId: string, needId: string | null, note: string | null,
+                                     caseHelpful: boolean | null = null) => {
+    await api.post(`/api/alerts/${alertId}/confirm`, { need_id: needId, note, case_helpful: caseHelpful })
   }, [])
 
   const reviewSuggestion = useCallback(async (id: string, approve: boolean) => {

@@ -260,6 +260,7 @@ class ConfirmBody(BaseModel):
     need_id: str | None = None
     nurse: str = "nurse"
     note: str | None = None      # optional observation; Gemini suggests profile changes from it
+    case_helpful: bool | None = None   # verdict on the alert's case packet, if it has one
 
 
 @app.get("/api/alerts")
@@ -273,7 +274,55 @@ async def alerts(status: str | None = None):
 async def confirm(aid: str, body: ConfirmBody):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note))
+    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
+
+
+class CaseAckBody(BaseModel):
+    nurse: str = "nurse"
+
+
+@app.post("/api/cases/{cid}/acknowledge")
+async def case_acknowledge(cid: str, body: CaseAckBody):
+    """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
+    return await _call(svc().acknowledge_case(cid, body.nurse))
+
+
+@app.post("/api/cases/{cid}/gemini")
+async def case_gemini(cid: str):
+    """Ask Gemini again to word a case's SBAR (checked as always; the template stays if it fails or Gemini is off)."""
+    return await _call(svc().regenerate_case_sbar(cid))
+
+
+class DemoRunBody(BaseModel):
+    pause_s: float = 0.4          # between scripted inputs, so the tablet and nurse screen can be watched
+
+
+@app.get("/api/demo/scenarios")
+async def demo_scenarios():
+    from .sim.demo_scenarios import SCENARIOS
+    return [{k: getattr(sc, k) for k in ("id", "title", "patient_id", "hour", "description")} for sc in SCENARIOS.values()]
+
+
+@app.post("/api/demo/scenarios/{scenario_id}")
+async def demo_run(scenario_id: str, body: DemoRunBody):
+    """Play a scripted scenario through the real session service (synthetic patient; the engine decides)."""
+    from .sim.demo_scenarios import SCENARIOS, run_live
+    sc = SCENARIOS.get(scenario_id)
+    if not sc:
+        raise HTTPException(404, "unknown demo scenario")
+    out = await _call(run_live(svc(), sc, min(max(body.pause_s, 0.0), 3.0)))
+    out["scenario"] = {k: out["scenario"][k] for k in ("id", "title", "patient_id", "hour", "description")}
+    return out
+
+
+@app.get("/api/cases/{cid}")
+async def case(cid: str):
+    """A clinician-copilot case record (id = alert id): packet, SBAR and the nurse's feedback."""
+    alert = svc().alerts.get(cid)
+    found = (alert or {}).get("case") or await app.state.store.get_case(cid)
+    if not found:
+        raise HTTPException(404, "no case packet for this id")
+    return found
 
 
 async def _trends():

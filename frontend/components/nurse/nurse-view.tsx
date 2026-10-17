@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { RiskPanel } from '@/components/risk/risk-panel'
 import { SilencePanel } from '@/components/risk/silence-panel'
 import { AlertCard } from './alert-card'
+import { DemoScenarioBar } from './demo-scenario'
 import { LevelsPanel } from './levels-panel'
 import { ShiftSummary } from './shift-summary'
 import { SuggestionsPanel } from './suggestions-panel'
@@ -22,6 +23,7 @@ export function NurseView() {
   const { alerts, trends, suggestions, confirm, reviewSuggestion } = useNurseStation()
   const [showDone, setShowDone] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
+  const [demoAlert, setDemoAlert] = useState<string | null>(null)   // its case packet opens when it arrives
 
   const open = alerts
     .filter((a) => a.status === 'open')
@@ -54,12 +56,15 @@ export function NurseView() {
           </p>
         </header>
 
+        <DemoScenarioBar onAlert={setDemoAlert} />
+
         {open.length === 0 && (
           <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
             Nothing waiting. Requests from bedside tablets appear here as they&apos;re sent.
           </p>
         )}
-        {open.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note) => confirm(a.id, needId, note)} />)}
+        {open.map((a) => <AlertCard key={a.id} alert={a} openCase={a.id === demoAlert}
+                                    onConfirm={(needId, note, helpful) => confirm(a.id, needId, note, helpful)} />)}
 
         {doneAlerts.length > 0 && (
           <button
@@ -70,7 +75,7 @@ export function NurseView() {
             {showDone ? 'Hide' : 'Show'} {doneAlerts.length} confirmed
           </button>
         )}
-        {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note) => confirm(a.id, needId, note)} />)}
+        {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId, note, helpful) => confirm(a.id, needId, note, helpful)} />)}
       </section>
       </div>
 

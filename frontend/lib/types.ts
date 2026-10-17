@@ -4,13 +4,12 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   ScoredAction, TraceStep, SessionStatus, SessionState, SBAR, Alert, ConsultRequest,
   TrendFlag, PatientTrend, WsMessage, HypothesisStatus, ResearchActionKind, ResearchActionScore,
   ResearchEvidence, TimelineEntry, ResearchHypothesis, ResearchInquiry, ResearchDigest,
-  StaffMember, DecisionActionRow, BeliefEvolutionPoint, CompressionStat, HypertableStat,
-  PatientAnalytics, TigerDataOverview, RiskFlagLevel, RiskKey, RiskContributor, RiskScore,
-  RiskPatient, RiskOverview, TimelineCase, Timeline, SilenceStep, SilenceLadder, ProfileItem,
-  PatientProfile, ProfileSuggestion, HandoffPatient, HandoffSummary, LearnedSignal,
-  PatientLearning, LearningSession, LearningDemo,
-  FeelingOption, FeelingOptions, OptionChoice, LadderLevel, LadderChange, LadderState,
-  LadderPatient } from '@shared/types'
+  StaffMember, RiskFlagLevel, RiskKey, RiskContributor, RiskScore, RiskPatient, RiskOverview,
+  TimelineCase, Timeline, SilenceStep, SilenceLadder, ProfileItem, PatientProfile, ProfileSuggestion,
+  HandoffPatient, HandoffSummary, LearnedSignal, PatientLearning, LearningSession, LearningDemo,
+  CasePacket, StopReason, NextStepCode, CaseFeedback, CaseRecord, DecisionActionRow,
+  BeliefEvolutionPoint, CompressionStat, HypertableStat, PatientAnalytics, TigerDataOverview,
+  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, LadderLevel, LadderChange, LadderState, LadderPatient } from '@shared/types'
 
 /** The UI's own notion of "how the person is answering right now". `standard` and `easy` map to
  *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to

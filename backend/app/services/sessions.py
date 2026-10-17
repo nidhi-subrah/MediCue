@@ -23,6 +23,7 @@ from ..engine.dialogue import Dialogue
 from ..engine.ladder import LEVELS, Change, Ladder, likely_taps
 from ..engine.personal import PersonalModel
 from ..sim.learning import learning_curve
+from .case_packet import build_case_packet, case_facts, case_feedback, template_case_sbar
 from .gemini import Gemini, template_sbar
 from .hub import Hub
 from .research import prior_multipliers
@@ -180,10 +181,12 @@ class SessionService:
 
     # ---- session lifecycle -----------------------------------------------------------------------
 
-    async def start(self, patient_id: str, language: str | None = None, mode: str = "grid") -> dict:
+    async def start(self, patient_id: str, language: str | None = None, mode: str = "grid",
+                    hour: int | None = None) -> dict:
+        """`hour` replaces the local hour for the time-of-day context (scripted demo scenarios only)."""
         p = PATIENT_BY_ID[patient_id]
         view = await self.patient_view(patient_id)
-        local_hour = now().astimezone(settings.unit_tz).hour
+        local_hour = hour if hour is not None else now().astimezone(settings.unit_tz).hour
         try:
             history = await self.store.history_counts(patient_id)
             visits = await self.store.events_of_type("family_visit", now() - timedelta(hours=12), patient_id)
@@ -703,6 +706,7 @@ class SessionService:
             "seconds_to_alert": round(time.time() - first_tap, 1),
             "reason": s.decision.reason if s.decision else "",
             "profile": self._profile_items(s.patient["id"]), "nurse_note": None,
+            "case": None,
             "choice": s.choice,
         }
         alert["sbar"] = self._labelled(alert, template_sbar(ctx))
@@ -712,6 +716,7 @@ class SessionService:
         await self._event(s, "escalated" if priority == "urgent" else "notified",
                           {"alert_id": alert["id"], "top": ctx["top"][:3], "p_high": ctx["p_high"]})
         self._spawn(self._enrich(alert["id"], ctx))
+        self._spawn(self._attach_case_packet(alert["id"], s))   # after the nurse push; never delays it
 
     async def _refresh_alert(self, s: Session):
         alert = self.alerts.get(s.alert_id or "")
@@ -723,6 +728,7 @@ class SessionService:
         alert["sbar"], alert["sbar_source"] = self._labelled(alert, template_sbar(ctx)), "template"
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
         self._spawn(self._enrich(alert["id"], ctx))
+        self._spawn(self._attach_case_packet(alert["id"], s))
 
     async def _enrich(self, alert_id: str, ctx: dict):
         if not self.gemini.enabled:
@@ -733,7 +739,83 @@ class SessionService:
             alert["sbar"], alert["sbar_source"] = self._labelled(alert, sbar), source
             await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
 
-    async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse", note: str | None = None) -> dict:
+    async def _attach_case_packet(self, alert_id: str, s: Session):
+        """Clinician copilot: once the alert is with the nurse, attach a case record: a full packet if the
+        request ended without a confident answer, a light one for a safety-floor escalation. It is pushed as a
+        `case` message, stored, and later updated with Gemini's checked wording and the nurse's feedback.
+        Failures are logged and never touch the alert itself."""
+        try:
+            alert = self.alerts.get(alert_id)
+            if not alert:
+                return
+            pkt = build_case_packet(
+                self.cat, self.cfg, s.dialogue, session_id=s.id, patient_id=s.patient["id"],
+                prediction_set=self.conformal.predict_set(self.cat.need_ids, s.dialogue.belief),
+                decision=s.decision, status=s.status, chart=s.patient.get("chart"),
+                consult=self.consults.get(s.consult_id or "")).public()
+            if pkt["stop_reason"]["code"] == "RESOLVED":
+                if alert.get("case"):   # a later tap made it clear
+                    alert["case"] = None
+                    await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
+                return
+            template = template_case_sbar(pkt, s.patient)
+            record = {"id": alert_id, "alert_id": alert_id, "patient_id": s.patient["id"], "session_id": s.id,
+                      "created_at": alert["created_at"], "packet": pkt,
+                      "sbar": template, "sbar_source": "template", "sbar_template": template,
+                      "facts": case_facts(pkt, s.patient),
+                      "gemini": {"outcome": "pending" if self.gemini.enabled else "disabled",
+                                 "sbar": None, "problems": []},
+                      "feedback": (alert.get("case") or {}).get("feedback"),
+                      "acknowledged": (alert.get("case") or {}).get("acknowledged")}
+            alert["case"] = record
+            await self.hub.publish("nurse", {"type": "case", "case": record})
+            await self._safe(self.store.upsert_case(record))
+            await self._event(s, "case_packet", {"alert_id": alert_id, "variant": pkt["variant"],
+                                                 "stop_reason": pkt["stop_reason"]["code"],
+                                                 "next_step": pkt["next_step"]["code"]})
+            if self.gemini.enabled:
+                await self._gemini_case_sbar(alert, record, s.patient)
+        except Exception:
+            log.exception("case packet failed (the alert itself is unaffected)")
+
+    async def _gemini_case_sbar(self, alert: dict, record: dict, patient: dict):
+        """Ask Gemini to reword the packet; keep its version only if it passes every check."""
+        sbar, source, outcome, problems = await self.gemini.case_sbar_detail(record["packet"], patient, self.cat)
+        if alert.get("case") is not record:   # a newer packet replaced this one meanwhile
+            return
+        record["gemini"] = {"outcome": outcome, "sbar": sbar if outcome == "gemini" else None, "problems": problems}
+        if source == "gemini":
+            record["sbar"], record["sbar_source"] = sbar, source
+        await self.hub.publish("nurse", {"type": "case", "case": record})
+        await self._safe(self.store.upsert_case(record))
+
+    async def regenerate_case_sbar(self, case_id: str) -> dict:
+        """Ask Gemini again for a case's SBAR (e.g. the first call hit a quota). Template if Gemini is off."""
+        alert = self.alerts.get(case_id) or {}
+        case = alert.get("case")
+        if not case:
+            raise KeyError(case_id)
+        if self.gemini.enabled:
+            await self._gemini_case_sbar(alert, case, PATIENT_BY_ID[case["patient_id"]])
+        return case
+
+    async def acknowledge_case(self, case_id: str, nurse: str = "nurse") -> dict:
+        """The nurse has read the case packet and is acting on it. Does not close the alert: what the patient
+        actually needed is still confirmed afterwards. Repeating it keeps the first acknowledgement."""
+        case = (self.alerts.get(case_id) or {}).get("case")
+        if not case:
+            raise KeyError(case_id)
+        if not case.get("acknowledged"):
+            case["acknowledged"] = {"by": nurse, "at": now().isoformat()}
+            await self.hub.publish("nurse", {"type": "case", "case": case})
+            await self._safe(self.store.upsert_case(case))
+            await self._event(case["patient_id"], "case_acknowledged", {"alert_id": case_id, "nurse": nurse})
+        return case
+
+    async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse", note: str | None = None,
+                      case_helpful: bool | None = None) -> dict:
+        """`case_helpful`: the nurse's verdict on the alert's case packet, if it has one. What the patient actually
+        needed is `need_id`, which feeds reliability learning exactly as for any confirmation."""
         alert = self.alerts[alert_id]
         if alert["status"] != "open":
             # A second confirm (double tap, two dashboards) must not count twice in reliability or logs.
@@ -753,6 +835,14 @@ class SessionService:
                           {"alert_id": alert_id, "need": need_id, "nurse": nurse,
                            "predicted": alert["top"][0]["need"] if alert["top"] else None})
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
+        case = alert.get("case")
+        if case:
+            case["feedback"] = case_feedback(case["packet"], need_id, case_helpful, nurse, self.cat)
+            await self.hub.publish("nurse", {"type": "case", "case": case})
+            await self._safe(self.store.upsert_case(case))
+            await self._event(s or alert["patient_id"], "case_feedback",
+                              {"alert_id": alert_id, "helpful": case_helpful, "need": need_id,
+                               "rank": case["feedback"]["actual_rank"]})
         return alert
 
     async def _suggest(self, pid: str, alert_id: str, note: str, need_id: str | None, nurse: str):

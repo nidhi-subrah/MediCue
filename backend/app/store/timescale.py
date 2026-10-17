@@ -321,6 +321,22 @@ class TimescaleStore:
                 (suggestion["id"], suggestion["created_at"], suggestion["patient_id"], suggestion["status"],
                  json.dumps(suggestion, default=str)))
 
+    async def upsert_case(self, case):
+        fb = case.get("feedback") or {}
+        p = case["packet"]
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO case_packets (time, id, patient_id, variant, stop_reason, next_step, helpful, actual_need, body) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id, time) DO UPDATE SET variant = EXCLUDED.variant, "
+                "stop_reason = EXCLUDED.stop_reason, next_step = EXCLUDED.next_step, helpful = EXCLUDED.helpful, "
+                "actual_need = EXCLUDED.actual_need, body = EXCLUDED.body",
+                (case["created_at"], case["id"], case["patient_id"], p["variant"], p["stop_reason"]["code"],
+                 p["next_step"]["code"], fb.get("helpful"), fb.get("actual_need"), json.dumps(case, default=str)))
+
+    async def get_case(self, case_id):
+        rows = await self._all("SELECT body FROM case_packets WHERE id = %s ORDER BY time DESC LIMIT 1", (case_id,))
+        return rows[0]["body"] if rows else None
+
     async def upsert_hypothesis(self, hypothesis):
         async with self.pool.connection() as conn:
             await conn.execute(

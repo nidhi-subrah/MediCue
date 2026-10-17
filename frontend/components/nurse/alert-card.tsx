@@ -8,6 +8,7 @@ import { catalog, needLabel } from '@/lib/live/catalog'
 import { pct, timeAgo } from '@/lib/services/backend'
 import type { Alert } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { CaseSummary } from './case-packet'
 
 const SBAR_ROWS = [
   ['situation', 'Situation'],
@@ -19,13 +20,16 @@ const SBAR_ROWS = [
 export function AlertCard({
   alert,
   onConfirm,
+  openCase = false,
 }: {
   alert: Alert
-  onConfirm: (needId: string | null, note: string | null) => Promise<void>
+  onConfirm: (needId: string | null, note: string | null, caseHelpful: boolean | null) => Promise<void>
+  openCase?: boolean                  // open the case packet card as soon as it arrives (demo)
 }) {
   const [other, setOther] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [helpful, setHelpful] = useState<boolean | null>(null)   // verdict on the case packet, sent with the confirmation
   const urgent = alert.priority === 'urgent'
   const open = alert.status === 'open'
   const [lead, ...rest] = alert.top
@@ -33,7 +37,7 @@ export function AlertCard({
   const confirm = async (needId: string | null) => {
     setBusy(true)
     try {
-      await onConfirm(needId, note.trim() || null)
+      await onConfirm(needId, note.trim() || null, helpful)
     } finally {
       setBusy(false)
     }
@@ -81,6 +85,8 @@ export function AlertCard({
           )}
         </div>
       )}
+
+      {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} initiallyOpen={openCase} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (
