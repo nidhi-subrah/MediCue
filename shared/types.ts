@@ -66,6 +66,8 @@ export interface SessionState {
   inconsistencies: number;            // surprising answers (+1) and "not sure" (+0.5) this session
   baseline_interval: number | null;   // patient's usual seconds between inputs, from history
   profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
+  options: FeelingOptions | null;     // tailored second-step options (backend/app/engine/options.py)
+  choice: OptionChoice | null;        // the option the patient picked
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -86,6 +88,7 @@ export interface Alert {
   confirmed_by?: string | null;
   profile: ProfileItem[];
   nurse_note: string | null;          // observation written at confirmation
+  choice?: OptionChoice | null;       // what the patient picked at the second step
 }
 
 export interface ConsultRequest {
@@ -308,4 +311,24 @@ export interface LearningSession {
 export interface LearningDemo {
   patient_id: string; area: string; feeling: string; need: string; need_label: string; high_risk: boolean;
   sessions: LearningSession[];
+}
+
+// ---- tailored second-step options ------------------------------------------------------------------
+
+export interface FeelingOption {
+  id: string; label: string; feeling: string;
+  high_risk: boolean;                 // always shown, whatever the ranking
+  send_now: boolean;                  // goes to the nurse with no follow-up question
+  reason: string | null;              // Gemini's one-line reason, when it ranked the options
+}
+
+export interface FeelingOptions {
+  area: string; area_label: string; prompt: string;
+  predicted: FeelingOption[];         // shown first, most likely first
+  more: FeelingOption[];              // behind "Something else": the rest, then "None of these"
+  source: "gemini" | "engine";
+}
+
+export interface OptionChoice {
+  id: string; label: string; predicted: boolean; source: "gemini" | "engine" | null; send_now: boolean;
 }

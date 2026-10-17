@@ -20,6 +20,7 @@ from .risk import router as risk_router, start as start_risk, start_silence
 from .services.gemini import Gemini
 from .services.handoff import build_handoff
 from .services.hub import Hub
+from .services.predictions import PredictionService
 from .services.profiles import ProfileService
 from .services.research import ResearchAgent
 from .services.sessions import SessionService
@@ -48,7 +49,9 @@ async def lifespan(app: FastAPI):
     app.state.cat, app.state.store, app.state.gemini = cat, store, gemini
     app.state.hub = Hub()
     app.state.profiles = ProfileService(cat, store, gemini, app.state.hub)
-    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles)
+    app.state.predictions = PredictionService(cat, store, gemini, app.state.profiles)
+    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles,
+                                   app.state.predictions)
     app.state.silence = start_silence(app.state.svc, app.state.risk)
     app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
 
@@ -153,6 +156,7 @@ class StartBody(BaseModel):
 class TapBody(BaseModel):
     kind: str          # "area" | "feeling"
     tap_id: str
+    option_id: str | None = None   # which tailored option sent this feeling tap (engine/options.py)
 
 
 class AnswerBody(BaseModel):
@@ -188,7 +192,7 @@ async def get_session(sid: str):
 
 @app.post("/api/sessions/{sid}/tap")
 async def tap(sid: str, body: TapBody):
-    return await _call(svc().tap(sid, body.kind, body.tap_id))
+    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id))
 
 
 @app.post("/api/sessions/{sid}/answer")
