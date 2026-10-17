@@ -76,7 +76,7 @@ export interface SBAR { situation: string; background: string; assessment: strin
 
 export interface Alert {
   id: string; patient_id: string; patient_name: string; room: string; session_id: string | null;
-  kind: "need" | "welfare";
+  kind: "need" | "welfare" | "urgent";   // urgent: the patient pressed Urgent help on their tablet
   priority: "urgent" | "routine";
   created_at: string; status: "open" | "confirmed";
   top: BeliefItem[]; prediction_set: string[]; p_high: number;
