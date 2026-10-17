@@ -73,7 +73,7 @@ export function QueueAlert({ alert, onConfirm, onDetails }: {
             value=""
             disabled={busy}
             onChange={(e) => (e.target.value === '__other' ? onDetails() : void confirm(e.target.value))}
-            className="min-tap h-11 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50"
+            className="min-tap min-h-11 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50"
           >
             <option value="" disabled>Confirm what they needed…</option>
             {alert.prediction_set.slice(0, 4).map((n) => <option key={n} value={n}>{needLabel(n)}</option>)}
@@ -81,12 +81,12 @@ export function QueueAlert({ alert, onConfirm, onDetails }: {
           </select>
         ) : (
           <button type="button" disabled={busy} onClick={() => void confirm(null)}
-                  className="min-tap inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50">
+                  className="min-tap inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50">
             <Check className="size-5" aria-hidden="true" /> I&apos;m on it
           </button>
         )}
         <button type="button" onClick={onDetails}
-                className="min-tap inline-flex h-11 items-center gap-1 rounded-xl border border-border px-4 text-base font-semibold hover:bg-muted">
+                className="min-tap inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-4 text-base font-semibold hover:bg-muted">
           Details <ChevronRight className="size-4" aria-hidden="true" />
         </button>
       </div>
@@ -111,7 +111,7 @@ export function QueueCheckIn({ ladder, onAcknowledge }: { ladder: SilenceLadder;
       <div>
         <button type="button" disabled={busy}
                 onClick={async () => { setBusy(true); try { await onAcknowledge() } finally { setBusy(false) } }}
-                className="min-tap inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50">
+                className="min-tap inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50">
           <Check className="size-5" aria-hidden="true" /> I&apos;ve checked on {first}
         </button>
       </div>

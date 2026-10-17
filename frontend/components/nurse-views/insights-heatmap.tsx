@@ -61,7 +61,7 @@ export function InsightsHeatmap({ data }: { data: UnitInsights }) {
                         onClick={() => void open(p.patient_id, c.start, bucket)}
                         aria-label={`${p.name}, ${label(c.start)}: ${c.requests} request${c.requests === 1 ? '' : 's'}${c.urgent ? `, ${c.urgent} urgent` : ''}`}
                         className={cn(
-                          'relative flex h-9 w-full min-w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums',
+                          'relative flex min-h-9 w-full min-w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums',
                           c.requests ? 'border-transparent hover:ring-2 hover:ring-primary/40' : 'border-dashed border-border bg-card',
                         )}
                         style={c.requests ? {

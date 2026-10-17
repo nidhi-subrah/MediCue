@@ -110,11 +110,11 @@ export function CommunicationPanel() {
               {r.active && r.level && (
                 <span className="ml-auto flex gap-1">
                   <button type="button" disabled={r.level >= 4} onClick={() => setLevel(r, (r.level! + 1) as CommunicationLevel)}
-                          className="h-9 rounded-full border border-border px-3 text-sm font-semibold hover:border-primary/40 disabled:opacity-40">
+                          className="min-h-9 rounded-full border border-border px-3 text-sm font-semibold hover:border-primary/40 disabled:opacity-40">
                     Easier
                   </button>
                   <button type="button" disabled={r.level <= 1} onClick={() => setLevel(r, (r.level! - 1) as CommunicationLevel)}
-                          className="h-9 rounded-full border border-border px-3 text-sm font-semibold hover:border-primary/40 disabled:opacity-40">
+                          className="min-h-9 rounded-full border border-border px-3 text-sm font-semibold hover:border-primary/40 disabled:opacity-40">
                     More choices
                   </button>
                 </span>

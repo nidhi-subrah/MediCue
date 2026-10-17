@@ -206,7 +206,7 @@ export function AlertCard({
                 setOther(e.target.value)
                 if (e.target.value) confirm(e.target.value)
               }}
-              className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
+              className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
             >
               <option value="">Something else…</option>
               {catalog.needs.map((n) => (

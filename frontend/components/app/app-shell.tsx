@@ -35,7 +35,7 @@ export function AppShell({
       </a>
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur-md">
         {/* Full width; on tablets the nav drops its icons and the wordmark so every label fits on one line. */}
-        <div className="flex h-16 w-full items-center justify-between gap-3 px-4 md:px-6 lg:gap-6">
+        <div className="flex min-h-16 w-full items-center justify-between gap-3 px-4 md:px-6 lg:gap-6">
           <Brand compact />
           <nav aria-label="Main" className="hidden min-w-0 flex-1 md:block">
             <ul className="flex w-full items-center gap-1 rounded-full border border-border bg-card p-1">
@@ -48,7 +48,7 @@ export function AppShell({
                       href={item.href}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full px-2 text-sm font-medium transition-colors lg:px-4',
+                        'flex min-h-10 items-center justify-center gap-2 rounded-full px-2 py-1 text-center text-sm font-medium leading-tight transition-colors lg:px-4',
                         active
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -67,7 +67,7 @@ export function AppShell({
             <button
               type="button"
               onClick={() => logout()}
-              className="inline-flex h-10 items-center gap-2 rounded-full border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <LogOut className="size-4" aria-hidden="true" />
               <span className="hidden lg:inline">Log out</span>
@@ -107,7 +107,7 @@ export function AppShell({
                   )}
                 >
                   <Icon className="size-5 shrink-0" aria-hidden="true" />
-                  <span className="flex h-8 items-center justify-center text-center leading-tight">
+                  <span className="flex min-h-8 items-center justify-center text-center leading-tight">
                     {item.label}
                   </span>
                 </Link>

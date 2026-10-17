@@ -220,7 +220,7 @@ function SbarCompare({ record }: { record: CaseRecord }) {
   const shown = view === 'template' ? record.sbar_template : g.sbar
   const option = (value: 'template' | 'gemini', label: string) => (
     <button type="button" aria-pressed={view === value} onClick={() => setView(value)}
-            className={cn('h-11 rounded-xl border-2 px-4 text-base font-semibold',
+            className={cn('min-h-11 rounded-xl border-2 px-4 text-base font-semibold',
                           view === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>
       {label}
     </button>
@@ -402,7 +402,7 @@ export function CaseSummary({ alert, initiallyOpen = false }: { alert: Alert; in
           </p>
         </div>
         <button type="button" onClick={() => setOpen(true)}
-                className="h-11 shrink-0 rounded-xl border-2 border-primary bg-card px-4 text-base font-semibold text-primary">
+                className="min-h-11 shrink-0 rounded-xl border-2 border-primary bg-card px-4 text-base font-semibold text-primary">
           Open case packet
         </button>
       </div>

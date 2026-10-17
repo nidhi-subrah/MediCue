@@ -6,7 +6,7 @@ import { isInputMode } from '@/lib/modes'
 import { safeStorage } from './safe-storage'
 import type { InputMode } from '@/lib/types'
 
-export type TextSize = 'md' | 'lg' | 'xl' | 'xxl'
+export type TextSize = 'md' | 'lg' | 'xl'
 export type ButtonSize = 'regular' | 'large' | 'xl'
 
 export interface SettingsState {
@@ -43,13 +43,15 @@ export const useSettings = create<SettingsState>()(
     {
       // The product's old name, kept on purpose: renaming the key would drop everyone's saved accessibility settings.
       name: 'silentsignal-settings',
-      version: 2,
+      version: 3,
       // v1 removed the Single-Switch mode and its scan speed (saved settings fall back to Standard);
-      // v2 removed the language setting (the app and its speech are English).
+      // v2 removed the language setting (the app and its speech are English);
+      // v3 dropped the fourth text size: a saved 'xxl' becomes Extra large.
       migrate: (saved) => {
         const s = { ...(saved as Record<string, unknown>) }
         delete s.scanSpeed
         delete s.language
+        if (s.textSize === 'xxl') s.textSize = 'xl'
         if (!isInputMode(s.preferredMode)) s.preferredMode = 'standard'
         return s as unknown as SettingsState
       },

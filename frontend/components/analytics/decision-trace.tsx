@@ -26,7 +26,7 @@ export function DecisionTrace({ patient }: { patient: PatientAnalytics }) {
           <select
             value={sessionId ?? ''}
             onChange={(e) => setSessionId(e.target.value || null)}
-            className="h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
+            className="min-h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
           >
             {patient.recent_sessions.map((s) => (
               <option key={s.session_id} value={s.session_id}>

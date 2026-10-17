@@ -87,7 +87,7 @@ export function ProfileView({ patientId }: { patientId: string }) {
                   {patient.people.map((person) => (
                     <li key={person.id}>
                       <Link href={`/family/${person.id}`}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm font-semibold hover:border-primary/40">
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm font-semibold hover:border-primary/40">
                         <Users className="size-3.5" aria-hidden="true" />
                         {person.name}, {person.relation}
                       </Link>

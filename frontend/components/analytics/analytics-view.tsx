@@ -87,7 +87,7 @@ export function AnalyticsView() {
           <select
             value={patientId ?? ''}
             onChange={(e) => setPatientId(e.target.value || null)}
-            className="h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
+            className="min-h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
           >
             <option value="">Choose a patient…</option>
             {patients.map((p) => (

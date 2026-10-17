@@ -42,7 +42,7 @@ export function ResearchView() {
           type="button"
           onClick={runCycle}
           disabled={running}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
         >
           <FlaskConical className="size-4" aria-hidden="true" />
           {running ? 'Running…' : 'Run research cycle'}

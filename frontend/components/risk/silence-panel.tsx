@@ -156,12 +156,12 @@ export function SilencePanel() {
         <label className="flex flex-col gap-1 text-sm text-muted-foreground">
           Start a check now
           <select value={chosen} onChange={(e) => setPick(e.target.value)}
-                  className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground">
+                  className="min-h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground">
             {patients.map((p) => <option key={p.id} value={p.id}>{p.room} · {p.name}</option>)}
           </select>
         </label>
         <button type="button" onClick={() => start(chosen)} disabled={!chosen}
-                className="h-11 rounded-xl border border-input bg-card px-4 text-base font-semibold hover:border-foreground disabled:opacity-50">
+                className="min-h-11 rounded-xl border border-input bg-card px-4 text-base font-semibold hover:border-foreground disabled:opacity-50">
           Start
         </button>
       </div>

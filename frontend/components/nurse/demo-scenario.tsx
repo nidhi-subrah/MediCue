@@ -42,7 +42,7 @@ export function DemoScenarioBar({ onAlert }: { onAlert: (alertId: string) => voi
           </span>
           <span className="font-semibold">{sc.title}</span>
           <button type="button" onClick={() => play(sc)} disabled={busy}
-                  className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl border-2 border-primary bg-card px-4 text-sm font-semibold text-primary disabled:opacity-50">
+                  className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl border-2 border-primary bg-card px-4 text-sm font-semibold text-primary disabled:opacity-50">
             <Play className="size-4" aria-hidden="true" />{busy ? 'Playing…' : 'Play'}
           </button>
           <p className="w-full text-sm text-muted-foreground">{sc.description}</p>

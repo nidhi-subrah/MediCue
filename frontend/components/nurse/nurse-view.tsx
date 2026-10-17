@@ -18,7 +18,7 @@ import { SuggestionsPanel } from './suggestions-panel'
 type Drawer = { kind: 'alert'; id: string; openCase?: boolean } | { kind: 'patient'; row: NurseBoardRow }
   | { kind: 'suggestions' } | { kind: 'summary' } | null
 
-const smallButton = 'inline-flex h-10 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted'
+const smallButton = 'inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted'
 
 /** The nurse station: what needs a nurse right now, and where every patient is right now. Trends live in Unit
  *  insights, predictions in Care forecast, handover in the Shift summary. */

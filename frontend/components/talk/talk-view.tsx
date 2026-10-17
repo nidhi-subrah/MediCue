@@ -42,7 +42,7 @@ export function TalkView() {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="inline-flex h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground"
+          className="inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground"
         >
           Try again
         </button>
@@ -66,13 +66,13 @@ export function TalkView() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
+          <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
             {patient.name} · {patient.room}
           </span>
           <button
             type="button"
             onClick={() => setShowToSomeone(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
           >
             <Eye className="size-4" aria-hidden="true" />
             Show to someone
@@ -83,7 +83,7 @@ export function TalkView() {
             <button
               type="button"
               onClick={() => logout()}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
             >
               <LogOut className="size-4" aria-hidden="true" />
               Log out

@@ -240,13 +240,13 @@ export function HypothesisCard({
             placeholder="Add a note (optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="h-11 w-full flex-1 rounded-xl border-2 border-input bg-background px-3 text-base sm:min-w-[220px]"
+            className="min-h-11 w-full flex-1 rounded-xl border-2 border-input bg-background px-3 text-base sm:min-w-[220px]"
           />
           <button
             type="button"
             disabled={busy}
             onClick={() => review('validated')}
-            className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
           >
             Validate
           </button>
@@ -254,7 +254,7 @@ export function HypothesisCard({
             type="button"
             disabled={busy}
             onClick={() => review('needs_more_data')}
-            className="h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
+            className="min-h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
           >
             Needs more data
           </button>
@@ -262,7 +262,7 @@ export function HypothesisCard({
             type="button"
             disabled={busy}
             onClick={() => review('rejected')}
-            className="h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
+            className="min-h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
           >
             Reject
           </button>
