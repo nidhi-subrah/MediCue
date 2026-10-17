@@ -16,6 +16,7 @@ class EngineConfig:
     false_alarm_cost: float = 40.0    # cost of pulling a nurse to the bedside for a low-risk need
     escalate_threshold: float = 0.25  # P(any high-risk need) that forces escalation (safety floor)
     max_questions: int = 4            # hard cap on clarifying questions per session
+    yes_no_extra_questions: int = 5   # questions replace the two taps at ladder level 3+ (86% vs 75% top-1 at +3)
     max_inconsistent_answers: float = 2.0  # stop asking the patient after this many surprising answers
     delay_ask: float = 1.0            # ~10 s per question
     delay_lookup: float = 0.02

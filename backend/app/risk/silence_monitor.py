@@ -43,8 +43,9 @@ class SilenceMonitor:
         self.closed_at: dict[str, datetime] = {}        # patient id -> when their last ladder closed
         self.assessments: dict[str, sm.Inactivity] = {}
         self.audit: list[dict] = []                     # every row, kept even if the store write fails
-        self._timeouts: dict[tuple[str, float], float] = {}
-        self._fired: set[tuple[str, float]] = set()
+        self._timeouts: dict[tuple[str, float, int], float] = {}
+        self._fired: set[tuple[str, float, int]] = set()
+        self._idle_stepped: set[tuple[str, float]] = set()   # prompts the ladder already stepped down on
         self._next_inactivity = self.started
         self._task: asyncio.Task | None = None
 
@@ -91,14 +92,22 @@ class SilenceMonitor:
         for s in list(self.svc.sessions.values()):
             if s.status not in sm.MID_DIALOGUE:
                 continue
-            key = (s.id, s.prompted_at)
+            key = (s.id, s.prompted_at, s.ladder.level)   # a new level can shorten the timeout
             live.add(key)
             if key in self._fired:
                 continue
             if key not in self._timeouts:
                 self._timeouts[key] = sm.mid_dialogue_timeout(
-                    await self._latencies(s.patient["id"]), s.dialogue.fatigue(), self.cfg)
+                    await self._latencies(s.patient["id"]), s.dialogue.fatigue(), self.cfg, s.ladder.level)
             timeout, idle = self._timeouts[key], now.timestamp() - s.prompted_at
+            prompt = (s.id, s.prompted_at)
+            if idle >= timeout * self.cfg.mid_idle_step_fraction and prompt not in self._idle_stepped:
+                # Communication ladder: try an easier screen first. One step per prompt; the timer keeps
+                # running from the same prompt, so this never delays the escalation below.
+                self._idle_stepped.add(prompt)
+                await self.svc.idle_step_down(s.id, idle)
+                if s.status not in sm.MID_DIALOGUE:
+                    continue
             if not sm.mid_dialogue_stalled(s.status, idle, timeout):
                 continue
             self._fired.add(key)
@@ -111,6 +120,7 @@ class SilenceMonitor:
                                               "idle_s": round(idle, 1), "timeout_s": round(timeout, 1)}})
         self._timeouts = {k: v for k, v in self._timeouts.items() if k in live}
         self._fired &= live
+        self._idle_stepped &= {k[:2] for k in live}
 
     # ---- mode B ----------------------------------------------------------------------------------
 

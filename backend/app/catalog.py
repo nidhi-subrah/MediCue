@@ -10,6 +10,9 @@ from pathlib import Path
 from .config import settings
 
 
+SAFETY_QUESTION = "safety:urgent"
+
+
 @dataclass
 class Question:
     id: str
@@ -81,6 +84,10 @@ class Catalog:
             qs.append(Question(f"need:{need['id']}", need["question"], p, need["id"]))
         for eq in self.raw.get("extra_questions", []):
             qs.append(Question(eq["id"], eq["text"], [eq["p_yes_by_risk"][r] for r in self.risk]))
+        # Emergency screen: what the body map's chest tile and the "hard to breathe" feeling catch at once.
+        # Yes/no-only dialogues (communication ladder level 3+) ask it first, since they have no taps.
+        qs.append(Question(SAFETY_QUESTION, "Is it your chest or your breathing?",
+                           [0.9 if high else 0.05 for high in self.high_risk]))
         return qs
 
     def _build_lookup(self, raw: dict) -> Lookup:

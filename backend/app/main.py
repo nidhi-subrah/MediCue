@@ -10,7 +10,9 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from .catalog import get_catalog
 from .config import settings
@@ -60,6 +62,10 @@ async def lifespan(app: FastAPI):
             await app.state.profiles.warm()
         except Exception:
             log.exception("profile extraction failed")
+        try:
+            await app.state.svc.warm_simple()
+        except Exception:
+            log.exception("ladder wording failed (original wording kept)")
         try:
             await app.state.research.ensure_demo_observation()
             await app.state.research.cycle()
@@ -164,6 +170,15 @@ class ModeBody(BaseModel):
     mode: str
 
 
+class SignalBody(BaseModel):
+    kind: Literal["miss", "correction", "deletion"]
+
+
+class LevelBody(BaseModel):
+    level: int = Field(ge=1, le=4)
+    by: Literal["patient", "nurse"] = "patient"
+
+
 async def _call(coro):
     try:
         return await coro
@@ -199,6 +214,24 @@ async def answer(sid: str, body: AnswerBody):
 @app.post("/api/sessions/{sid}/mode")
 async def mode(sid: str, body: ModeBody):
     return await _call(svc().set_mode(sid, body.mode))
+
+
+@app.post("/api/sessions/{sid}/signal")
+async def signal(sid: str, body: SignalBody):
+    """A missed tap or a correction the tablet noticed; feeds the communication ladder."""
+    return await _call(svc().signal(sid, body.kind))
+
+
+@app.post("/api/sessions/{sid}/level")
+async def set_level(sid: str, body: LevelBody):
+    """Manual "make it easier / harder" from the patient or a nurse."""
+    return await _call(svc().set_level(sid, body.level, body.by))
+
+
+@app.get("/api/ladder")
+async def ladder(hours: int = 12):
+    """Each patient's communication level and today's level changes, for the nurse station."""
+    return await svc().ladder_overview(hours)
 
 
 @app.post("/api/sessions/{sid}/skip_consult")
