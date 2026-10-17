@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ConsultRequest } from "@shared/types";
+import type { ConsultRequest, SilenceLadder } from "@shared/types";
 import { api, timeAgo, useChannel } from "../api";
+import SilenceCheckCard from "../risk/SilenceCheckCard";
 
 interface PersonInfo { id: string; name: string; relation: string; patient_id: string; patient_name: string }
 
@@ -9,6 +10,10 @@ export default function FamilyPage({ personId }: { personId: string }) {
   const [consults, setConsults] = useState<ConsultRequest[]>([]);
   const [welfare, setWelfare] = useState<{ id: string; status: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checks, setChecks] = useState<SilenceLadder[]>([]);
+  const upsertCheck = (l: SilenceLadder) => setChecks((all) => [l, ...all.filter((x) => x.id !== l.id)]);
+  const loadChecks = () =>
+    api.get<SilenceLadder[]>(`/api/risk/silence/ladders?person_id=${personId}&active=true`).then(setChecks).catch(() => {});
 
   useEffect(() => {
     api.get<PersonInfo>(`/api/people/${personId}`).then(setMe).catch((e) => setError(String(e)));
@@ -18,7 +23,8 @@ export default function FamilyPage({ personId }: { personId: string }) {
   useChannel(`family:${personId}`, (m) => {
     if (m.type === "consult") setConsults((c) => [m.consult, ...c.filter((x) => x.id !== m.consult.id)]);
     if (m.type === "welfare_resolved" && welfare?.id === m.id) setWelfare({ id: m.id, status: m.outcome });
-  });
+    if (m.type === "silence_check") upsertCheck(m.ladder);
+  }, loadChecks);  // refetch after a reconnect so a check sent while offline is not missed
 
   const answer = async (c: ConsultRequest, needId: string | null, unsure = false) => {
     const updated = await api.post<ConsultRequest>(`/api/consults/${c.id}/answer`, { need_id: needId, unsure });
@@ -47,6 +53,10 @@ export default function FamilyPage({ personId }: { personId: string }) {
         <h1>Hi {me.name.split(" ")[0]}</h1>
         <p>You're helping {first}'s care team understand what {first} needs.</p>
       </header>
+
+      {checks.filter((l) => l.active).map((l) => (
+        <SilenceCheckCard key={l.id} ladder={l} personId={personId} onChange={upsertCheck} />
+      ))}
 
       {pending.length === 0 && (
         <p className="family-idle">No questions right now. If {first} is hard to understand, we'll ask you here.</p>

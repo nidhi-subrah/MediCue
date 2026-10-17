@@ -39,6 +39,14 @@ const PATHS: Record<string, JSX.Element> = {
   close: <path d="M6 6l12 12M18 6 6 18" />,
   check: <path d="m4.5 12.5 4.8 4.8L19.5 7" />,
   alert: <><path d="M12 3.5 2.5 20h19Z" /><path d="M12 10v4.5M12 17.2h.01" /></>,
+  // risk levels: a different shape for each, never colour alone
+  level_low: <><circle cx="12" cy="12" r="8" /><path d="M8.5 12h7" /></>,
+  level_watch: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></>,
+  level_elevated: <><path d="M12 3.5 2.5 20h19Z" /><path d="M12 10v4.5M12 17.2h.01" /></>,
+  // silence ladder steps
+  tablet: <><rect x="5" y="2.5" width="14" height="19" rx="2" /><path d="M11 18.5h2" /></>,
+  nurse: <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
 };
 
 export default function Icon({ name, size = 24, className }: { name: string; size?: number; className?: string }) {

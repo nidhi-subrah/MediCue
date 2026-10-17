@@ -38,6 +38,8 @@ export default function AlertCard({ alert }: { alert: Alert }) {
         <span className="alert-time">{timeAgo(alert.created_at)} · alert in {alert.seconds_to_alert}s</span>
       </header>
 
+      {alert.label && <p className="alert-label">{alert.label}</p>}
+
       {alert.kind === "need" && lead && (
         <div className="alert-lead">
           <span className="lead-need">{lead.label}</span>

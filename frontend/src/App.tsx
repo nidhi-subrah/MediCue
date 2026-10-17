@@ -4,6 +4,7 @@ import PatientPage from "./pages/PatientPage";
 import NurseDashboard from "./pages/NurseDashboard";
 import FamilyPage from "./pages/FamilyPage";
 import ResearchPage from "./pages/ResearchPage";
+import EarlyWarningPage from "./pages/EarlyWarningPage";
 
 function useHashRoute() {
   const [hash, setHash] = useState(location.hash.slice(1) || "/");
@@ -28,6 +29,7 @@ export default function App() {
             <>
               <a href="#/nurse" aria-current={page === "nurse" ? "page" : undefined}>Nurse station</a>
               <a href="#/research" aria-current={page === "research" ? "page" : undefined}>Pattern review</a>
+              <a href="#/early-warning" aria-current={page === "early-warning" ? "page" : undefined}>Early warning</a>
             </>
           )}
           <span className="disclaimer">Prototype with synthetic data. Not a diagnostic device.</span>
@@ -37,7 +39,8 @@ export default function App() {
         {page === "patient" && id ? <PatientPage patientId={id} /> :
          page === "nurse" ? <NurseDashboard /> :
          page === "family" && id ? <FamilyPage personId={id} /> :
-         page === "research" ? <ResearchPage /> : <Home />}
+         page === "research" ? <ResearchPage /> :
+         page === "early-warning" ? <EarlyWarningPage /> : <Home />}
       </main>
     </>
   );

@@ -19,7 +19,7 @@ function save(key: string, v: boolean) {
   try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* storage unavailable */ }
 }
 
-interface Welfare { id: string; requested_by: string; expires_in: number; started: number }
+interface Welfare { id: string; requested_by: string; expires_in: number; started: number; respond_path?: string }
 
 const STEPS = ["Where", "What", "Check"];
 const STEP_OF: Record<string, number> = { area: 0, feeling: 1, question: 2, waiting_consult: 2 };
@@ -50,7 +50,7 @@ export default function PatientPage({ patientId }: { patientId: string }) {
 
   useChannel(`patient:${patientId}`, (m) => {
     if (m.type === "session" && s && m.session.session_id === s.session_id) setS(m.session);
-    if (m.type === "welfare_check") setWelfare({ id: m.id, requested_by: m.requested_by, expires_in: m.expires_in, started: Date.now() });
+    if (m.type === "welfare_check") setWelfare({ id: m.id, requested_by: m.requested_by, expires_in: m.expires_in, started: Date.now(), respond_path: m.respond_path });
     if (m.type === "welfare_resolved") setWelfare(null);
   });
 
@@ -201,7 +201,7 @@ export default function PatientPage({ patientId }: { patientId: string }) {
 
       {welfare && (
         <button className="welfare-overlay" onClick={async () => {
-          await api.post(`/api/welfare/${welfare.id}/respond`);
+          await api.post(welfare.respond_path ?? `/api/welfare/${welfare.id}/respond`);
           setWelfare(null);
         }}>
           <span className="welfare-title">Are you okay? Tap anywhere.</span>

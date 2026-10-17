@@ -79,6 +79,8 @@ export interface Alert {
   sbar: SBAR; sbar_source: "template" | "gemini";
   confirmed_need: string | null; seconds_to_alert: number;
   reason: string;                     // the decision engine's explanation for this alert
+  label?: string | null;              // e.g. "Patient stopped responding mid-request"
+  confirmed_by?: string | null;
 }
 
 export interface ConsultRequest {
@@ -107,10 +109,72 @@ export interface Finding {
   prior_effect: { patient_id: string; need_ids: string[]; multiplier: number; hours?: number[] } | null;
 }
 
+// Early-warning risk engine (app/risk). All risk data is synthetic.
+export type RiskFlagLevel = "low" | "watch" | "elevated";
+export type RiskKey = "fall" | "dehydration" | "delirium";
+
+export interface RiskContributor {
+  signal: string; label: string; value: number | null; baseline: number | null;
+  z: number; direction: "up" | "down" | "flat";
+  contribution: number;               // log-odds this signal added
+  text: string;                       // e.g. "3 vs usual 1"
+}
+
+export interface RiskScore {
+  time: string; risk: RiskKey; label: string; score: number;
+  level: RiskFlagLevel; raw_level: RiskFlagLevel; flag: RiskFlagLevel | null;
+  enough_data: boolean; reason: string;
+  top: RiskContributor[]; contributors: RiskContributor[];
+  missing: { signal: string; label: string }[];
+  thresholds: { watch: number; elevated: number };
+  spark?: number[];                   // highest score per 6 h over the patient's last 7 days of data
+  config_version: string;
+}
+
+export interface RiskPatient {
+  patient_id: string; name: string; room: string; synthetic: boolean;
+  risks: Partial<Record<RiskKey, RiskScore>>;
+}
+
+export interface RiskOverview { notice: string; config_version: string; patients: RiskPatient[] }
+
+export interface TimelineCase {
+  patient_id: string; name: string; room: string; storyline: string; split: "train" | "test";
+  risk: RiskKey; label: string; headline: string; lead_days: number | null; flag_level: RiskFlagLevel | null;
+}
+
+export interface Timeline {
+  notice: string; patient_id: string; name: string; room: string; storyline: string; split: "train" | "test";
+  risk: RiskKey; label: string; headline: string; lead_days: number | null;
+  outcome: { time: string; onset: string; outcome: string; description: string };
+  flag: { time: string; level: RiskFlagLevel; reason: string } | null;
+  flags_before_onset: number;
+  thresholds: { watch: number; elevated: number };
+  signals: { key: string; label: string; risky: "rise" | "fall" }[];
+  series: { time: string; score: number; level: RiskFlagLevel; z: Record<string, number | null> }[];
+}
+
+// Silence detection escalation ladder (app/risk/silence.py): tablet check -> trusted contact -> nurse.
+export interface SilenceStep {
+  kind: "tablet" | "contact" | "nurse"; started_at: string; deadline: string;
+  status: "open" | "timed_out" | "acknowledged";
+  ack_by: string | null; ack_role: string | null; ack_at: string | null;
+  outcome: "ok" | "concern" | null; note: string | null; reminders: number;
+}
+
+export interface SilenceLadder {
+  id: string; patient_id: string; patient_name: string; room: string;
+  contact_id: string | null; contact_name: string | null; alert_id: string | null;
+  started_at: string; closed_at: string | null; reason: string; active: boolean;
+  current: SilenceStep["kind"] | null; steps: SilenceStep[];
+}
+
 export type WsMessage =
   | { type: "alert"; alert: Alert }
   | { type: "alert_updated"; alert: Alert }
   | { type: "session"; session: SessionState }
   | { type: "consult"; consult: ConsultRequest }
-  | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number }
+  | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number;
+      respond_path?: string }         // silence checks answer on their own endpoint
+  | { type: "silence_check"; ladder: SilenceLadder }
   | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" };

@@ -425,3 +425,104 @@ table.scores { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
   .answers { grid-template-columns: 1fr; }
   .answer { min-height: 150px; }
 }
+
+/* silence detection */
+.alert-label { font-weight: 600; margin: 0.25rem 0 0.5rem; }
+.silence-check { border-left: 4px solid currentColor; }
+
+/* ---- early-warning risk, lead time, inactivity checks ------------------------------------------ */
+/* Calm by design: no animation, level = icon + word, colour only reinforces it. */
+
+.dash-col { display: grid; gap: 2.5rem; align-content: start; min-width: 0; }
+.tag-synthetic {
+  display: inline-block; font-family: var(--mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--rule-strong); border-radius: 3px;
+  padding: 0 0.35rem; vertical-align: 0.1em;
+}
+.small { font-size: 0.85rem; }
+
+.level { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); }
+.level-watch { color: var(--caution); }
+.level-elevated { color: var(--urgent); }
+.level-note { font-weight: 400; color: var(--ink-3); }
+
+.risk-notice { font-size: 0.85rem; color: var(--ink-2); margin-bottom: 0.5rem; }
+.risk-row { padding: 1rem 0; border-bottom: 1px solid var(--rule); }
+.risk-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; margin-top: 0.6rem; }
+@media (max-width: 560px) { .risk-chips { grid-template-columns: 1fr; } }
+.risk-chip {
+  display: grid; gap: 0.3rem; padding: 0.55rem 0.65rem; background: var(--surface);
+  border: 1px solid var(--rule-strong); border-left-width: 4px; border-radius: 4px;
+}
+.risk-chip-watch { border-left-color: var(--caution); }
+.risk-chip-elevated { border-left-color: var(--urgent); }
+.risk-chip-head { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; }
+.risk-chip-name { font-weight: 600; color: var(--ink); }
+.risk-chip-score { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.risk-spark { display: block; }
+.risk-spark-line { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
+.risk-spark-thr { stroke: var(--rule-strong); stroke-width: 1; stroke-dasharray: 2 3; }
+.risk-spark-last { fill: var(--ink); }
+.risk-spark-empty { font-size: 0.75rem; color: var(--ink-3); }
+
+.risk-why { margin-top: 0.6rem; font-size: 0.9rem; }
+.risk-why summary { cursor: pointer; color: var(--action); width: fit-content; }
+.why-risk { margin-top: 0.75rem; }
+.why-title { font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.why-list { list-style: none; padding: 0; margin: 0.35rem 0 0; }
+.why-item { display: grid; grid-template-columns: minmax(9rem, 1.4fr) 4.5rem 1.4fr 4rem; gap: 0.5rem; padding: 0.25rem 0;
+  border-bottom: 1px solid var(--rule); }
+@media (max-width: 560px) { .why-item { grid-template-columns: 1fr 1fr; } }
+.why-dir, .why-z { font-family: var(--mono); font-size: 0.85rem; }
+.why-text { color: var(--ink-2); }
+.why-none { color: var(--ink-2); font-size: 0.85rem; margin-top: 0.3rem; }
+
+.silence-start { display: flex; align-items: end; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+.silence-start label { display: grid; gap: 0.2rem; }
+.ladder { padding: 1rem 0 1rem 1.25rem; border-bottom: 1px solid var(--rule); position: relative; }
+.ladder::before { content: ""; position: absolute; left: 0; top: 1rem; bottom: 1rem; width: 3px; background: var(--rule-strong); }
+.ladder-active::before { background: var(--caution); }
+.ladder-closed { opacity: 0.75; }
+.ladder-state { font-size: 0.85rem; font-weight: 600; }
+.ladder-reason { color: var(--ink-2); font-size: 0.9rem; margin: 0.4rem 0 0.2rem; }
+.ladder-contacted { font-size: 0.9rem; }
+.ladder-steps { list-style: none; padding: 0; margin: 0.75rem 0 0; display: grid; gap: 0.5rem; }
+.ladder-step { display: grid; grid-template-columns: 24px 1fr; gap: 0.6rem; align-items: start; color: var(--ink-2); }
+.ladder-step svg { margin-top: 0.15rem; }
+.step-title { font-weight: 600; color: var(--ink); }
+.step-who { font-weight: 400; color: var(--ink-2); }
+.step-status { font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.step-current .step-title, .step-current .step-status { color: var(--ink); }
+.step-current { padding-left: 0.5rem; margin-left: -0.5rem; border-left: 3px solid var(--action); }
+.step-pending { color: var(--ink-3); }
+.step-pending .step-title { color: var(--ink-3); }
+.ladder-history { margin-top: 0.75rem; font-size: 0.9rem; }
+.ladder-history summary { cursor: pointer; color: var(--action); }
+
+.early-warning { max-width: 1100px; }
+.early-head { margin-bottom: 2rem; display: grid; gap: 0.5rem; }
+.early-head h1 { font-size: 1.6rem; }
+.early-head p { color: var(--ink-2); max-width: 70ch; }
+.lead-pick select { max-width: min(100%, 34rem); }
+.lead-headline { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; margin: 0.75rem 0 0.35rem; }
+.lead-meta { color: var(--ink-2); font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.lead-drift { margin-top: 0.75rem; }
+.timeline-wrap { overflow-x: auto; margin-top: 1rem; }
+.timeline { display: block; min-width: 640px; font-family: var(--sans); }
+.timeline text { font-size: 12px; fill: var(--ink-2); }
+.timeline .tl-track { font-size: 12px; font-weight: 600; fill: var(--ink); }
+.timeline .tl-axis, .tl-tick text, .tl-thr text { font-size: 11px; fill: var(--ink-3); }
+.tl-score { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.tl-signal { fill: none; stroke: var(--ink-2); stroke-width: 1.5; stroke-linejoin: round; }
+.tl-thr line, .tl-zero { stroke: var(--rule-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.tl-sep { stroke: var(--rule); stroke-width: 1; }
+.tl-tick line { stroke: var(--rule-strong); }
+.tl-mark line { stroke-width: 1.5; }
+.tl-onset line { stroke: var(--ink-3); stroke-dasharray: 2 4; }
+.tl-onset text { fill: var(--ink-3); }
+.tl-flag line { stroke: var(--action); }
+.tl-flag text { fill: var(--action); font-weight: 600; }
+.tl-flag .tl-lead { stroke: var(--action); stroke-width: 2; }
+.tl-flag .tl-lead-text { font-family: var(--mono); font-weight: 600; }
+.tl-outcome line { stroke: var(--urgent); stroke-width: 2; }
+.tl-outcome text { fill: var(--urgent); font-weight: 600; }

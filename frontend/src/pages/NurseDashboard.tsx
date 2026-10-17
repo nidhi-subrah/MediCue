@@ -3,6 +3,8 @@ import type { Alert, PatientTrend } from "@shared/types";
 import { api, useChannel } from "../api";
 import AlertCard from "../components/AlertCard";
 import Sparkline from "../components/Sparkline";
+import RiskPanel from "../risk/RiskPanel";
+import SilencePanel from "../risk/SilencePanel";
 
 const SPARKS: { metric: string; label: string; format: (v: number) => string }[] = [
   { metric: "pain_needs", label: "Pain requests", format: (v) => v.toFixed(0) },
@@ -56,6 +58,8 @@ export default function NurseDashboard() {
 
   return (
     <div className="dashboard">
+      <div className="dash-col">
+      <SilencePanel />
       <section className="requests" aria-labelledby="alerts-h">
         <header className="section-head">
           <h1 id="alerts-h">Requests</h1>
@@ -75,7 +79,10 @@ export default function NurseDashboard() {
         )}
         {showDone && done.map((a) => <AlertCard key={a.id} alert={a} />)}
       </section>
+      </div>
 
+      <div className="dash-col">
+      <RiskPanel />
       <section className="trends" aria-labelledby="trends-h">
         <header className="section-head">
           <h2 id="trends-h">Changes this shift</h2>
@@ -108,6 +115,7 @@ export default function NurseDashboard() {
         )}
         <p className="fineprint">Flags are prompts for clinical review, not diagnoses.</p>
       </section>
+      </div>
     </div>
   );
 }
