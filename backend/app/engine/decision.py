@@ -31,6 +31,8 @@ class Consultant:
     name: str
     relation: str
     reliability: float
+    available: bool = True       # False outside the hours a profile says they can be reached
+    cost_factor: float = 1.0     # < 1 for a profile-preferred interpreter
 
 
 @dataclass
@@ -46,6 +48,7 @@ class DecisionInput:
     consulted: set[str] = field(default_factory=set)
     dialogue_open: bool = True              # False while the patient is still in the tap phase
     signal_p_high: float = 0.0              # P(high-risk) from patient/person signals only, no chart
+    patient_can_answer: bool = True         # False after too many inconsistent answers: stop asking
 
 
 @dataclass
@@ -121,7 +124,7 @@ def decide(cat: Catalog, cfg: EngineConfig, x: DecisionInput) -> Decision:
         delay = cfg.lambda_delay * cfg.delay_lookup * risk
         actions.append(Action("lookup", lk.id, f"Look up: {lk.label}", value - delay, value, {"delay": delay}, eig))
 
-    if x.dialogue_open and x.questions_asked < cfg.max_questions:
+    if x.dialogue_open and x.questions_asked < cfg.max_questions and x.patient_can_answer:
         for q in cat.questions:
             if q.id in x.asked:
                 continue
@@ -135,12 +138,12 @@ def decide(cat: Catalog, cfg: EngineConfig, x: DecisionInput) -> Decision:
     if x.dialogue_open:
         options = consult_options(cat, b)
         for person in x.consultants:
-            if person.id in x.consulted:
+            if person.id in x.consulted or not person.available:
                 continue
             liks = [consult_likelihood(cat, options, ans, person.reliability) for ans in options + [None]]
             value, eig = info_value(liks)
             delay = cfg.lambda_delay * cfg.delay_consult * risk
-            their = cfg.lambda_their_time
+            their = cfg.lambda_their_time * person.cost_factor
             actions.append(Action("consult", person.id, f"Consult {person.name} ({person.relation})",
                                   value - delay - their, value, {"delay": delay, "their_time": their}, eig))
 

@@ -1,6 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
+import { ProfileList } from '@/components/profile/profile-list'
 import { BeliefBars } from '@/components/talk/belief-bars'
 import { catalog, needLabel } from '@/lib/live/catalog'
 import { pct, timeAgo } from '@/lib/services/backend'
@@ -14,8 +16,15 @@ const SBAR_ROWS = [
   ['recommendation', 'Recommendation'],
 ] as const
 
-export function AlertCard({ alert, onConfirm }: { alert: Alert; onConfirm: (needId: string | null) => Promise<void> }) {
+export function AlertCard({
+  alert,
+  onConfirm,
+}: {
+  alert: Alert
+  onConfirm: (needId: string | null, note: string | null) => Promise<void>
+}) {
   const [other, setOther] = useState('')
+  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const urgent = alert.priority === 'urgent'
   const open = alert.status === 'open'
@@ -24,7 +33,7 @@ export function AlertCard({ alert, onConfirm }: { alert: Alert; onConfirm: (need
   const confirm = async (needId: string | null) => {
     setBusy(true)
     try {
-      await onConfirm(needId)
+      await onConfirm(needId, note.trim() || null)
     } finally {
       setBusy(false)
     }
@@ -49,6 +58,8 @@ export function AlertCard({ alert, onConfirm }: { alert: Alert; onConfirm: (need
           {timeAgo(alert.created_at)} · alert in {alert.seconds_to_alert}s
         </span>
       </header>
+
+      {alert.label && <p className="text-base font-semibold">{alert.label}</p>}
 
       {alert.kind === 'need' && lead && (
         <div className="flex flex-wrap items-baseline gap-2">
@@ -107,6 +118,36 @@ export function AlertCard({ alert, onConfirm }: { alert: Alert; onConfirm: (need
         </details>
       )}
 
+      {alert.profile?.length > 0 && (
+        <details className="text-sm">
+          <summary className="w-fit cursor-pointer text-primary">
+            Patient profile · {alert.profile.length} item{alert.profile.length === 1 ? '' : 's'}
+          </summary>
+          <div className="mt-3 flex flex-col gap-3">
+            <ProfileList items={alert.profile} />
+            <Link href={`/profile/${alert.patient_id}`} className="w-fit font-semibold text-primary underline-offset-4 hover:underline">
+              Notes and profile
+            </Link>
+          </div>
+        </details>
+      )}
+
+      {open && alert.kind === 'need' && (
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm text-muted-foreground">
+            Observation (optional). Gemini suggests profile updates from it for a nurse to approve.
+          </span>
+          <textarea
+            rows={2}
+            value={note}
+            disabled={busy}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Took ages on the second question. Easier to ask his daughter after 8pm."
+            className="rounded-xl border-2 border-input bg-background p-3 text-base"
+          />
+        </label>
+      )}
+
       {open ? (
         alert.kind === 'need' ? (
           <div className="flex flex-wrap items-center gap-2" aria-label="Confirm what the patient needed">
@@ -149,9 +190,12 @@ export function AlertCard({ alert, onConfirm }: { alert: Alert; onConfirm: (need
           </button>
         )
       ) : (
-        <p className="text-base font-semibold text-success">
-          Confirmed{alert.confirmed_need ? `: ${needLabel(alert.confirmed_need)}` : ''}
-        </p>
+        <>
+          <p className="text-base font-semibold text-success">
+            Confirmed{alert.confirmed_need ? `: ${needLabel(alert.confirmed_need)}` : ''}
+          </p>
+          {alert.nurse_note && <p className="text-sm text-muted-foreground">Note: {alert.nurse_note}</p>}
+        </>
       )}
     </article>
   )

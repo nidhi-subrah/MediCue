@@ -22,7 +22,10 @@ With no environment variables it runs fully in memory with template text, seeded
 | `app/engine/belief.py` | Bayes updates, tap/answer/consult likelihoods, context prior |
 | `app/engine/decision.py` | Ask / Look up / Consult / Escalate / Send scoring + safety floor |
 | `app/engine/conformal.py` | Split conformal prediction sets (90%) |
-| `app/engine/dialogue.py` | One dialogue's state and decision loop, no I/O (shared by live sessions and the simulator) |
+| `app/engine/dialogue.py` | One dialogue's state and decision loop, no I/O (shared by live sessions and the simulator); fatigue model |
+| `app/engine/profile.py` | Patient profiles: validation, caps and safety rules, effects on prior, fatigue, consults and access mode. **Full feature summary in its docstring** |
+| `app/services/profiles.py` | Gemini reads chart notes into profiles; nurse-note suggestions and their approval |
+| `app/services/handoff.py` | Shift summary: backend facts per patient, Gemini headline and "watch for" lines |
 | `app/sim/` | Synthetic patients, conformal calibration, `evaluate.py` metrics |
 | `app/services/sessions.py` | Live sessions, alerts, consults, learning from nurse confirmations, welfare checks |
 | `app/services/gemini.py` | SBAR, translation, caregiver questions, hypotheses, each with a template fallback |
@@ -39,6 +42,38 @@ With no environment variables it runs fully in memory with template text, seeded
 3. Patient history may raise a high-risk need's prior but never lower it.
 4. Chart fields pulled after an escalation are shown to the nurse but don't change the belief.
 5. The nurse alert is pushed before any logging or Gemini call. Gemini only rewrites the SBAR text afterwards.
+6. Patient profiles (from Gemini reading chart notes) are bounded: every item must quote the notes, multipliers are
+   fixed constants capped at 2×, high-risk needs can never be made less likely (not even by renormalising), and
+   sessions never wait for Gemini. Profile changes suggested from nurses' notes apply only after a nurse approves them.
+
+## Patient profiles, shift summary and nurse-note suggestions
+
+Gemini reads each patient's chart notes into a structured profile (`app/engine/profile.py` has the full summary):
+
+| Notes say | Profile item | Engine effect |
+|---|---|---|
+| "Tires quickly" | fatigue: elevated | fatigue × 1.3, so fewer questions sooner |
+| "Lin … reads his gestures well" | person_trust: higher | Lin's reliability prior +3 hits |
+| "Husband Miguel present evenings" | person_available, evening hours | not consulted outside those hours |
+| "Prefers switch scanning when tired" | access: scan | tablet switches to scanning (not large tiles) on fatigue |
+| "Becomes anxious in late afternoon and evening" | need: anxious, raise, 16–24 h | prior × 1.5 in those hours |
+
+Fatigue also uses each patient's own usual pace (median seconds per input over 14 days) and counts
+inconsistent answers; after two the engine stops asking the patient.
+
+| Route | What |
+|---|---|
+| `GET /api/patients/{id}/profile` | Profile items with their quotes and effects, plus anything dropped and why |
+| `POST /api/patients/{id}/notes` | Edit the notes; Gemini re-reads them |
+| `POST /api/alerts/{id}/confirm` | Now takes an optional `note`; Gemini suggests profile changes from it |
+| `GET /api/suggestions`, `POST /api/suggestions/{id}/review` | Pending / duplicate / blocked suggestions; approve or reject |
+| `GET /api/handoff?hours=12` | Shift summary |
+
+**Gemini quota.** The free tier allows only a few requests a minute and a small daily total per model. Startup
+uses one request (all notes in one batch); the first research run uses templates. On a 429 the client retries
+once if asked to wait ≤ 60 s, otherwise it pauses Gemini until the quota resets and uses templates
+(`/api/health` shows `gemini_paused_s`). If the default model's quota runs out, set `GEMINI_MODEL` to another
+model the key can use (for example `gemini-flash-latest`): quotas are per model.
 
 ## Current metrics (`python -m app.sim.evaluate`)
 

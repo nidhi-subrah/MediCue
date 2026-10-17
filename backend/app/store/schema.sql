@@ -154,6 +154,22 @@ CREATE TABLE IF NOT EXISTS source_reliability (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Patient profiles extracted from chart notes by Gemini and validated by engine/profile.py.
+CREATE TABLE IF NOT EXISTS patient_profiles (
+    patient_id TEXT PRIMARY KEY,
+    body       JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Profile changes suggested from nurses' notes; nothing applies until a nurse approves it.
+CREATE TABLE IF NOT EXISTS profile_suggestions (
+    id         TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    patient_id TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    body       JSONB NOT NULL
+);
+
 -- Research agent: hypotheses (with their full evidence trail and timeline in body) and clinician inquiries.
 -- Every agent action is also appended to the events hypertable as event_type = 'research_action'.
 CREATE TABLE IF NOT EXISTS research_hypotheses (

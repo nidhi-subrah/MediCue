@@ -1,12 +1,13 @@
 'use client'
 
 import { CircleHelp, Clock, HeartHandshake, MessageCircleQuestion } from 'lucide-react'
+import { SilenceCheckCard } from '@/components/risk/silence-check-card'
 import { useFamilyData } from '@/lib/live/family'
 import { timeAgo } from '@/lib/services/backend'
 import { cn } from '@/lib/utils'
 
 export function FamilyView({ personId }: { personId: string }) {
-  const { me, consults, welfare, error, answer, checkIn } = useFamilyData(personId)
+  const { me, consults, welfare, error, answer, checkIn, checks, upsertCheck } = useFamilyData(personId)
 
   if (error) {
     return <p className="rounded-3xl border border-urgent/30 bg-urgent-soft p-6 text-lg text-urgent">{error}</p>
@@ -28,6 +29,10 @@ export function FamilyView({ personId }: { personId: string }) {
           You&apos;re helping {first}&apos;s care team understand what {first} needs.
         </p>
       </header>
+
+      {checks.filter((l) => l.active).map((l) => (
+        <SilenceCheckCard key={l.id} ladder={l} personId={personId} onChange={upsertCheck} />
+      ))}
 
       {pending.length === 0 && (
         <p className="rounded-3xl border border-border bg-card p-6 text-lg leading-relaxed text-muted-foreground">

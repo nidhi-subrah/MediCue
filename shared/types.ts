@@ -63,6 +63,9 @@ export interface SessionState {
   alert_id: string | null;
   ui_text: Record<string, string>;    // translated tile labels/prompts for the patient's language
   prior_reasons: string[];            // why the prior looks the way it does (time of day, surgery, history)
+  inconsistencies: number;            // surprising answers (+1) and "not sure" (+0.5) this session
+  baseline_interval: number | null;   // patient's usual seconds between inputs, from history
+  profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -79,6 +82,10 @@ export interface Alert {
   sbar: SBAR; sbar_source: "template" | "gemini";
   confirmed_need: string | null; seconds_to_alert: number;
   reason: string;                     // the decision engine's explanation for this alert
+  label?: string | null;              // e.g. "Patient stopped responding mid-request"
+  confirmed_by?: string | null;
+  profile: ProfileItem[];
+  nurse_note: string | null;          // observation written at confirmation
 }
 
 export interface ConsultRequest {
@@ -117,6 +124,65 @@ export interface ResearchActionScore {
   detail: Record<string, number | string>;
 }
 
+// Early-warning risk engine (app/risk). All risk data is synthetic.
+export type RiskFlagLevel = "low" | "watch" | "elevated";
+export type RiskKey = "fall" | "dehydration" | "delirium";
+
+export interface RiskContributor {
+  signal: string; label: string; value: number | null; baseline: number | null;
+  z: number; direction: "up" | "down" | "flat";
+  contribution: number;               // log-odds this signal added
+  text: string;                       // e.g. "3 vs usual 1"
+}
+
+export interface RiskScore {
+  time: string; risk: RiskKey; label: string; score: number;
+  level: RiskFlagLevel; raw_level: RiskFlagLevel; flag: RiskFlagLevel | null;
+  enough_data: boolean; reason: string;
+  top: RiskContributor[]; contributors: RiskContributor[];
+  missing: { signal: string; label: string }[];
+  thresholds: { watch: number; elevated: number };
+  spark?: number[];                   // highest score per 6 h over the patient's last 7 days of data
+  config_version: string;
+}
+
+export interface RiskPatient {
+  patient_id: string; name: string; room: string; synthetic: boolean;
+  risks: Partial<Record<RiskKey, RiskScore>>;
+}
+
+export interface RiskOverview { notice: string; config_version: string; patients: RiskPatient[] }
+
+export interface TimelineCase {
+  patient_id: string; name: string; room: string; storyline: string; split: "train" | "test";
+  risk: RiskKey; label: string; headline: string; lead_days: number | null; flag_level: RiskFlagLevel | null;
+}
+
+export interface Timeline {
+  notice: string; patient_id: string; name: string; room: string; storyline: string; split: "train" | "test";
+  risk: RiskKey; label: string; headline: string; lead_days: number | null;
+  outcome: { time: string; onset: string; outcome: string; description: string };
+  flag: { time: string; level: RiskFlagLevel; reason: string } | null;
+  flags_before_onset: number;
+  thresholds: { watch: number; elevated: number };
+  signals: { key: string; label: string; risky: "rise" | "fall" }[];
+  series: { time: string; score: number; level: RiskFlagLevel; z: Record<string, number | null> }[];
+}
+
+// Silence detection escalation ladder (app/risk/silence.py): tablet check -> trusted contact -> nurse.
+export interface SilenceStep {
+  kind: "tablet" | "contact" | "nurse"; started_at: string; deadline: string;
+  status: "open" | "timed_out" | "acknowledged";
+  ack_by: string | null; ack_role: string | null; ack_at: string | null;
+  outcome: "ok" | "concern" | null; note: string | null; reminders: number;
+}
+
+export interface SilenceLadder {
+  id: string; patient_id: string; patient_name: string; room: string;
+  contact_id: string | null; contact_name: string | null; alert_id: string | null;
+  started_at: string; closed_at: string | null; reason: string; active: boolean;
+  current: SilenceStep["kind"] | null; steps: SilenceStep[];
+}
 export interface ResearchEvidence {
   id: string; t: string; source: "data" | "clinician";
   supports: number; contradicts: number; summary: string; log_lr: number;
@@ -213,6 +279,52 @@ export type WsMessage =
   | { type: "alert_updated"; alert: Alert }
   | { type: "session"; session: SessionState }
   | { type: "consult"; consult: ConsultRequest }
-  | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number }
+  | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number;
+      respond_path?: string }         // silence checks answer on their own endpoint
+  | { type: "silence_check"; ladder: SilenceLadder }
   | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" }
+  | { type: "profile"; profile: PatientProfile }
+  | { type: "suggestions"; patient_id: string; suggestions: ProfileSuggestion[] }
   | { type: "research_updated" };
+
+
+// ---- patient profiles, nurse-note suggestions, shift summary ----------------------------------------
+
+export type ProfileKind =
+  | "need" | "fatigue" | "person_trust" | "person_available" | "person_preferred" | "access" | "signal" | "note";
+
+export interface ProfileItem {
+  kind: ProfileKind; target: string; value: string; hours: number[] | null;
+  evidence: string;                   // exact quote from the chart notes or the nurse's note
+  origin: "notes" | "nurse";
+  effect: string;                     // plain-language effect on the engine
+}
+
+export interface PatientProfile {
+  patient_id: string; source: "gemini" | "none"; items: ProfileItem[];
+  dropped: { kind: string; target: string; value: string; evidence: string; reason: string; status: string }[];
+  updated_at: string | null; notes: string; extracting: boolean;
+}
+
+export interface ProfileSuggestion {
+  id: string; created_at: string; patient_id: string; patient_name: string; room: string;
+  alert_id: string | null; note: string; nurse: string;
+  status: "pending" | "approved" | "rejected" | "duplicate" | "blocked";
+  reason: string | null; item: ProfileItem; reviewer: string | null; reviewed_at: string | null;
+}
+
+export interface HandoffPatient {
+  patient_id: string; name: string; room: string; status: "attention" | "watch" | "stable";
+  headline: string; watch_for: string | null;
+  requests: number; urgent: number; open_urgent: number;
+  confirmed: { label: string; count: number }[];
+  tap_seconds: number | null; baseline_seconds: number | null;
+  inconsistent_answers: number; mode_changes: number;
+  trends: { label: string; message: string; severity: "review" | "attention" }[];
+  profile: string[];                  // quotes from the notes behind the patient's profile
+}
+
+export interface HandoffSummary {
+  generated_at: string; window_hours: number; source: "gemini" | "template";
+  patients: HandoffPatient[]; stable: { patient_id: string; name: string; room: string }[];
+}

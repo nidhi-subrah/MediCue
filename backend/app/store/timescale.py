@@ -34,6 +34,14 @@ WHERE event_type = 'mode_changed' AND bucket > now() - make_interval(hours => %s
 GROUP BY patient_id
 """
 
+# The patient's usual seconds between inputs: median over recent confirmations in the hypertable.
+TAP_BASELINE_SQL = """
+SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mean_tap_interval) AS median, count(*)::int AS n
+FROM confirmations
+WHERE patient_id = %s AND time > now() - make_interval(days => %s) AND mean_tap_interval > 0
+"""
+MIN_BASELINE_ROWS = 5
+
 CONFIRMATION_COLS = ("time", "patient_id", "session_id", "predicted_need", "confirmed_need", "confirmed_group",
                      "risk", "correct", "escalated", "taps", "questions", "resolve_seconds",
                      "mean_tap_interval", "mode", "origin")
@@ -69,7 +77,7 @@ class TimescaleStore:
     async def init(self):
         await self.pool.open()
         async with self.pool.connection() as conn:
-            for stmt in _statements(SCHEMA.read_text()):
+            for stmt in _statements(SCHEMA.read_text(encoding="utf-8")):
                 await conn.execute(stmt)
         log.info("Timescale schema ready")
         await self._apply_compression_and_retention()
@@ -284,6 +292,34 @@ class TimescaleStore:
     async def list_hypotheses(self):
         rows = await self._all("SELECT body FROM research_hypotheses ORDER BY created_at DESC")
         return [r["body"] for r in rows]
+
+    async def tap_baseline(self, patient_id, days=14):
+        rows = await self._all(TAP_BASELINE_SQL, (patient_id, days))
+        r = rows[0] if rows else None
+        return float(r["median"]) if r and r["n"] >= MIN_BASELINE_ROWS and r["median"] is not None else None
+
+    async def get_profile(self, patient_id):
+        rows = await self._all("SELECT body FROM patient_profiles WHERE patient_id = %s", (patient_id,))
+        return rows[0]["body"] if rows else None
+
+    async def put_profile(self, profile):
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO patient_profiles (patient_id, body) VALUES (%s,%s) "
+                "ON CONFLICT (patient_id) DO UPDATE SET body = EXCLUDED.body, updated_at = now()",
+                (profile["patient_id"], json.dumps(profile, default=str)))
+
+    async def list_suggestions(self):
+        rows = await self._all("SELECT body FROM profile_suggestions ORDER BY created_at DESC")
+        return [r["body"] for r in rows]
+
+    async def upsert_suggestion(self, suggestion):
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO profile_suggestions (id, created_at, patient_id, status, body) VALUES (%s,%s,%s,%s,%s) "
+                "ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, body = EXCLUDED.body",
+                (suggestion["id"], suggestion["created_at"], suggestion["patient_id"], suggestion["status"],
+                 json.dumps(suggestion, default=str)))
 
     async def upsert_hypothesis(self, hypothesis):
         async with self.pool.connection() as conn:

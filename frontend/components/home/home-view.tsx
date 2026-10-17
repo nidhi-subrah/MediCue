@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, BedDouble, Tablet, Users } from 'lucide-react'
+import { ArrowRight, BedDouble, NotebookPen, Tablet, Users } from 'lucide-react'
 import { motion } from 'motion/react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
@@ -58,6 +58,13 @@ export function HomeView() {
                   <Tablet className="size-4" aria-hidden="true" />
                   Bedside tablet
                   <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  href={`/profile/${p.id}`}
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold hover:border-primary/40"
+                >
+                  <NotebookPen className="size-4" aria-hidden="true" />
+                  Notes and profile
                 </Link>
                 {p.people.map((person) => (
                   <Link
