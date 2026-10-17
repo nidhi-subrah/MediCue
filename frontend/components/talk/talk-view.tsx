@@ -12,13 +12,13 @@ import { useSettings } from '@/lib/store/settings'
 import { cn } from '@/lib/utils'
 import { AssistCard } from './assist-card'
 import { ConsultBanner } from './consult-banner'
-import { LanguageOffer, LevelBar, LevelTransition, OfferCard } from './level-bar'
+import { LevelBar, LevelTransition, OfferCard } from './level-bar'
 import { QuestionStage } from './question-stage'
 import { SummaryPanel } from './summary-panel'
 
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
-    signal, setLevel, setLanguage, setAudio, answerOffer } = useLiveSession()
+    signal, setLevel, setAudio, answerOffer } = useLiveSession()
   const { user, logout } = useAuth()
   const audioPreference = useSettings((s) => s.spokenPrompts)
   const [showEngine, setShowEngine] = useState(false)
@@ -95,16 +95,10 @@ export function TalkView() {
 
       {/* Adaptive communication: the backend decides how to ask (backend/app/engine/communication); this page
           only renders it. Urgent help (above) stays one tap away in every mode. */}
-      <LevelBar comm={comm} onLevel={setLevel} onAudio={setAudio} onLanguage={setLanguage} />
+      <LevelBar comm={comm} onLevel={setLevel} onAudio={setAudio} />
       <LevelTransition message={comm.message} />
-      {!done && <LanguageOffer comm={comm} onLanguage={setLanguage} />}
       {!done && <OfferCard comm={comm} onAnswer={answerOffer} />}
       {level === 4 && !done && <AssistCard comm={comm} />}
-      {comm.language !== 'en' && !comm.translated && !done && (
-        <p className="rounded-2xl bg-surface px-4 py-3 text-base text-muted-foreground">
-          Some words are still in English while translation is unavailable. Buttons and choices are translated.
-        </p>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-6">
@@ -148,13 +142,12 @@ export function TalkView() {
           ) : step ? (
             <AnimatePresence mode="wait" initial={false}>
               <QuestionStage
-                key={`${step.id}-${mode}-${level}-${comm.language}`}
+                key={`${step.id}-${mode}-${level}`}
                 step={step}
                 stepNumber={session.taps + 1}
                 mode={mode}
                 level={level}
                 presentation={comm.presentation}
-                language={comm.language}
                 text={comm.text}
                 canUndo={session.can_go_back}
                 onUndo={goBack}

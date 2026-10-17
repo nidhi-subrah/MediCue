@@ -474,9 +474,9 @@ export interface OptionChoice {
 export type CommunicationLevel = 1 | 2 | 3 | 4;   // 1 Standard · 2 Simplified · 3 Yes / No · 4 Assisted
 export type CommunicationModeName = "STANDARD" | "SIMPLIFIED" | "BINARY" | "ASSISTED";
 export type CommunicationModifier =
-  | "large_targets" | "extra_spacing" | "confirm_selections" | "simple_wording" | "audio" | "translated";
+  | "large_targets" | "extra_spacing" | "confirm_selections" | "simple_wording" | "audio";
 export type AdaptationReason =
-  | "SLOW_RESPONSE" | "FREQUENT_CORRECTIONS" | "REPEATED_UNCERTAINTY" | "LANGUAGE_REQUEST" | "AUDIO_PREFERENCE"
+  | "SLOW_RESPONSE" | "FREQUENT_CORRECTIONS" | "REPEATED_UNCERTAINTY" | "AUDIO_PREFERENCE"
   | "REPEATED_INTERACTION_FAILURE" | "MISSED_RESPONSE" | "RECOVERED" | "EXPLICIT_REQUEST" | "PROFILE";
 
 /** Layer 1 output: what was measured. */
@@ -498,13 +498,12 @@ export interface AdaptationDecision {
   suggested_mode: CommunicationModeName | null; add_modifiers: CommunicationModifier[];
   remove_modifiers: CommunicationModifier[]; requires_patient_confirmation: boolean;
   offer: "audio_first" | "assisted" | null; patient_message: string | null; explanation: string;
-  language: string | null;
 }
 
 /** What layer 3 (the tablet) should draw. */
 export interface Presentation {
   option_count: number; button_size: "regular" | "large" | "huge"; spacing: "normal" | "extra";
-  wording: "standard" | "simple" | "binary"; confirm_selections: boolean; audio: boolean; language: string;
+  wording: "standard" | "simple" | "binary"; confirm_selections: boolean; audio: boolean;
 }
 
 export interface CommunicationChange {
@@ -525,20 +524,17 @@ export interface CommunicationSummary {
 
 export interface CommunicationState {
   mode: CommunicationModeName; level: CommunicationLevel; label: string;
-  modifiers: CommunicationModifier[]; language: string; audio_enabled: boolean;
+  modifiers: CommunicationModifier[]; audio_enabled: boolean;
   floor: CommunicationLevel; max_options: number;
   levels: Record<CommunicationLevel, string>;
   presentation: Presentation; wording: Presentation["wording"];
   reason: AdaptationReason | null; severity: number; explanation: string | null;
-  message: { id: string; text: string } | null;          // "I've simplified the choices." (in the patient's language)
+  message: { id: string; text: string } | null;          // "I've simplified the choices."
   offer: { id: string; offer: "audio_first" | "assisted"; message: string;
            choices: ("accept" | "decline" | "get_nurse" | "ask_caregiver" | "keep_trying")[] } | null;
   signals: InteractionSignals; baseline_status: InteractionSignals["baseline_status"];
   options: { area: string[] | null; feeling: string[] | null };   // which choices are on screen
-  text: Record<string, string>;       // every on-screen string for this wording level and language
-  translated: boolean;
-  languages: Record<string, string>;
-  suggested_language: string | null;  // from the chart: offered, never applied automatically
+  text: Record<string, string>;       // every on-screen string for this wording level
   summary: CommunicationSummary;
   assist: { help: "nurse" | "caregiver" | "nurse_present" | null; person_name: string | null;
             relation: string | null; status: string | null } | null;
@@ -553,7 +549,7 @@ export interface CommunicationHistoryItem {
 
 export interface CommunicationPatient {
   patient_id: string; patient_name: string; room: string; session_id: string | null; active: boolean;
-  level?: CommunicationLevel; label?: string; mode?: { modifiers: CommunicationModifier[]; language: string };
+  level?: CommunicationLevel; label?: string; mode?: { modifiers: CommunicationModifier[] };
   signals?: InteractionSignals; presentation?: Presentation;
   last_change?: CommunicationChange | null; summary?: CommunicationSummary | null;
   changes: CommunicationHistoryItem[];   // this shift, oldest first
@@ -575,7 +571,7 @@ export interface InsightsGauge extends UnitPatientRef {
 }
 export interface AdaptationWeek {
   sessions: number; simpler_pct: number | null; binary_pct: number | null;
-  assisted: number; read_aloud: number; language_changes: number;
+  assisted: number; read_aloud: number;
 }
 export interface UnitInsights {
   range: "24h" | "7d" | "14d"; bucket: "1 hour" | "1 day"; since: string; until: string; generated_at: string;

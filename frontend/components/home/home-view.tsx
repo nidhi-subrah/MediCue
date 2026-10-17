@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  ArrowRight, BellRing, CircleCheck, ClipboardList, Languages, NotebookPen, Siren, Tablet, TrendingUp,
+  ArrowRight, BellRing, CircleCheck, ClipboardList, NotebookPen, Siren, Tablet, TrendingUp,
   TriangleAlert, Users,
 } from 'lucide-react'
 import { motion } from 'motion/react'
@@ -9,7 +9,6 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
 import type { Alert, CommunicationPatient, Patient, PatientTrend } from '@/lib/types'
-import { LANGUAGE_NAME } from '@/lib/languages'
 import { cn } from '@/lib/utils'
 
 const initials = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('')
@@ -173,10 +172,6 @@ function PatientCard({ patient: p, open, level, trend }: {
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span className="rounded-md bg-muted px-1.5 font-mono font-medium text-foreground">{p.room}</span>
-            <span className="inline-flex items-center gap-1">
-              <Languages className="size-3.5" aria-hidden="true" />
-              {LANGUAGE_NAME[p.language] ?? p.language}
-            </span>
             {p.days_since_surgery != null && <span>Post-op day {p.days_since_surgery}</span>}
           </div>
         </div>

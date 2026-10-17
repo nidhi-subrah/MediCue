@@ -58,8 +58,8 @@ flowchart LR
   offline, and chart data can't override a patient's own signal. Full list in `backend/README.md`.
 - **Adaptive communication** (`backend/app/engine/communication/`): signal detection (slowdown against this session's
   or the patient's own baseline, corrections, uncertainty, silence) → a deterministic policy (Standard → Simplified →
-  Yes / No → Assisted, plus bigger targets, confirmation, simpler wording, read aloud, language) → the tablet renders it.
-  Escalation always comes first; Gemini only rewords and translates, validated, with catalog fallbacks.
+  Yes / No → Assisted, plus bigger targets, confirmation, simpler wording, read aloud) → the tablet renders it.
+  Escalation always comes first; Gemini only rewords, validated, with catalog fallbacks.
 - **Calibrated output**: split conformal prediction gives the smallest set of needs containing the true one 90% of the time.
 
 Synthetic evaluation (`python -m app.sim.evaluate`): on scripted scenarios, 96% top-1 accuracy, 100% of high-risk
@@ -93,9 +93,9 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
 | Track | Where | Status |
 |---|---|---|
 | PointClickCare: Catch It Early | `#/nurse` right column; `services/trends.py`; hourly continuous aggregate | ✅ Per-patient 24 h vs 7-day baseline: pain, high-risk, seconds/tap, taps/need, scan-mode share, chart-event annotations |
-| MLH Gemini | `services/gemini.py` | ✅ SBAR, translation of tiles/questions (7 languages), caregiver question wording, research hypotheses. Escalation never depends on it |
+| MLH Gemini | `services/gemini.py` | ✅ SBAR, simpler wording of questions for adaptive communication, caregiver question wording, research hypotheses. Escalation never depends on it |
 | MLH Tiger Data | `store/schema.sql`, `store/timescale.py` | ✅ Hypertables for events, belief snapshots and confirmations; `patient_hourly_signals` and `communication_hourly` continuous aggregates, re-windowed with `time_bucket` SQL. Needs a Tiger service URL |
-| AI for Social Impact | patient tablet | ✅ Grid, large-tile and single-switch scanning modes, auto-switch to large tiles on fatigue, speech output, translated UI. Patient intent is never overwritten by chart data |
+| AI for Social Impact | patient tablet | ✅ Grid, large-tile and single-switch scanning modes, auto-switch to large tiles on fatigue, speech output, adaptive communication. Patient intent is never overwritten by chart data |
 | Healthcare & Well-being | whole app | ✅ No clinical-efficacy claims; disclaimers in the UI |
 | MLH Vultr | `infra/deploy/vultr.md`, `setup-vultr.sh` | 🟡 Scripts ready; needs an instance |
 | Papiers Autoresearch | `#/research`, `engine/research_decision.py`, `services/research*.py` | ✅ Clinician observations and detected patterns become hypotheses. An agent picks CHECK_DATA / ASK_CLINICIAN / WAIT by information gain − cost (scores shown), updates confidence, and sends hypotheses to mandatory lead review. Validated ones change priors; rejected ones stay rejected |

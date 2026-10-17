@@ -21,7 +21,6 @@ export function QuestionStage({
   mode,
   level = 1,
   presentation,
-  language = 'en',
   text = {},
   canUndo,
   onUndo,
@@ -32,13 +31,12 @@ export function QuestionStage({
   mode: InputMode
   level?: CommunicationLevel
   presentation?: Presentation
-  language?: string
   text?: Record<string, string>
   canUndo: boolean
   onUndo: () => void
   onSignal?: (kind: 'miss' | 'correction' | 'read_aloud') => void
 }) {
-  const { say, stop } = useSpeaker(language)
+  const { say, stop } = useSpeaker()
   const [page, setPage] = useState(0)
   const [pending, setPending] = useState<ChoiceItem | null>(null)   // waiting for "Is that right?"
   const pendingAt = useRef(0)

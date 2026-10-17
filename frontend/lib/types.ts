@@ -19,7 +19,7 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
  *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to
  *  the backend as `grid`. A backend `scan` session is shown as `easy`. */
 export type InputMode = 'standard' | 'easy' | 'audio'
-export type Language = 'en' | 'es' | 'fr' | 'zh'
+export type Language = 'en' | 'es' | 'fr'
 
 /** One selectable thing on screen — a body region, a feeling, a need, a yes/no choice.
  *  Generic so the same ChoiceCard/QuestionStage/BodyMap render any real step. */

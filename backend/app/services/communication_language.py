@@ -1,8 +1,8 @@
-"""CommunicationLanguageService: the words the tablet shows, for the current communication mode and language.
+"""CommunicationLanguageService: the words the tablet shows for the current communication mode.
 
 The Adaptation Policy (engine/communication/policy.py) decides HOW to ask. This service only supplies the
-text for that: simpler wording, the yes/no form, and translations. Internal ids, answer options and evidence
-never change; only presentation text does.
+text for that: simpler wording and the yes/no form. Internal ids, answer options and evidence never change;
+only presentation text does. The tablet is English only.
 
 Sources, in order
 -----------------
@@ -11,11 +11,10 @@ Sources, in order
    and rejected if it is empty, too long, no longer a question, or mentions a clinical term (body part,
    symptom, need) the original didn't. Accepted text is cached; nothing waits on Gemini.
 2. Deterministic fallback: the catalog's own wording (``shared/catalog.json``): ``question`` for standard and
-   simplified, ``short`` for yes/no; tile and option labels as they are. Fixed UI strings have built-in
-   translations for the languages the tablet offers.
+   simplified, ``short`` for yes/no; tile and option labels as they are.
 
-Gemini never chooses answer options (they are always the catalog's, or yes / no / not sure), never changes a
-mode or a probability, and never infers a language: the patient or a caregiver picks it.
+Gemini never chooses answer options (they are always the catalog's, or yes / no / not sure), and never
+changes a mode or a probability.
 """
 from __future__ import annotations
 
@@ -23,58 +22,21 @@ import logging
 import re
 
 from ..catalog import Catalog
-from ..engine.communication.policy import MESSAGES, OFFER_ASSISTED, OFFER_AUDIO, SIMPLE_WORDING, Mode
+from ..engine.communication.policy import SIMPLE_WORDING, Mode
 from .gemini import Gemini
 
 log = logging.getLogger(__name__)
 
 MAX_WORDS = {"simple": 8, "binary": 5}
-LANGUAGES = {"en": "English", "es": "Español", "fr": "Français", "zh": "中文"}
 STOP = {"your", "about", "feel", "feeling", "something", "with", "want", "need", "there", "have", "does", "that",
         "this", "what", "where", "which", "like", "else", "more", "other", "none", "these", "someone"}
 
-# Fixed tablet strings with built-in translations, so a language switch works without Gemini.
-UI = {
-    "en": {"where": "Where is it?", "yes": "Yes", "no": "No", "unsure": "Not sure", "something_else": "Something else",
-           "somewhere_else": "Somewhere else", "back": "Back", "confirm": "Is that right?", "change": "Change",
-           "get_nurse": "Get nurse", "ask_caregiver": "Ask someone I know", "keep_trying": "Keep trying",
-           "read_aloud_yes": "Yes, read aloud", "no_thanks": "No, thanks", "replay": "Read again",
-           "selected": "You selected"},
-    "es": {"where": "¿Dónde es?", "yes": "Sí", "no": "No", "unsure": "No estoy seguro", "something_else": "Otra cosa",
-           "somewhere_else": "En otro lugar", "back": "Atrás", "confirm": "¿Es correcto?", "change": "Cambiar",
-           "get_nurse": "Llamar a la enfermera", "ask_caregiver": "Preguntar a alguien que conozco",
-           "keep_trying": "Seguir intentando", "read_aloud_yes": "Sí, leer en voz alta", "no_thanks": "No, gracias",
-           "replay": "Leer otra vez", "selected": "Usted eligió"},
-    "fr": {"where": "Où est-ce ?", "yes": "Oui", "no": "Non", "unsure": "Je ne sais pas", "something_else": "Autre chose",
-           "somewhere_else": "Ailleurs", "back": "Retour", "confirm": "Est-ce correct ?", "change": "Changer",
-           "get_nurse": "Appeler l'infirmière", "ask_caregiver": "Demander à un proche", "keep_trying": "Continuer",
-           "read_aloud_yes": "Oui, lire à voix haute", "no_thanks": "Non, merci", "replay": "Relire",
-           "selected": "Vous avez choisi"},
-    "zh": {"where": "在哪里？", "yes": "是", "no": "不是", "unsure": "不确定", "something_else": "其他", "somewhere_else": "其他地方",
-           "back": "返回", "confirm": "对吗？", "change": "更改", "get_nurse": "叫护士", "ask_caregiver": "问认识的人",
-           "keep_trying": "继续试", "read_aloud_yes": "好，读出来", "no_thanks": "不用，谢谢", "replay": "再读一遍",
-           "selected": "您选择了"},
-}
-MESSAGE_TEXT = {
-    "es": {MESSAGES[Mode.SIMPLIFIED]: "He simplificado las opciones.",
-           MESSAGES[Mode.BINARY]: "Le haré preguntas sencillas de sí o no.",
-           MESSAGES["up"]: "Mostrando más opciones otra vez.",
-           MESSAGES["precision"]: "Haré que las opciones sean más fáciles de elegir.",
-           MESSAGES["wording"]: "Se lo preguntaré de forma más sencilla.",
-           MESSAGES[OFFER_AUDIO]: "¿Quiere que lea las preguntas y opciones en voz alta?",
-           MESSAGES[OFFER_ASSISTED]: "¿Quiere que alguien le ayude a comunicarse?"},
-    "fr": {MESSAGES[Mode.SIMPLIFIED]: "J'ai simplifié les choix.",
-           MESSAGES[Mode.BINARY]: "Je vais poser des questions simples, oui ou non.",
-           MESSAGES["up"]: "Plus de choix à nouveau.",
-           MESSAGES["precision"]: "Je vais rendre les choix plus faciles à sélectionner.",
-           MESSAGES["wording"]: "Je vais le demander plus simplement.",
-           MESSAGES[OFFER_AUDIO]: "Voulez-vous que je lise les questions et les choix à voix haute ?",
-           MESSAGES[OFFER_ASSISTED]: "Voulez-vous que quelqu'un vous aide à communiquer ?"},
-    "zh": {MESSAGES[Mode.SIMPLIFIED]: "我已简化选项。", MESSAGES[Mode.BINARY]: "我会问简单的是或否问题。",
-           MESSAGES["up"]: "重新显示更多选项。", MESSAGES["precision"]: "我会让选项更容易点选。",
-           MESSAGES["wording"]: "我换个更简单的问法。", MESSAGES[OFFER_AUDIO]: "需要我把问题和选项读出来吗？",
-           MESSAGES[OFFER_ASSISTED]: "需要有人帮您沟通吗？"},
-}
+# Fixed tablet strings.
+UI = {"where": "Where is it?", "yes": "Yes", "no": "No", "unsure": "Not sure", "something_else": "Something else",
+      "somewhere_else": "Somewhere else", "back": "Back", "confirm": "Is that right?", "change": "Change",
+      "get_nurse": "Get nurse", "ask_caregiver": "Ask someone I know", "keep_trying": "Keep trying",
+      "read_aloud_yes": "Yes, read aloud", "no_thanks": "No, thanks", "replay": "Read again",
+      "selected": "You selected"}
 
 
 def _tokens(text: str) -> set[str]:
@@ -166,21 +128,5 @@ class CommunicationLanguageService:
     def label(self, text: str, level: str) -> str:
         return text if level == "standard" else self._rewrites.get((level, text), text)
 
-    # ---- translation -------------------------------------------------------------------------------
-
-    async def translate(self, texts: list[str], language: str) -> tuple[list[str], bool]:
-        """Same count and order, or the English originals. Returns (texts, fully_translated)."""
-        if language == "en" or not texts:
-            return texts, True
-        out = await self.gemini.translate(texts, language)
-        if len(out) != len(texts) or not all(o and o.strip() for o in out):
-            return texts, False   # a reply that doesn't line up with the originals is never used
-        return out, out != texts
-
-    def ui(self, language: str) -> dict[str, str]:
-        return UI.get(language, UI["en"])
-
-    def message(self, text: str | None, language: str) -> str | None:
-        if not text or language == "en":
-            return text
-        return MESSAGE_TEXT.get(language, {}).get(text, text)
+    def ui(self) -> dict[str, str]:
+        return dict(UI)

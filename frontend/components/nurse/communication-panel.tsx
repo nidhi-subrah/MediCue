@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 const REASON: Record<string, string> = {
   SLOW_RESPONSE: 'Slower responses', FREQUENT_CORRECTIONS: 'Frequent corrections', REPEATED_UNCERTAINTY: 'Repeated uncertainty',
-  LANGUAGE_REQUEST: 'Language chosen', AUDIO_PREFERENCE: 'Read aloud', REPEATED_INTERACTION_FAILURE: 'Still hard to communicate',
+  AUDIO_PREFERENCE: 'Read aloud', REPEATED_INTERACTION_FAILURE: 'Still hard to communicate',
   MISSED_RESPONSE: 'Missed response', RECOVERED: 'Answering steadily again', EXPLICIT_REQUEST: 'Chosen manually',
   PROFILE: 'From the profile',
 }
@@ -28,7 +28,6 @@ function rendererLine(c: CommunicationChange): string {
   if (before.wording !== after.wording) parts.push(`${WORDING[after.wording]} wording`)
   if (!before.confirm_selections && after.confirm_selections) parts.push('confirms each choice')
   if (!before.audio && after.audio) parts.push('reads aloud')
-  if (before.language !== after.language) parts.push(`language: ${after.language}`)
   return parts.join(', ') || 'no visible change'
 }
 
@@ -61,7 +60,7 @@ function Trace({ c }: { c: CommunicationChange }) {
           <dd>option_count: {c.renderer.before.option_count} → {c.renderer.after.option_count}</dd>
           <dd>button_size: {c.renderer.after.button_size} · spacing: {c.renderer.after.spacing}</dd>
           <dd>wording: {c.renderer.after.wording} · confirm: {String(c.renderer.after.confirm_selections)}</dd>
-          <dd>audio: {String(c.renderer.after.audio)} · language: {c.renderer.after.language}</dd>
+          <dd>audio: {String(c.renderer.after.audio)}</dd>
         </div>
       </dl>
     </details>

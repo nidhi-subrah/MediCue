@@ -1,6 +1,6 @@
 'use client'
 
-import { HandHelping, Languages, Minus, Plus, Volume2, VolumeX } from 'lucide-react'
+import { HandHelping, Minus, Plus, Volume2, VolumeX } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import type { CommunicationLevel, CommunicationModifier, CommunicationState } from '@/lib/types'
@@ -16,18 +16,16 @@ const MODIFIER_WORDS: Partial<Record<CommunicationModifier, string>> = {
 }
 
 /** Where the patient is on the communication modes, and the controls that are always theirs: easier, more
- *  choices, read aloud, language. Adaptive communication (backend/app/engine/communication) changes the mode;
+ *  choices, read aloud. Adaptive communication (backend/app/engine/communication) changes the mode;
  *  these buttons let the patient or a nurse override it. */
 export function LevelBar({
   comm,
   onLevel,
   onAudio,
-  onLanguage,
 }: {
   comm: CommunicationState
   onLevel: (level: CommunicationLevel) => void
   onAudio: (on: boolean) => void
-  onLanguage: (language: string) => void
 }) {
   const level = comm.level
   const chips = comm.modifiers.flatMap((m) => (MODIFIER_WORDS[m] ? [MODIFIER_WORDS[m] as string] : []))
@@ -62,14 +60,6 @@ export function LevelBar({
           {comm.audio_enabled ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
           Read aloud
         </button>
-        <label className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold hover:bg-muted">
-          <Languages className="size-4" aria-hidden="true" />
-          <span className="sr-only">Language</span>
-          <select value={comm.language} onChange={(e) => onLanguage(e.target.value)}
-                  className="bg-transparent text-sm font-semibold outline-none">
-            {Object.entries(comm.languages).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-        </label>
       </div>
     </div>
   )
@@ -139,27 +129,5 @@ export function OfferCard({ comm, onAnswer }: { comm: CommunicationState; onAnsw
         ))}
       </div>
     </motion.section>
-  )
-}
-
-/** The chart says the patient prefers another language: offer it, never switch on our own. */
-export function LanguageOffer({ comm, onLanguage }: { comm: CommunicationState; onLanguage: (language: string) => void }) {
-  const [dismissed, setDismissed] = useState(false)
-  const lang = comm.suggested_language
-  if (!lang || dismissed) return null
-  const name = comm.languages[lang] ?? lang
-  return (
-    <section aria-label="Language" className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4">
-      <Languages className="size-6 text-primary" aria-hidden="true" />
-      <p className="flex-1 text-lg font-semibold">Continue in {name}?</p>
-      <button type="button" onClick={() => onLanguage(lang)}
-              className="min-tap rounded-xl bg-primary px-5 text-base font-semibold text-primary-foreground hover:bg-primary/90">
-        {name}
-      </button>
-      <button type="button" onClick={() => setDismissed(true)}
-              className="min-tap rounded-xl border border-border bg-card px-5 text-base font-semibold hover:bg-muted">
-        Keep English
-      </button>
-    </section>
   )
 }

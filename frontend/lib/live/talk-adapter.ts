@@ -15,8 +15,8 @@ export function uiMode(mode: ModeId, audio = false): InputMode {
   return mode === 'large' || mode === 'scan' ? 'easy' : 'standard'
 }
 
-/** An on-screen string for the current wording level and language (backend/app/services/communication.py),
- *  else the English original. */
+/** An on-screen string for the current wording level (backend/app/services/communication.py), else the
+ *  catalog original. */
 export function say(s: SessionState, key: string, fallback: string): string {
   return s.communication?.text?.[key] ?? fallback
 }
@@ -127,11 +127,10 @@ export function buildStep(
   }
 
   if (s.status === 'question' && s.question) {
-    const translated = s.communication?.language !== 'en'
     return {
       id: `question-${s.question.id}-${s.question.wording}`,
       kind: 'yesno',
-      prompt: translated ? s.question.text_local : s.question.text,
+      prompt: s.question.text,
       options: [
         { id: 'yes', label: say(s, 'yes', 'Yes'), onSelect: () => onAnswer('yes') },
         { id: 'no', label: say(s, 'no', 'No'), onSelect: () => onAnswer('no') },

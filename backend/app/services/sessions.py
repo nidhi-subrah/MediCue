@@ -233,11 +233,9 @@ class SessionService(CommunicationMixin):
         d = Dialogue(self.cat, self.cfg, prior, clip(prof.signal_reliability(profile, view["signal_reliability"])),
                      consultants, {k: v["flag"] for k, v in p["chart"].items()},
                      baseline_interval=baseline, fatigue_sensitivity=sensitivity, personal=personal)
-        # The tablet speaks English unless someone chose another language: the chart's language is shown to
-        # the patient as an offer on the tablet, never applied by inference.
-        s = Session(uuid.uuid4().hex[:12], p, d, mode, language or "en", reasons,
+        # The tablet is English only, whatever the chart's language.
+        s = Session(uuid.uuid4().hex[:12], p, d, mode, "en", reasons,
                     tired_mode=prof.mode_when_tired(profile),
-                    comm=cp.CommunicationState(language=language or "en"),
                     baseline=self._personal_baseline(history))
         self.sessions[s.id] = s
         if self.predictions:   # Gemini ranks every area's options in the background; never waited on
@@ -452,9 +450,8 @@ class SessionService(CommunicationMixin):
             else:
                 full = self.cat.question_by_id[s.question_id].text
                 text = self.lang.question(s.question_id, level)
-            local, _ = await self.lang.translate([text], s.comm.language)
-            # The same question at every level: only `text` (and its translation) changes, never the id.
-            question = {"id": s.question_id, "text": text, "text_full": full, "text_local": local[0],
+            # The same question at every level: only `text` changes, never the id.
+            question = {"id": s.question_id, "text": text, "text_full": full, "text_local": text,
                         "wording": level}
         consult = None
         if s.consult_id and s.status == "waiting_consult":

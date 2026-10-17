@@ -9,8 +9,7 @@ so the tablet visibly reshapes itself and the nurse station logs why. Nothing is
 
 A  Slowdown       Mr. Chen answers in 2.4, 2.7, 2.6 s, then 5.8 and 6.4 s  ->  Standard to Simplified
 B  Uncertainty    "Not sure" twice -> simpler wording; twice more -> one yes/no question at a time
-C  Language       the patient picks Spanish: the tablet switches, ids and the nurse's English don't
-D  Struggling     corrections, slower answers, "not sure", then silence in yes/no -> help communicating
+C  Struggling     corrections, slower answers, then silence in yes/no -> help communicating
                   -> the patient taps "Get nurse"; confirmed information goes to the nurse
 """
 import argparse
@@ -40,7 +39,7 @@ class Client:
 
 def show(s: dict, what: str):
     c = s["communication"]
-    q = (s.get("question") or {}).get("text_local" if c["language"] != "en" else "text", "")
+    q = (s.get("question") or {}).get("text", "")
     msg = f'  «{c["message"]["text"]}»' if c.get("message") else ""
     print(f"  {what:34s} {s['status']:9s} {c['label']:10s} {q}{msg}")
 
@@ -103,20 +102,7 @@ def demo_b(cl: Client):
 
 
 def demo_c(cl: Client):
-    print("C · Language: Wei Chen chooses Spanish (open /talk/p-chen)")
-    s = cl.post("/api/sessions", {"patient_id": "p-chen", "language": "en"})
-    sid = s["session_id"]
-    print(f"  chart suggests: {s['communication']['suggested_language']}")
-    s = cl.post(f"/api/sessions/{sid}/communication/language", {"language": "es"})
-    c = s["communication"]
-    print(f"  tablet: {c['text']['where']} · {c['text']['yes']} / {c['text']['no']} / {c['text']['unsure']}")
-    wait(2)
-    s = cl.post(f"/api/sessions/{sid}/tap", {"kind": "area", "tap_id": "mouth_throat"})
-    print(f"  option ids stay the same: {[o['id'] for o in s['options']['predicted']]}")
-
-
-def demo_d(cl: Client):
-    print("D · Repeated difficulty: Meera Patel (open /talk/p-patel and /nurse)")
+    print("C · Repeated difficulty: Meera Patel (open /talk/p-patel and /nurse)")
     s = cl.post("/api/sessions", {"patient_id": "p-patel", "language": "en"})
     sid = s["session_id"]
     for _ in range(2):   # taps, then goes back: corrections
@@ -154,7 +140,7 @@ def demo_d(cl: Client):
         print("  unresolved:", [u["field"] for u in summ["unresolved"]])
 
 
-DEMOS = {"A": demo_a, "B": demo_b, "C": demo_c, "D": demo_d}
+DEMOS = {"A": demo_a, "B": demo_b, "C": demo_c}
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

@@ -23,14 +23,14 @@ from ..engine.belief import p_high_risk
 from ..engine.communication import policy as P
 from ..engine.communication.signals import (CORRECTION, MISS, MISSED_RESPONSE, READ_ALOUD, RESPONSE, Interaction,
                                             InteractionSignals, detect)
-from .communication_language import LANGUAGES, complexity
+from .communication_language import complexity
 
 MID_DIALOGUE = ("feeling", "question")   # waiting on the patient after their first input (risk/silence.py)
 SIGNAL_KINDS = {"miss": MISS, "correction": CORRECTION, "deletion": CORRECTION, "read_aloud": READ_ALOUD}
 ASSIST_CHOICES = ("get_nurse", "ask_caregiver", "keep_trying")
 MODIFIER_WORDS = {P.LARGE_TARGETS: "Bigger buttons", P.EXTRA_SPACING: "more space", P.CONFIRM_SELECTIONS: "confirm choices",
-                  P.SIMPLE_WORDING: "Simpler words", P.AUDIO: "Read aloud", P.TRANSLATED: "Translated"}
-CHANGE_EVENTS = ("communication_mode_changed", "communication_presentation_changed", "language_changed",
+                  P.SIMPLE_WORDING: "Simpler words", P.AUDIO: "Read aloud"}
+CHANGE_EVENTS = ("communication_mode_changed", "communication_presentation_changed",
                  "audio_mode_enabled", "assisted_communication_started")
 
 
@@ -41,7 +41,7 @@ def presentation(st: P.CommunicationState) -> dict:
                 st.mode == P.Mode.SIMPLIFIED or P.LARGE_TARGETS in st.modifiers) else "regular",
             "spacing": "extra" if P.EXTRA_SPACING in st.modifiers or st.mode >= P.Mode.SIMPLIFIED else "normal",
             "wording": complexity(st.mode, st.modifiers), "confirm_selections": P.CONFIRM_SELECTIONS in st.modifiers,
-            "audio": P.AUDIO in st.modifiers, "language": st.language}
+            "audio": P.AUDIO in st.modifiers}
 
 
 class CommunicationMixin:
@@ -118,8 +118,6 @@ class CommunicationMixin:
             await self._event(s, "communication_presentation_changed", change)
         if P.SIMPLE_WORDING in change["added"] or (mode_changed and d.reason == P.REPEATED_UNCERTAINTY):
             await self._event(s, "question_simplified", {"question": s.question_id, "to": change["renderer"]["after"]["wording"]})
-        if d.language:
-            await self._event(s, "language_changed", {"from": before.language, "to": d.language, "by": source})
         if P.AUDIO in change["added"]:
             await self._event(s, "audio_mode_enabled", {"by": source})
         await self.hub.publish("nurse", {"type": "communication_changed", "patient_id": s.patient["id"],
@@ -172,7 +170,7 @@ class CommunicationMixin:
         await self._event(s, "interaction_unresolved", {"idle_s": round(idle_s, 1), "mode": s.comm.mode.name})
         return await self._after_change(s, await self._observe(s, kind=MISSED_RESPONSE, idle_s=idle_s))
 
-    # ---- explicit requests (the only way language and audio change) --------------------------------
+    # ---- explicit requests -----------------------------------------------------------------------
 
     async def set_level(self, sid: str, level: int, by: str = "patient") -> dict:
         s = self._by(sid, by)
@@ -189,15 +187,6 @@ class CommunicationMixin:
             s.assist_help = "nurse_present"   # a nurse set it: they are the help
             await self._event(s, "assisted_communication_started", {"by": by, "summary": self.summary(s)})
         return await self._after_change(s, changed)
-
-    async def set_language(self, sid: str, language: str, by: str = "patient") -> dict:
-        s = self._by(sid, by)
-        if language not in LANGUAGES:
-            raise ValueError(f"unsupported language {language!r}")
-        d = P.request(s.comm, "language", language, by)
-        await self._adapt(s, d, self._signals(s), by)
-        s.language = s.comm.language
-        return await self.state(s, publish=True)
 
     async def set_audio(self, sid: str, enabled: bool, by: str = "patient") -> dict:
         s = self._by(sid, by)
@@ -336,35 +325,27 @@ class CommunicationMixin:
                 out["feeling"] = [o["id"] for o in predicted]
         return out
 
-    async def _text(self, s) -> tuple[dict[str, str], bool]:
-        """Every on-screen string for the current wording level and language, keyed as the tablet looks it up."""
+    def _text(self, s) -> dict[str, str]:
+        """Every on-screen string for the current wording level, keyed as the tablet looks it up."""
         level = complexity(s.comm.mode, s.comm.modifiers)
-        text = dict(self.lang.ui("en"))
+        text = self.lang.ui()
         text |= {f"area:{k}": self.lang.label(v, level) for k, v in self.cat.area_labels.items()}
         if s.options:
             spec = opts.area_spec(self.cat, s.options["area"]) or {}
             text[f"prompt:{s.options['area']}"] = self.lang.label(spec.get("prompt", s.options["prompt"]), level)
             text |= {f"option:{o['id']}": self.lang.label(o["label"], level)
                      for o in [*s.options["predicted"], *s.options["more"]]}
-        lang = s.comm.language
-        if lang == "en":
-            return text, True
-        fixed = self.lang.ui(lang)
-        rest = [k for k in text if k not in fixed]
-        translated, ok = await self.lang.translate([text[k] for k in rest], lang)
-        return fixed | dict(zip(rest, translated)), ok
+        return text
 
     async def communication_view(self, s) -> dict:
         st = s.comm
-        chart_lang = s.patient.get("language", "en")
         sig = self._signals(s)
         last = s.comm_changes[-1] if s.comm_changes else None
-        text, translated = await self._text(s)
         offer = None
         if s.comm_offer:
             o = s.comm_offer
             offer = {"id": o["id"], "offer": o["offer"],
-                     "message": self.lang.message(o["decision"].patient_message, st.language),
+                     "message": o["decision"].patient_message,
                      "choices": (["get_nurse", "ask_caregiver", "keep_trying"] if o["offer"] == P.OFFER_ASSISTED
                                  else ["accept", "decline"])}
         assist = None
@@ -377,14 +358,10 @@ class CommunicationMixin:
             "presentation": presentation(st), "wording": complexity(st.mode, st.modifiers),
             "reason": last["reason"] if last else None, "severity": last["severity"] if last else 0,
             "explanation": last["explanation"] if last else None,
-            "message": {"id": s.comm_message["id"], "text": self.lang.message(s.comm_message["text"], st.language)}
-            if s.comm_message else None,
+            "message": s.comm_message,
             "offer": offer, "signals": sig.public(), "baseline_status": sig.baseline_status,
-            "options": self._presented_options(s), "text": text, "translated": translated,
-            "languages": LANGUAGES, "summary": self.summary(s), "assist": assist,
-            # The chart's preferred language is a reliable signal, so the tablet OFFERS it; it is never applied
-            # without the patient's tap, and never inferred from how they answer.
-            "suggested_language": chart_lang if chart_lang in LANGUAGES and chart_lang != st.language else None,
+            "options": self._presented_options(s), "text": self._text(s),
+            "summary": self.summary(s), "assist": assist,
             "changes": [self._public_change(c) for c in s.comm_changes[-12:]],
         }
 
@@ -400,9 +377,9 @@ class CommunicationMixin:
             except Exception:
                 pass
         events = [e for e in events if (e.get("payload") or {}).get("source") != "unit_history"
-                  # language and audio have their own events; their presentation-change twin would repeat them
+                  # audio has its own event; its presentation-change twin would repeat it
                   and not (e["event_type"] == "communication_presentation_changed"
-                           and (e.get("payload") or {}).get("reason") in (P.LANGUAGE_REQUEST, P.AUDIO_PREFERENCE))]
+                           and (e.get("payload") or {}).get("reason") == P.AUDIO_PREFERENCE)]
         events.sort(key=lambda e: e["time"])
         latest: dict = {}
         for s in self.sessions.values():
@@ -436,8 +413,6 @@ class CommunicationMixin:
             if e["event_type"] == "communication_presentation_changed":
                 item["from_label"] = None
                 item["to_label"] = ", ".join(MODIFIER_WORDS.get(m, m) for m in p.get("added") or []) or "Presentation changed"
-        elif e["event_type"] == "language_changed":
-            item |= {"to_label": LANGUAGES.get(p.get("to"), p.get("to")), "reason": "LANGUAGE_REQUEST"}
         elif e["event_type"] == "audio_mode_enabled":
             item |= {"to_label": "Read aloud on", "reason": "AUDIO_PREFERENCE"}
         else:

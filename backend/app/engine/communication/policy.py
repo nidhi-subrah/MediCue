@@ -9,7 +9,7 @@ Modes (one at a time, numbered so they read as a ladder)          Modifiers (any
     1 STANDARD    up to 4 choices                                 large_targets, extra_spacing
     2 SIMPLIFIED  2-3 larger choices, shorter wording             confirm_selections
     3 BINARY      one yes / no / not sure question at a time      simple_wording
-    4 ASSISTED    someone helps; confirmed and unresolved shown   audio (read aloud), translated
+    4 ASSISTED    someone helps; confirmed and unresolved shown   audio (read aloud)
 
 Rules, first match wins (``decide``):
     0  the engine is escalating                  -> no adaptation, ever (escalation outranks everything)
@@ -25,7 +25,7 @@ Rules, first match wins (``decide``):
     7  "read aloud" pressed twice                -> offer audio-first (patient chooses)
     8  2 good responses in a row                 -> one step back up (never above a manual choice)
 
-Never inferred from signals: language (explicit request only), visual impairment (missed taps never turn on
+Never inferred from signals: visual impairment (missed taps never turn on
 audio; only the patient's own "read aloud" use, their request or their profile does), cognition, diagnosis.
 Patient-facing messages are neutral ("I've simplified the choices"), never about the patient's ability.
 """
@@ -47,14 +47,13 @@ class Mode(IntEnum):
 LABEL = {Mode.STANDARD: "Standard", Mode.SIMPLIFIED: "Simplified", Mode.BINARY: "Yes / No", Mode.ASSISTED: "Assisted"}
 
 LARGE_TARGETS, EXTRA_SPACING, CONFIRM_SELECTIONS = "large_targets", "extra_spacing", "confirm_selections"
-SIMPLE_WORDING, AUDIO, TRANSLATED = "simple_wording", "audio", "translated"
+SIMPLE_WORDING, AUDIO = "simple_wording", "audio"
 PRECISION = frozenset({LARGE_TARGETS, EXTRA_SPACING, CONFIRM_SELECTIONS})
 
 # Reasons
 SLOW_RESPONSE = "SLOW_RESPONSE"
 FREQUENT_CORRECTIONS = "FREQUENT_CORRECTIONS"
 REPEATED_UNCERTAINTY = "REPEATED_UNCERTAINTY"
-LANGUAGE_REQUEST = "LANGUAGE_REQUEST"
 AUDIO_PREFERENCE = "AUDIO_PREFERENCE"
 REPEATED_INTERACTION_FAILURE = "REPEATED_INTERACTION_FAILURE"
 MISSED_RESPONSE = "MISSED_RESPONSE"
@@ -95,13 +94,12 @@ DEFAULT = PolicyConfig()
 class CommunicationState:
     mode: Mode = Mode.STANDARD
     modifiers: frozenset[str] = frozenset()
-    language: str = "en"
     floor: Mode = Mode.STANDARD      # recovery never goes harder than a manual choice
     declined: frozenset[str] = frozenset()   # offers the patient turned down this window
 
     def public(self) -> dict:
         return {"mode": self.mode.name, "level": int(self.mode), "label": LABEL[self.mode],
-                "modifiers": sorted(self.modifiers), "language": self.language,
+                "modifiers": sorted(self.modifiers),
                 "audio_enabled": AUDIO in self.modifiers, "floor": int(self.floor),
                 "max_options": MAX_OPTIONS[self.mode]}
 
@@ -124,15 +122,13 @@ class AdaptationDecision:
     offer: str | None = None          # OFFER_AUDIO | OFFER_ASSISTED, when the patient should choose
     patient_message: str | None = None
     explanation: str = ""             # for nurses: what was measured, in numbers
-    language: str | None = None
 
     def public(self) -> dict:
         return {"should_adapt": self.should_adapt, "reason": self.reason, "severity": self.severity,
                 "suggested_mode": self.suggested_mode.name if self.suggested_mode else None,
                 "add_modifiers": sorted(self.add_modifiers), "remove_modifiers": sorted(self.remove_modifiers),
                 "requires_patient_confirmation": self.requires_patient_confirmation, "offer": self.offer,
-                "patient_message": self.patient_message, "explanation": self.explanation,
-                "language": self.language}
+                "patient_message": self.patient_message, "explanation": self.explanation}
 
 
 NO_CHANGE = AdaptationDecision(False)
@@ -235,8 +231,8 @@ def decide(sig: InteractionSignals, state: CommunicationState, ctx: PolicyContex
 
 
 def request(state: CommunicationState, kind: str, value, by: str = "patient") -> AdaptationDecision:
-    """Explicit requests: a mode ("easier" / "more choices"), a language, audio on or off. These are the only
-    way language and audio change; signals never do."""
+    """Explicit requests: a mode ("easier" / "more choices"), or read aloud on or off. Read aloud only turns
+    on this way or when the patient accepts the policy's offer; signals never turn it on by themselves."""
     who = "nurse" if by == "nurse" else "patient"
     if kind == "mode":
         to = Mode(min(max(int(value), Mode.STANDARD), Mode.ASSISTED))
@@ -246,13 +242,6 @@ def request(state: CommunicationState, kind: str, value, by: str = "patient") ->
         message = (MESSAGES.get(to) if easier else MESSAGES["up"]) if to != Mode.ASSISTED else None
         return AdaptationDecision(True, EXPLICIT_REQUEST, int(to), to, patient_message=message,
                                   explanation=f"{who.capitalize()} asked for {'easier' if easier else 'more choices'}.")
-    if kind == "language":
-        if value == state.language:
-            return NO_CHANGE
-        mods = frozenset({TRANSLATED})
-        return AdaptationDecision(True, LANGUAGE_REQUEST, 0, add_modifiers=mods if value != "en" else frozenset(),
-                                  remove_modifiers=mods if value == "en" else frozenset(), language=value,
-                                  explanation=f"{who.capitalize()} chose {value}.")
     if kind == "audio":
         on = bool(value)
         if on == (AUDIO in state.modifiers):
@@ -275,7 +264,7 @@ def apply(state: CommunicationState, d: AdaptationDecision, accepted: bool = Tru
     floor = state.floor
     if d.reason == EXPLICIT_REQUEST:
         floor = min(mode, Mode.BINARY)   # a manual choice holds against automatic recovery
-    return replace(state, mode=mode, floor=floor, language=d.language or state.language,
+    return replace(state, mode=mode, floor=floor,
                    modifiers=(state.modifiers | d.add_modifiers) - d.remove_modifiers,
                    declined=frozenset() if d.suggested_mode else state.declined)
 

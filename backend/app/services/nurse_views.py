@@ -63,8 +63,7 @@ TIMELINE = {"nurse_confirmed": "request", "escalated": "urgent", "unresponsive_e
             "consult_requested": "consult", "level_changed": "change", "mode_changed": "change",
             "communication_mode_changed": "change", "assisted_communication_started": "change"}
 # Adaptive communication events (engine/communication) behind the "simpler screens" trend
-ADAPTATION_EVENTS = ("session_started", "communication_mode_changed", "assisted_communication_started", "ui_signal",
-                     "language_changed")
+ADAPTATION_EVENTS = ("session_started", "communication_mode_changed", "assisted_communication_started", "ui_signal")
 RANGES = {"24h": (1, "1 hour"), "7d": (7, "1 day"), "14d": (14, "1 day")}
 WAKING_FROM = 7    # local hour the "longest quiet stretch" window starts
 WAKING_TO = 22
@@ -235,8 +234,7 @@ class NurseViews:
 
     async def _adaptation(self, now: datetime) -> dict[str, dict]:
         """Per patient, this week vs the week before: share of sessions where the tablet had to simplify
-        (Simplified or lower), had to go to yes/no, help-communicating episodes, read-aloud use, language
-        changes. From the events table; every number is counted, none is modelled."""
+        (Simplified or lower), had to go to yes/no, help-communicating episodes and read-aloud use. From the events table; every number is counted, none is modelled."""
         week = timedelta(days=7)
         events = await self.store.events_between(now - 2 * week, now, list(ADAPTATION_EVENTS), UNIT)
         out = {}
@@ -255,8 +253,7 @@ class NurseViews:
                     "binary_pct": round(100 * len(binary & sessions) / len(sessions)) if sessions else None,
                     "assisted": sum(e["event_type"] == "assisted_communication_started" for e in ev),
                     "read_aloud": sum(e["event_type"] == "ui_signal" and (e["payload"] or {}).get("kind") == "read_aloud"
-                                      for e in ev),
-                    "language_changes": sum(e["event_type"] == "language_changed" for e in ev)})
+                                      for e in ev)})
             now_w, before = stats
             pct, prev = now_w["simpler_pct"], before["simpler_pct"]
             # Compared with the patient's own previous week, in percentage points. With no sessions last week there

@@ -249,11 +249,6 @@ class SignalBody(BaseModel):
     kind: Literal["miss", "correction", "deletion", "read_aloud"]
 
 
-class LanguageBody(BaseModel):
-    language: str
-    by: Literal["patient", "nurse"] = "patient"
-
-
 class AudioBody(BaseModel):
     enabled: bool
     by: Literal["patient", "nurse"] = "patient"
@@ -324,12 +319,6 @@ async def signal(sid: str, body: SignalBody, user: DemoUser = Depends(_require_s
 async def set_level(sid: str, body: LevelBody, user: DemoUser = Depends(_require_session_access)):
     """Manual "make it easier / harder" from the patient or a nurse (communication mode 1-4)."""
     return await _call(svc().set_level(sid, body.level, body.by))
-
-
-@app.post("/api/sessions/{sid}/communication/language")
-async def set_language(sid: str, body: LanguageBody, user: DemoUser = Depends(_require_session_access)):
-    """Explicit language choice. The only way the tablet's language changes; never inferred."""
-    return await _call(svc().set_language(sid, body.language, body.by))
 
 
 @app.post("/api/sessions/{sid}/communication/audio")

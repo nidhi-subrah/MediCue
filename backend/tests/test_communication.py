@@ -112,18 +112,6 @@ def test_repeated_read_aloud_offers_audio_first_and_waits_for_a_yes():
     assert P.AUDIO in P.apply(st, d, accepted=True).modifiers
 
 
-def test_language_never_changes_from_latency_or_uncertainty():
-    for log in (responses(2.4, 2.7, 2.6, 9.8, 9.4), responses(2, 2, 2, unsure=True)):
-        d = run(log)
-        assert d.language is None and P.TRANSLATED not in d.add_modifiers
-
-
-def test_explicit_language_request_changes_language():
-    d = P.request(P.CommunicationState(), "language", "es")
-    st = P.apply(P.CommunicationState(), d)
-    assert st.language == "es" and P.TRANSLATED in st.modifiers and d.reason == P.LANGUAGE_REQUEST
-
-
 def test_struggling_in_yes_no_offers_assisted_communication():
     log = responses(2.0, 2.0, 2.0) + [Interaction(MISSED_RESPONSE, 3, idle_s=18)]
     d = run(log, state=P.CommunicationState(mode=P.Mode.BINARY))
@@ -177,16 +165,6 @@ def test_wording_falls_back_to_the_catalog_without_gemini():
     assert lang.question(q, "standard") == "Do you want a drink?"
     assert lang.question(q, "binary") == "Thirsty?"                  # catalog short form
     assert lang.question(SAFETY_QUESTION, "binary") == "Chest or breathing?"
-
-
-def test_translation_that_changes_the_number_of_options_is_never_used():
-    class Bad:
-        async def translate(self, texts, lang):
-            return texts + ["Extra option"]
-    lang = CommunicationLanguageService(cat, Bad())
-    import asyncio
-    out, ok = asyncio.run(lang.translate(["Yes", "No"], "es"))
-    assert out == ["Yes", "No"] and not ok
 
 
 def test_simplified_options_always_keep_a_way_to_report_an_emergency():
@@ -308,24 +286,6 @@ def test_yes_no_walks_the_areas_options_and_a_yes_is_that_tap():
         assert app.state.svc.sessions[sid].dialogue.feeling == "thirsty" and s["choice"]["id"] == oid
 
 
-def test_explicit_language_request_translates_the_tablet_not_the_nurse_view():
-    with TestClient(app) as client:
-        s = _start(client)
-        sid = s["session_id"]
-        s = client.post(f"/api/sessions/{sid}/communication/language", json={"language": "es"}).json()
-        c = s["communication"]
-        assert c["language"] == "es" and c["text"]["yes"] == "Sí" and c["text"]["where"] == "¿Dónde es?"
-        s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "head"}).json()
-        assert s["options"]["predicted"][0]["id"].startswith("head.")              # ids never translated
-        assert client.post(f"/api/sessions/{sid}/communication/language", json={"language": "xx"}).status_code == 409
-
-
-def test_chart_language_is_offered_not_applied():
-    with TestClient(app) as client:
-        s = _start(client, "p-chen")                   # chart: Chinese
-        assert s["communication"]["language"] == "en" and s["communication"]["suggested_language"] == "zh"
-
-
 def test_read_aloud_offer_then_accept_turns_audio_on():
     with TestClient(app) as client:
         s = _start(client)
@@ -422,3 +382,12 @@ def test_silence_counts_a_missed_response_without_delaying_escalation():
         session.prompted_at = time.time() - 31
         client.portal.call(monitor.check_mid_dialogue, utcnow())
         assert session.status == "escalated"
+
+
+def test_the_tablet_is_english_only():
+    with TestClient(app) as client:
+        s = _start(client, "p-chen")                   # chart language: Chinese
+        c = s["communication"]
+        assert "language" not in c and "suggested_language" not in c and c["text"]["yes"] == "Yes"
+        assert client.post(f"/api/sessions/{s['session_id']}/communication/language",
+                           json={"language": "es"}).status_code in (404, 405)

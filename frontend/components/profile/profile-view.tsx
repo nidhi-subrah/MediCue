@@ -1,9 +1,8 @@
 'use client'
 
-import { ArrowLeft, Languages, TriangleAlert, Users } from 'lucide-react'
+import { ArrowLeft, TriangleAlert, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { LANGUAGE_NAME } from '@/lib/languages'
 import { usePatientProfile } from '@/lib/live/profile'
 import { timeAgo } from '@/lib/services/backend'
 import { LearningPanel } from './learning-panel'
@@ -56,10 +55,6 @@ export function ProfileView({ patientId }: { patientId: string }) {
             </h1>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               <span className="rounded-md bg-muted px-1.5 font-mono font-medium text-foreground">{patient.room}</span>
-              <span className="inline-flex items-center gap-1">
-                <Languages className="size-3.5" aria-hidden="true" />
-                {LANGUAGE_NAME[patient.language] ?? patient.language}
-              </span>
               {patient.days_since_surgery != null && <span>Post-op day {patient.days_since_surgery}</span>}
             </div>
             <p className="text-base leading-relaxed text-muted-foreground">{patient.diagnosis}</p>

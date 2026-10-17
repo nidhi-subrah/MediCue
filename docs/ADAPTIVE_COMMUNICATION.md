@@ -3,15 +3,15 @@
 MediCue's decision engine decides **what** to ask a patient who can't speak. The Adaptive Communication Engine
 decides **how** to ask it, and changes that while the conversation is going: fewer and bigger choices when
 answering slows down, a confirmation step when taps keep going astray, simpler words when the patient keeps
-answering "not sure", one yes/no question at a time, read aloud, another language, or someone to help.
+answering "not sure", one yes/no question at a time, read aloud, or someone to help. The tablet is English only.
 
 It never changes what an answer means. Switching how a question is asked keeps the same session, the same belief,
 the same confirmed answers and the same urgency.
 
 ## Why it exists
 
-The patients MediCue is for (after a stroke, with ALS, intubated or after surgery, with motor or visual limits, or
-a language barrier) often start a conversation able to use the full screen and then tire, or slip, or can't find
+The patients MediCue is for (after a stroke, with ALS, intubated or after surgery, with motor or visual limits)
+often start a conversation able to use the full screen and then tire, or slip, or can't find
 the word. A fixed interface fails them exactly then. A person at the bedside would notice and simplify. MediCue
 does the same, and tells the nurse why.
 
@@ -29,14 +29,14 @@ flowchart TD
   B --> D{Decision engine<br/>Ask · Look up · Consult · Escalate · Send}
   D -->|ASK question Q| P
   D -->|ESCALATE| E[Nurse alert: adaptation never runs]
-  G[Gemini<br/>presentation language only] -.->|validated wording / translation| R
+  G[Gemini<br/>presentation wording only] -.->|validated wording| R
 ```
 
 | Layer | Where | Responsibility | Never |
 |---|---|---|---|
 | 1 · Signal Detection | `backend/app/engine/communication/signals.py` | Measures what happened: latency, slowdown, corrections, uncertainty, missed taps and responses, read-aloud use, fatigue | Decides anything |
 | 2 · Adaptation Policy | `backend/app/engine/communication/policy.py` | Decides whether to change and the least disruptive change | Renders, touches the belief, or runs while escalating |
-| 3 · Interface Renderer | `frontend/components/talk/*`, `frontend/lib/live/talk-adapter.ts` | Draws the decided mode: choices shown, button size, spacing, wording, confirmation, read aloud, language | Decides to adapt |
+| 3 · Interface Renderer | `frontend/components/talk/*`, `frontend/lib/live/talk-adapter.ts` | Draws the decided mode: choices shown, button size, spacing, wording, confirmation, read aloud | Decides to adapt |
 
 Both backend layers are pure (no I/O, no clock, no network) and deterministic: the same interactions give the same
 decision. `backend/app/services/communication.py` connects them to a live session: it records each interaction,
@@ -54,8 +54,6 @@ Counts cover only the window since the last adaptation, so each change is judged
 
 ## What is never inferred
 
-- **Language**: only from an explicit choice on the tablet, or offered (never applied) from the chart's
-  preferred language. Slow or uncertain answers never change the language.
 - **Visual impairment**: missed taps never turn on audio. Read aloud comes from the patient's own use of it
   (offered after two presses), their choice, or their saved accessibility setting.
 - **Cognition, deterioration, diagnosis**: nothing here says anything about the patient. The nurse view says
@@ -88,7 +86,7 @@ in `SignalConfig` / `PolicyConfig`.
 | 4 · ASSISTED | Confirmed and unresolved information, someone helping; the question stays answerable | 4 |
 
 Modifiers combine with any mode: `large_targets`, `extra_spacing`, `confirm_selections` ("You selected Chest
-pressure. Is that right? Yes / Change"), `simple_wording` (severity 1), `audio`, `translated`.
+pressure. Is that right? Yes / Change"), `simple_wording` (severity 1), `audio`.
 
 High-risk choices (chest, breathing, choking) are always on screen, at every mode. In BINARY, a patient who hasn't
 tapped a feeling is first asked "Chest or breathing?", because the body map would have caught that in one tap.
@@ -110,8 +108,8 @@ tapped a feeling is first asked "Chest or breathing?", because the body map woul
 8. 2 good responses in a row: one step back up, never past a mode someone chose by hand.
 
 Small presentation changes apply automatically, with a short neutral message. Bigger changes of channel (help
-communicating, audio-first) are offered and wait for the patient's yes. "Make it easier" / "More choices", read
-aloud and language are always available to the patient and to a nurse.
+communicating, audio-first) are offered and wait for the patient's yes. "Make it easier" / "More choices" and read
+aloud are always available to the patient and to a nurse.
 
 ## Preserving patient intent
 
@@ -136,16 +134,13 @@ text.
   for "simple" and one for "binary", at startup, cached. Each returned string is validated: not empty, within the
   word limit, still a question, and **no clinical term (body part, symptom, need) that the original or its intent
   didn't contain**. A rejected string keeps the deterministic wording.
-- `Gemini.translate()` translates the screen for an explicitly chosen language; a reply with a different number
-  of strings is discarded. Fixed strings (Yes / No / Not sure, prompts, the adaptation messages) have built-in
-  English, Spanish, French and Chinese, so a language switch works without Gemini.
 - `Gemini.level_explanation()` writes an optional one-line note for the nurse after a change.
 
 Gemini never decides to adapt, never chooses answer options, never changes a probability, an id or escalation,
-and never infers a language or a disability. The nurse always receives English.
+and never infers a disability.
 
 **Fallback**: with no key, a failure or an exhausted quota, the catalog's own wording is used (`question` for
-standard and simplified, `short` for yes/no) and translations fall back to the built-in strings.
+standard and simplified, `short` for yes/no).
 
 ## Events (Tiger Data)
 
@@ -157,7 +152,7 @@ Written to the `events` hypertable with the patient and session ids:
 | `communication_mode_changed` | mode changes (from/to, reason, severity, slowdown ratio, fatigue, signals, renderer before/after) |
 | `communication_presentation_changed` | modifiers change |
 | `question_simplified` | simpler wording or yes/no because of uncertainty |
-| `language_changed`, `audio_mode_enabled` | explicit choices |
+| `audio_mode_enabled` | read aloud turned on by the patient's choice |
 | `answer_corrected` | Back, or "Change" on a confirmation |
 | `interaction_unresolved` | a missed response mid-request |
 | `communication_offer`, `communication_offer_answered` | offers and the patient's answer |
@@ -167,7 +162,7 @@ Written to the `events` hypertable with the patient and session ids:
 
 Unit insights → "Is communicating getting harder for anyone?" adds, per patient, this week vs the week before
 (`services/nurse_views.py`, from the events above): share of sessions that needed a simpler screen, share that
-needed yes/no, help-communicating episodes, read-aloud use and language changes. Amber at 15%+ and 10 points over
+needed yes/no, help-communicating episodes and read-aloud use. Amber at 15%+ and 10 points over
 last week, red at 30%+ and 20 points over: *"Communication effort has increased compared with recent
 interactions."* The 14-day unit history runs the same policy over each simulated session's taps
 (`data/unit_history.py`), so these numbers are computed, never placed.
@@ -195,8 +190,8 @@ cd backend && .venv/bin/python -m app.sim.communication_demo all    # backend ru
 ```
 
 Open `/talk/p-chen`, `/talk/p-patel` and `/nurse` first. Scenarios: **A** slowdown (2.4, 2.7, 2.6, 5.8, 6.4 s →
-Simplified on the last), **B** repeated "not sure" (simpler wording, then yes/no), **C** Spanish chosen (screen
-changes, ids and the nurse's English don't), **D** corrections, slowdown, silence in yes/no → help communicating →
-"Get nurse" with confirmed information preserved.
+Simplified on the last), **B** repeated "not sure" (simpler wording, then yes/no), **C** corrections, slowdown,
+silence in yes/no → help communicating → "Get nurse" with confirmed information preserved. Sign in as the patient
+to watch the tablet (nurses can't open it).
 
 Tests: `backend/tests/test_communication.py` (layers tested separately and together).

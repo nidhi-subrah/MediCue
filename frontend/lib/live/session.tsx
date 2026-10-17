@@ -24,7 +24,6 @@ interface LiveSessionValue {
    *  communication's signal detection. Never blocked by a pending request. */
   signal: (kind: 'miss' | 'correction' | 'read_aloud') => void
   setLevel: (level: CommunicationLevel) => void
-  setLanguage: (language: string) => void
   setAudio: (enabled: boolean) => void
   answerOffer: (offer: 'audio_first' | 'assisted', choice: string) => void
   respondWelfare: () => Promise<void>
@@ -112,7 +111,6 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
         .catch(() => {})   // a lost hint is harmless; timing and answers are measured on the backend too
     },
     setLevel: (level) => void act('level', { level, by: 'patient' }),
-    setLanguage: (language) => void act('communication/language', { language, by: 'patient' }),
     setAudio: (enabled) => void act('communication/audio', { enabled, by: 'patient' }),
     answerOffer: (offer, choice) => void act('communication/offer', { offer, choice }),
     respondWelfare: async () => {

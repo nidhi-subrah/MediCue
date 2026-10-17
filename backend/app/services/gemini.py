@@ -285,7 +285,7 @@ class Gemini:
 
     # ---- adaptive communication (services/communication_language.py validates everything here) ------
 
-    async def simplify_questions(self, items: list[dict], language: str = "en") -> dict[str, str] | None:
+    async def simplify_questions(self, items: list[dict]) -> dict[str, str] | None:
         """Presentation text for questions and labels at a target complexity. Each item is structured:
         {"id", "semantic_intent", "original_text", "target_complexity": "simple" | "binary",
          "allowed_answers", "max_words"}. Returns {id: text}; the caller validates every string and keeps its
@@ -295,7 +295,7 @@ class Gemini:
         prompt = (
             "You reword questions and button labels for a hospital patient who cannot speak and is tired or "
             "finding it hard to read. For each item write `text`: very plain, kind, at most `max_words` words, in "
-            f"{LANGUAGE_NAMES.get(language, language)}. Keep EXACTLY the meaning and scope of `semantic_intent`: "
+            "English. Keep EXACTLY the meaning and scope of `semantic_intent`: "
             "a yes/no question must stay a yes/no question that a 'yes' answers in exactly the same cases. Do not "
             "narrow ('drink, food, temperature or position' must not become just one of them), do not widen, do "
             "not add body parts, symptoms or answer choices that are not in the original, do not diagnose. "
