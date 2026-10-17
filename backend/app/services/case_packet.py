@@ -250,7 +250,8 @@ def next_step(cat: Catalog, d: Dialogue, code: str, focus: str, contact: dict | 
 
 def uncertainty(cat: Catalog, d: Dialogue, pset: list[str], pc: PacketConfig) -> dict:
     top = max(range(cat.n), key=lambda i: d.belief[i])
-    lead, p_top, p_high = cat.by_id[cat.need_ids[top]]["label"], d.belief[top], d.p_high()
+    # Rounded exactly like top_needs, so the sentence and the bars never disagree by a point.
+    lead, p_top, p_high = cat.by_id[cat.need_ids[top]]["label"], round(d.belief[top], 3), round(d.p_high(), 3)
     if len(pset) == 1:
         text = f"Only one need is in the 90% set: {lead} ({_pct(p_top)})."
     else:

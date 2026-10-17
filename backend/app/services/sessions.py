@@ -423,7 +423,8 @@ class SessionService:
             record = {"id": alert_id, "alert_id": alert_id, "patient_id": s.patient["id"], "session_id": s.id,
                       "created_at": alert["created_at"], "packet": pkt,
                       "sbar": template_case_sbar(pkt, s.patient), "sbar_source": "template",
-                      "feedback": (alert.get("case") or {}).get("feedback")}
+                      "feedback": (alert.get("case") or {}).get("feedback"),
+                      "acknowledged": (alert.get("case") or {}).get("acknowledged")}
             alert["case"] = record
             await self.hub.publish("nurse", {"type": "case", "case": record})
             await self._safe(self.store.upsert_case(record))
@@ -439,6 +440,19 @@ class SessionService:
                 await self._safe(self.store.upsert_case(record))
         except Exception:
             log.exception("case packet failed (the alert itself is unaffected)")
+
+    async def acknowledge_case(self, case_id: str, nurse: str = "nurse") -> dict:
+        """The nurse has read the case packet and is acting on it. Does not close the alert: what the patient
+        actually needed is still confirmed afterwards. Repeating it keeps the first acknowledgement."""
+        case = (self.alerts.get(case_id) or {}).get("case")
+        if not case:
+            raise KeyError(case_id)
+        if not case.get("acknowledged"):
+            case["acknowledged"] = {"by": nurse, "at": now().isoformat()}
+            await self.hub.publish("nurse", {"type": "case", "case": case})
+            await self._safe(self.store.upsert_case(case))
+            await self._event(case["patient_id"], "case_acknowledged", {"alert_id": case_id, "nurse": nurse})
+        return case
 
     async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse", note: str | None = None,
                       case_helpful: bool | None = None) -> dict:

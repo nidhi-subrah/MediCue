@@ -8,7 +8,7 @@ import { catalog, needLabel } from '@/lib/live/catalog'
 import { pct, timeAgo } from '@/lib/services/backend'
 import type { Alert } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { CasePacketView } from './case-packet'
+import { CaseSummary } from './case-packet'
 
 const SBAR_ROWS = [
   ['situation', 'Situation'],
@@ -75,7 +75,7 @@ export function AlertCard({
         </div>
       )}
 
-      {alert.case && <CasePacketView alert={alert} helpful={helpful} onHelpful={setHelpful} />}
+      {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (

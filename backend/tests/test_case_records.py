@@ -105,3 +105,18 @@ def test_welfare_alerts_have_no_case_and_confirm_as_before():
     with TestClient(app) as client:
         w = client.post("/api/welfare", json={"patient_id": "p-chen", "requested_by": "fam-lin"}).json()
         assert client.post(f"/api/welfare/{w['id']}/respond").json()["status"] == "responded"
+
+
+def test_acknowledge_records_once_pushes_and_keeps_the_alert_open():
+    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
+        s = chest(client)
+        receive(nurse, s["alert_id"], "case")
+        r = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Priya"})
+        assert r.status_code == 200 and r.json()["acknowledged"]["by"] == "Priya"
+        assert receive(nurse, s["alert_id"], "case")["acknowledged"]["by"] == "Priya"
+        again = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Sam"}).json()
+        assert again["acknowledged"]["by"] == "Priya"                     # the first acknowledgement stands
+        assert asyncio.run(app.state.store.get_case(s["alert_id"]))["acknowledged"]["by"] == "Priya"
+        alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
+        assert alert["status"] == "open"                                  # still needs "They needed …"
+        assert client.post("/api/cases/nope/acknowledge", json={}).status_code == 404

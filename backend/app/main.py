@@ -229,6 +229,16 @@ async def confirm(aid: str, body: ConfirmBody):
     return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
 
 
+class CaseAckBody(BaseModel):
+    nurse: str = "nurse"
+
+
+@app.post("/api/cases/{cid}/acknowledge")
+async def case_acknowledge(cid: str, body: CaseAckBody):
+    """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
+    return await _call(svc().acknowledge_case(cid, body.nurse))
+
+
 @app.get("/api/cases/{cid}")
 async def case(cid: str):
     """A clinician-copilot case record (id = alert id): packet, SBAR and the nurse's feedback."""
