@@ -36,7 +36,11 @@ GROUP BY patient_id
 
 CONFIRMATION_COLS = ("time", "patient_id", "session_id", "predicted_need", "confirmed_need", "confirmed_group",
                      "risk", "correct", "escalated", "taps", "questions", "resolve_seconds",
-                     "mean_tap_interval", "mode")
+                     "mean_tap_interval", "mode", "origin")
+
+DECISION_ACTION_COLS = ("time", "patient_id", "session_id", "decision_cycle", "kind", "action_id", "label",
+                        "eig", "fatigue_cost", "delay_cost", "other_costs", "value", "score", "selected",
+                        "rank", "origin")
 
 
 def _statements(sql: str) -> list[str]:
@@ -76,9 +80,10 @@ class TimescaleStore:
                     f"VALUES ({', '.join(['%s'] * len(CONFIRMATION_COLS))})",
                     [tuple(r[c] for c in CONFIRMATION_COLS) for r in confirmations])
                 await cur.executemany(
-                    "INSERT INTO events (time, patient_id, session_id, event_type, payload) VALUES (%s,%s,%s,%s,%s)",
-                    [(e["time"], e["patient_id"], e["session_id"], e["event_type"], json.dumps(e["payload"]))
-                     for e in events])
+                    "INSERT INTO events (time, patient_id, session_id, event_type, payload, origin) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    [(e["time"], e["patient_id"], e["session_id"], e["event_type"], json.dumps(e["payload"]),
+                      e.get("origin", "live_demo")) for e in events])
             for view in ("patient_hourly_signals", "communication_hourly"):
                 await conn.execute(f"CALL refresh_continuous_aggregate('{view}', NULL, NULL)")
 
@@ -97,11 +102,38 @@ class TimescaleStore:
                     [(time, patient_id, session_id, step, nid, p) for nid, p in belief.items()])
 
     async def log_confirmation(self, row):
+        row = {**row, "origin": row.get("origin", "live_demo")}
         async with self.pool.connection() as conn:
             await conn.execute(
                 f"INSERT INTO confirmations ({', '.join(CONFIRMATION_COLS)}) "
                 f"VALUES ({', '.join(['%s'] * len(CONFIRMATION_COLS))})",
                 tuple(row[c] for c in CONFIRMATION_COLS))
+
+    async def log_decision_actions(self, rows: list[dict]):
+        if not rows:
+            return
+        rows = [{**r, "origin": r.get("origin", "live_demo")} for r in rows]
+        async with self.pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.executemany(
+                    f"INSERT INTO decision_actions ({', '.join(DECISION_ACTION_COLS)}) "
+                    f"VALUES ({', '.join(['%s'] * len(DECISION_ACTION_COLS))})",
+                    [tuple(json.dumps(r[c]) if c == "other_costs" else r[c] for c in DECISION_ACTION_COLS)
+                     for r in rows])
+
+    async def decision_action_history(self, session_id: str) -> list[dict]:
+        rows = await self._all(
+            f"SELECT {', '.join(DECISION_ACTION_COLS)} FROM decision_actions "
+            "WHERE session_id = %s ORDER BY time, rank", (session_id,))
+        for r in rows:
+            if isinstance(r.get("other_costs"), str):
+                r["other_costs"] = json.loads(r["other_costs"])
+        return rows
+
+    async def belief_evolution(self, session_id: str) -> list[dict]:
+        return await self._all(
+            "SELECT time, step, need_id, prob FROM belief_snapshots "
+            "WHERE session_id = %s ORDER BY time, need_id", (session_id,))
 
     async def window_signals(self, days=8):
         return await self._all(WINDOW_SQL, (days,))

@@ -13,6 +13,10 @@ services:
       POSTGRES_USER: silentsignal
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-silentsignal}
       POSTGRES_DB: silentsignal
+    ports:
+      # Published for local dev, where the backend runs on the host (not in this compose network)
+      # against `.venv`. Not needed for the single-VM deploy, where app and db share a network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
     healthcheck:

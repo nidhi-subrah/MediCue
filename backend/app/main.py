@@ -35,6 +35,10 @@ async def lifespan(app: FastAPI):
     await store.init()
     if settings.seed_demo_data and await store.is_empty():
         rows, events = seed.generate(cat)
+        for r in rows:
+            r["origin"] = "synthetic_history"
+        for e in events:
+            e["origin"] = "synthetic_history"
         await store.bulk_seed(rows, events)
         log.info("seeded %d synthetic confirmations", len(rows))
     conformal = await asyncio.to_thread(calibrate, cat, settings.engine)

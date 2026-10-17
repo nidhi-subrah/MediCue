@@ -31,6 +31,7 @@ class MemoryStore:
         self.events: list[dict] = []
         self.beliefs: list[dict] = []
         self.rows: list[dict] = []
+        self.decision_actions: list[dict] = []
         self.reliability: dict[str, tuple[float, float]] = {}
         self.hypotheses: dict[str, dict] = {}
         self.inquiries: dict[str, dict] = {}
@@ -54,7 +55,19 @@ class MemoryStore:
                              "belief": belief})
 
     async def log_confirmation(self, row):
-        self.rows.append(row)
+        self.rows.append({**row, "origin": row.get("origin", "live_demo")})
+
+    async def log_decision_actions(self, rows):
+        self.decision_actions.extend({**r, "origin": r.get("origin", "live_demo")} for r in rows)
+
+    async def decision_action_history(self, session_id):
+        rows = [r for r in self.decision_actions if r["session_id"] == session_id]
+        return sorted(rows, key=lambda r: (r["time"], r["rank"]))
+
+    async def belief_evolution(self, session_id):
+        rows = [{"time": b["time"], "step": b["step"], "need_id": nid, "prob": p}
+                for b in self.beliefs if b["session_id"] == session_id for nid, p in b["belief"].items()]
+        return sorted(rows, key=lambda r: (r["time"], r["need_id"]))
 
     async def window_signals(self, days=8):
         return window_signals_from_rows(self.rows, datetime.now(timezone.utc), days)
