@@ -1,6 +1,6 @@
 'use client'
 
-import { CircleCheckBig, Eye, LogOut, Siren } from 'lucide-react'
+import { CircleCheckBig, Eye, LogOut, Siren, SlidersHorizontal } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
@@ -15,6 +15,7 @@ import { ConsultBanner } from './consult-banner'
 import { LanguageOffer, LevelBar, LevelTransition, OfferCard } from './level-bar'
 import { QuestionStage } from './question-stage'
 import { SummaryPanel } from './summary-panel'
+import { TabletSettings } from './tablet-settings'
 
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
@@ -25,7 +26,7 @@ export function TalkView() {
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
   const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.communication.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
-  // "Read aloud" chosen in Settings is an explicit accessibility preference: carry it into the session once.
+  // "Read aloud" chosen in Display and sound is an explicit accessibility preference: carry it into the session once.
   const sentPreference = useRef<string | null>(null)
   useEffect(() => {
     if (!session || !audioPreference || sentPreference.current === session.session_id) return
@@ -33,6 +34,7 @@ export function TalkView() {
     if (!session.communication.audio_enabled) setAudio(true)
   }, [session, audioPreference, setAudio])
   const [showToSomeone, setShowToSomeone] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   if (error && !session) {
     return (
@@ -76,6 +78,14 @@ export function TalkView() {
           >
             <Eye className="size-4" aria-hidden="true" />
             Show to someone
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+          >
+            <SlidersHorizontal className="size-4" aria-hidden="true" />
+            Display and sound
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -190,6 +200,11 @@ export function TalkView() {
         </button>
       )}
 
+      <TabletSettings
+        open={showSettings}
+        onOpenChange={setShowSettings}
+        onAudio={(on) => { if (session.communication.audio_enabled !== on) setAudio(on) }}
+      />
       <ShowSomeone open={showToSomeone} onOpenChange={setShowToSomeone} text={lastMessage} />
     </div>
   )
