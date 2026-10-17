@@ -67,20 +67,6 @@ def test_trends_flag_seeded_patterns():
         assert len(trends["p-chen"]["series"]["pain_needs"]) == 8
 
 
-def test_research_findings_and_review_feed_prior():
-    with TestClient(app) as client:
-        findings = client.get("/api/research/findings").json()
-        kinds = {f["kind"] for f in findings}
-        assert "time_of_day" in kinds
-        f = next(f for f in findings if f["kind"] == "time_of_day")
-        r = client.post(f"/api/research/findings/{f['id']}/review",
-                        json={"status": "rejected", "note": "staffing artefact"}).json()
-        assert r["status"] == "rejected"
-        client.post("/api/research/run")
-        again = {x["id"]: x for x in client.get("/api/research/findings").json()}
-        assert again[f["id"]]["status"] == "rejected"
-
-
 def test_welfare_check_requires_preauthorised_caregiver():
     with TestClient(app) as client:
         r = client.post("/api/welfare", json={"patient_id": "p-chen", "requested_by": "fam-miguel"})

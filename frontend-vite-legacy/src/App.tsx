@@ -25,10 +25,10 @@ export default function App() {
         <nav className="topnav" aria-label="Main">
           <a href="#/" className="wordmark">SilentSignal</a>
           {!isFamily && (
-            <>
+            <div className="nav-pills">
               <a href="#/nurse" aria-current={page === "nurse" ? "page" : undefined}>Nurse station</a>
               <a href="#/research" aria-current={page === "research" ? "page" : undefined}>Pattern review</a>
-            </>
+            </div>
           )}
           <span className="disclaimer">Prototype with synthetic data. Not a diagnostic device.</span>
         </nav>
