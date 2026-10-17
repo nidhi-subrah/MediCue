@@ -7,5 +7,7 @@ venv/
 node_modules/
 dist/
 .next/
+*.tsbuildinfo
+AGENTS.md
 .DS_Store
 *.log

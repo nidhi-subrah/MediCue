@@ -1,136 +1,131 @@
 'use client'
 
 import { FlaskConical } from 'lucide-react'
-import { useState } from 'react'
-import { needLabel } from '@/lib/live/catalog'
 import { useResearch } from '@/lib/live/research'
-import { timeAgo } from '@/lib/services/backend'
-import type { Finding } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import type { ResearchHypothesis } from '@/lib/types'
+import { HypothesisCard } from './hypothesis-card'
+import { InquiryCard } from './inquiry-card'
+import { ObservationForm } from './observation-form'
 
-const STATUS_LABEL: Record<Finding['status'], string> = {
-  proposed: 'Awaiting review',
-  validated: 'Validated',
-  rejected: 'Rejected',
-  needs_more_data: 'Needs more data',
-}
+const PENDING = new Set(['SUPPORTED_PENDING_REVIEW', 'REJECTED_PENDING_REVIEW'])
+const DONE = new Set(['VALIDATED', 'REJECTED'])
 
 export function ResearchView() {
-  const { findings, running, run, review } = useResearch()
-  const [notes, setNotes] = useState<Record<string, string>>({})
-  const waiting = findings.filter((f) => f.status === 'proposed').length
+  const { hypotheses, inquiries, digest, staff, patients, running, runCycle, reviewHypothesis, answerInquiry, submitObservation } =
+    useResearch()
+
+  const pending = hypotheses.filter((h) => PENDING.has(h.status))
+  // Clinician observations first (a person is waiting on them), then the most decided.
+  const active = hypotheses
+    .filter((h) => !PENDING.has(h.status) && !DONE.has(h.status))
+    .sort(
+      (a, b) =>
+        Number(b.origin === 'clinician') - Number(a.origin === 'clinician') ||
+        Math.abs(b.confidence - 0.5) - Math.abs(a.confidence - 0.5),
+    )
+  const done = hypotheses.filter((h) => DONE.has(h.status))
+
+  const review = (h: ResearchHypothesis) => (decision: 'validated' | 'rejected' | 'needs_more_data', note: string | null) =>
+    reviewHypothesis(h.id, decision, note)
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold tracking-tight">Pattern review</h1>
-          <p className="text-lg text-muted-foreground">{waiting} awaiting review · {findings.length} total</p>
+          <h1 className="text-4xl font-bold tracking-tight">Research</h1>
+          <p className="text-lg text-muted-foreground">
+            {pending.length} awaiting review · {active.length} under investigation · {inquiries.length} question
+            {inquiries.length === 1 ? '' : 's'} for clinicians
+          </p>
         </div>
         <button
           type="button"
-          onClick={run}
+          onClick={runCycle}
           disabled={running}
           className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
         >
           <FlaskConical className="size-4" aria-hidden="true" />
-          {running ? 'Analysing…' : 'Scan for new patterns'}
+          {running ? 'Running…' : 'Run research cycle'}
         </button>
       </header>
 
       <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
-        Patterns found in confirmed requests. Validating one adjusts that patient&apos;s starting probabilities;
-        rejected patterns are not proposed again.
+        Clinician observations and patterns found in confirmed requests become hypotheses. For each one the agent
+        chooses to check the data, ask a clinician who knows the patient, or wait for more episodes, and updates its
+        confidence from what it finds. Nothing is treated as a finding until the clinical lead reviews it.
       </p>
 
-      {findings.length === 0 && (
-        <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">No patterns yet.</p>
+      {digest && (
+        <section aria-label="Research digest" className="flex flex-col gap-1.5 rounded-3xl border border-primary/30 bg-primary-soft p-5">
+          <p className="text-sm font-semibold uppercase tracking-wide text-primary">This shift</p>
+          <p className="text-lg leading-relaxed">{digest.text}</p>
+          {digest.source === 'gemini' && <p className="text-xs text-muted-foreground">Phrased by Gemini from the counts</p>}
+        </section>
       )}
 
-      {findings.map((f) => (
-        <article
-          key={f.id}
-          className={cn('flex flex-col gap-4 rounded-3xl border border-border bg-card p-6', f.status === 'rejected' && 'opacity-55')}
-        >
-          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <span
-              className={cn(
-                'font-semibold',
-                f.status === 'validated' && 'text-success',
-                f.status === 'needs_more_data' && 'text-[oklch(0.52_0.13_70)]',
-              )}
-            >
-              {STATUS_LABEL[f.status]}
-            </span>
-            <span>{f.kind.replace(/_/g, ' ')}</span>
-            <span>first seen {timeAgo(f.created_at)}</span>
-          </div>
-
-          <h2 className="text-xl font-bold">{f.title}</h2>
-
-          <dl className="grid gap-2">
-            <div className="grid grid-cols-[7.5rem_1fr] gap-3">
-              <dt className="text-sm text-muted-foreground">Evidence</dt>
-              <dd className="text-base">{f.evidence}</dd>
-            </div>
-            <div className="grid grid-cols-[7.5rem_1fr] gap-3">
-              <dt className="text-sm text-muted-foreground">Hypothesis</dt>
-              <dd className="text-base">
-                {f.hypothesis}
-                {f.hypothesis_source === 'gemini' && <span className="text-sm text-muted-foreground"> (drafted by Gemini)</span>}
-              </dd>
-            </div>
-            {f.prior_effect && (
-              <div className="grid grid-cols-[7.5rem_1fr] gap-3">
-                <dt className="text-sm text-muted-foreground">If validated</dt>
-                <dd className="text-base">
-                  {f.prior_effect.need_ids.map(needLabel).join(', ')} made {f.prior_effect.multiplier}× more likely
-                  {f.prior_effect.hours
-                    ? ` from ${f.prior_effect.hours[0]}:00 to ${f.prior_effect.hours[f.prior_effect.hours.length - 1] + 1}:00`
-                    : ''}
-                </dd>
-              </div>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-8">
+          <section aria-labelledby="pending-h" className="flex flex-col gap-4">
+            <header className="flex items-baseline justify-between border-b border-border pb-2">
+              <h2 id="pending-h" className="text-xl font-bold">Pending review</h2>
+              <span className="text-sm text-muted-foreground">{pending.length}</span>
+            </header>
+            {pending.length === 0 ? (
+              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+                Nothing has crossed a review threshold yet.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Human review is required before any hypothesis is treated as a finding.</p>
             )}
-            {f.reviewer && (
-              <div className="grid grid-cols-[7.5rem_1fr] gap-3">
-                <dt className="text-sm text-muted-foreground">Reviewed</dt>
-                <dd className="text-base">{f.reviewer}{f.note ? `: "${f.note}"` : ''}</dd>
-              </div>
-            )}
-          </dl>
+            {pending.map((h) => <HypothesisCard key={h.id} h={h} mode="review" onReview={review(h)} />)}
+          </section>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              aria-label="Reviewer note"
-              placeholder="Add a note (optional)"
-              value={notes[f.id] ?? ''}
-              onChange={(e) => setNotes({ ...notes, [f.id]: e.target.value })}
-              className="h-11 flex-1 min-w-[220px] rounded-xl border-2 border-input bg-background px-3 text-base"
-            />
-            <button
-              type="button"
-              onClick={() => review(f, 'validated', notes[f.id] ?? null)}
-              className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-            >
-              Validate
-            </button>
-            <button
-              type="button"
-              onClick={() => review(f, 'needs_more_data', notes[f.id] ?? null)}
-              className="h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
-            >
-              Needs more data
-            </button>
-            <button
-              type="button"
-              onClick={() => review(f, 'rejected', notes[f.id] ?? null)}
-              className="h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted"
-            >
-              Reject
-            </button>
-          </div>
-        </article>
-      ))}
+          <section aria-labelledby="active-h" className="flex flex-col gap-4">
+            <header className="flex items-baseline justify-between border-b border-border pb-2">
+              <h2 id="active-h" className="text-xl font-bold">Active hypotheses</h2>
+              <span className="text-sm text-muted-foreground">{active.length}</span>
+            </header>
+            {active.length === 0 && (
+              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+                No hypotheses under investigation.
+              </p>
+            )}
+            {active.map((h) => <HypothesisCard key={h.id} h={h} mode="active" onReview={review(h)} />)}
+          </section>
+
+          <section aria-labelledby="history-h" className="flex flex-col gap-4">
+            <header className="flex items-baseline justify-between border-b border-border pb-2">
+              <h2 id="history-h" className="text-xl font-bold">Validated and rejected</h2>
+              <span className="text-sm text-muted-foreground">{done.length}</span>
+            </header>
+            {done.length === 0 && (
+              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+                Nothing reviewed yet. Evidence and history stay here after review.
+              </p>
+            )}
+            {done.map((h) => <HypothesisCard key={h.id} h={h} mode="history" onReview={review(h)} />)}
+          </section>
+        </div>
+
+        <aside className="flex flex-col gap-8">
+          <section aria-labelledby="inq-h" className="flex flex-col gap-4">
+            <header className="flex items-baseline justify-between border-b border-border pb-2">
+              <h2 id="inq-h" className="text-xl font-bold">Questions for clinicians</h2>
+              <span className="text-sm text-muted-foreground">{inquiries.length}</span>
+            </header>
+            {inquiries.length === 0 && (
+              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+                The agent has no open questions.
+              </p>
+            )}
+            {inquiries.map((i) => (
+              <InquiryCard key={i.id} inquiry={i} onAnswer={(response, note) => answerInquiry(i.id, response, note)} />
+            ))}
+          </section>
+
+          <ObservationForm staff={staff} patients={patients} onSubmit={submitObservation} />
+        </aside>
+      </div>
     </div>
   )
 }
