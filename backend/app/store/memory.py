@@ -1,6 +1,9 @@
 """In-process store. Mirrors the Timescale queries in Python so the app runs with no database."""
+import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
+
+MIN_BASELINE_ROWS = 5  # fewer confirmations than this and the patient has no personal tap baseline
 
 
 def window_signals_from_rows(rows: list[dict], now: datetime, days: int) -> list[dict]:
@@ -32,6 +35,8 @@ class MemoryStore:
         self.rows: list[dict] = []
         self.reliability: dict[str, tuple[float, float]] = {}
         self.findings: dict[str, dict] = {}
+        self.profiles: dict[str, dict] = {}
+        self.suggestions: dict[str, dict] = {}
 
     async def init(self): ...
     async def close(self): ...
@@ -79,3 +84,21 @@ class MemoryStore:
 
     async def upsert_finding(self, finding):
         self.findings[finding["id"]] = finding
+
+    async def tap_baseline(self, patient_id, days=14):
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        xs = [r["mean_tap_interval"] for r in self.rows
+              if r["patient_id"] == patient_id and r["time"] >= since and r["mean_tap_interval"] > 0]
+        return statistics.median(xs) if len(xs) >= MIN_BASELINE_ROWS else None
+
+    async def get_profile(self, patient_id):
+        return self.profiles.get(patient_id)
+
+    async def put_profile(self, profile):
+        self.profiles[profile["patient_id"]] = profile
+
+    async def list_suggestions(self):
+        return sorted(self.suggestions.values(), key=lambda s: s["created_at"], reverse=True)
+
+    async def upsert_suggestion(self, suggestion):
+        self.suggestions[suggestion["id"]] = suggestion

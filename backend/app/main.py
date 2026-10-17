@@ -18,7 +18,9 @@ from .config import settings
 from .data import seed
 from .data.patients import PATIENT_BY_ID, PATIENTS, PERSON_BY_ID
 from .services.gemini import Gemini
+from .services.handoff import build_handoff
 from .services.hub import Hub
+from .services.profiles import ProfileService
 from .services.research import run_research
 from .services.sessions import SessionService
 from .services.trends import build_trends
@@ -44,12 +46,29 @@ async def lifespan(app: FastAPI):
     log.info("Gemini %s", "enabled" if gemini.enabled else "disabled (template fallbacks)")
     app.state.cat, app.state.store, app.state.gemini = cat, store, gemini
     app.state.hub = Hub()
-    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal)
-    try:
-        await run_research(cat, store, gemini, PATIENT_BY_ID)
-    except Exception:
-        log.exception("initial research run failed")
+    app.state.profiles = ProfileService(cat, store, gemini, app.state.hub)
+    app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles)
+    # Profiles, then the first research run, happen in the background, one after the other so they share
+    # Gemini's rate limit politely. Sessions use whatever profile is ready and never wait for Gemini.
+    async def background_start():
+        try:
+            await app.state.profiles.warm()
+        except Exception:
+            log.exception("profile extraction failed")
+        try:
+            # Template wording at startup: Gemini's free tier allows ~5 requests a minute, and alerts and
+            # suggestions need them more. "Scan for new patterns" (POST /api/research/run) uses Gemini.
+            await run_research(cat, store, Gemini(api_key=None), PATIENT_BY_ID)
+        except Exception:
+            log.exception("initial research run failed")
+    if gemini.enabled:
+        warm = asyncio.create_task(background_start())
+    else:
+        await background_start()   # no network calls: quick, and tests see the findings straight away
+        warm = None
     yield
+    if warm:
+        warm.cancel()
     await store.close()
 
 
@@ -72,7 +91,8 @@ def _need(fn, *args):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "gemini": app.state.gemini.enabled, "store": type(app.state.store).__name__,
+    return {"ok": True, "gemini": app.state.gemini.enabled, "gemini_paused_s": round(app.state.gemini.paused_for),
+            "store": type(app.state.store).__name__,
             "conformal_qhat": svc().conformal.qhat}
 
 
@@ -171,6 +191,7 @@ async def skip_consult(sid: str):
 class ConfirmBody(BaseModel):
     need_id: str | None = None
     nurse: str = "nurse"
+    note: str | None = None      # optional observation; Gemini suggests profile changes from it
 
 
 @app.get("/api/alerts")
@@ -184,15 +205,73 @@ async def alerts(status: str | None = None):
 async def confirm(aid: str, body: ConfirmBody):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse))
+    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note))
 
 
-@app.get("/api/trends")
-async def trends():
+async def _trends():
     store = app.state.store
     rows = await store.window_signals(8)
     changes = await store.mode_changes(24)
     return build_trends(rows, PATIENTS, changes)
+
+
+@app.get("/api/trends")
+async def trends():
+    return await _trends()
+
+
+@app.get("/api/handoff")
+async def handoff(hours: int = 12):
+    return await build_handoff(app.state.cat, app.state.store, svc(), app.state.profiles, app.state.gemini,
+                               await _trends(), max(1, min(hours, 48)))
+
+
+# ---- patient profiles -----------------------------------------------------------------------------
+
+class NotesBody(BaseModel):
+    notes: str
+
+
+class SuggestionReviewBody(BaseModel):
+    approve: bool
+    reviewer: str = "nurse"
+
+
+def _patient_or_404(pid: str):
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+
+
+@app.get("/api/patients/{pid}/profile")
+async def get_profile(pid: str):
+    _patient_or_404(pid)
+    return app.state.profiles.public(pid)
+
+
+@app.post("/api/patients/{pid}/notes")
+async def set_notes(pid: str, body: NotesBody):
+    _patient_or_404(pid)
+    if not body.notes.strip():
+        raise HTTPException(422, "notes are empty")
+    return await app.state.profiles.set_notes(pid, body.notes)
+
+
+@app.post("/api/patients/{pid}/profile/refresh")
+async def refresh_profile(pid: str):
+    _patient_or_404(pid)
+    await app.state.profiles.extract(pid)
+    return app.state.profiles.public(pid)
+
+
+@app.get("/api/suggestions")
+async def suggestions(status: str | None = None):
+    items = await app.state.profiles.list_suggestions()
+    return [s for s in items if status is None or s["status"] == status]
+
+
+@app.post("/api/suggestions/{sid}/review")
+async def review_suggestion(sid: str, body: SuggestionReviewBody):
+    return await _call(app.state.profiles.review(sid, body.approve, body.reviewer))
 
 
 # ---- family / consults / welfare ------------------------------------------------------------------

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Alert, PatientTrend } from "@shared/types";
+import type { Alert, PatientTrend, ProfileSuggestion } from "@shared/types";
 import { api, useChannel } from "../api";
 import AlertCard from "../components/AlertCard";
+import ShiftSummary from "../components/ShiftSummary";
 import Sparkline from "../components/Sparkline";
+import Suggestions from "../components/Suggestions";
 
 const SPARKS: { metric: string; label: string; format: (v: number) => string }[] = [
   { metric: "pain_needs", label: "Pain requests", format: (v) => v.toFixed(0) },
@@ -26,10 +28,13 @@ export default function NurseDashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [trends, setTrends] = useState<PatientTrend[]>([]);
   const [showDone, setShowDone] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([]);
 
   const loadTrends = useCallback(() => api.get<PatientTrend[]>("/api/trends").then(setTrends), []);
   useEffect(() => {
     api.get<Alert[]>("/api/alerts").then(setAlerts);
+    api.get<ProfileSuggestion[]>("/api/suggestions").then(setSuggestions);
     loadTrends();
     const t = window.setInterval(loadTrends, 60000);
     return () => window.clearInterval(t);
@@ -44,6 +49,13 @@ export default function NurseDashboard() {
       setAlerts((a) => a.map((x) => (x.id === m.alert.id ? m.alert : x)));
       if (m.alert.status === "confirmed") loadTrends();
     }
+    if (m.type === "suggestions") {
+      setSuggestions((all) => {
+        const ids = new Set(m.suggestions.map((s) => s.id));
+        return [...m.suggestions, ...all.filter((s) => !ids.has(s.id))]
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      });
+    }
   });
 
   const open = alerts.filter((a) => a.status === "open")
@@ -54,6 +66,8 @@ export default function NurseDashboard() {
   const stable = trends.filter((t) => t.flags.length === 0);
 
   return (
+    <>
+    {showSummary && <ShiftSummary onClose={() => setShowSummary(false)} />}
     <div className="dashboard">
       <section className="requests" aria-labelledby="alerts-h">
         <header className="section-head">
@@ -61,6 +75,7 @@ export default function NurseDashboard() {
           <p className="section-meta">
             {open.length === 0 ? "None open" : `${open.length} open`}
             {urgentCount > 0 && <span className="meta-urgent"> · {urgentCount} urgent</span>}
+            {!showSummary && <button className="btn handoff-btn" onClick={() => setShowSummary(true)}>Shift summary</button>}
           </p>
         </header>
         {open.length === 0 && (
@@ -75,6 +90,8 @@ export default function NurseDashboard() {
         {showDone && done.map((a) => <AlertCard key={a.id} alert={a} />)}
       </section>
 
+      <div className="side-col">
+      <Suggestions items={suggestions} />
       <section className="trends" aria-labelledby="trends-h">
         <header className="section-head">
           <h2 id="trends-h">Changes this shift</h2>
@@ -107,6 +124,8 @@ export default function NurseDashboard() {
         )}
         <p className="fineprint">Flags are prompts for clinical review, not diagnoses.</p>
       </section>
+      </div>
     </div>
+    </>
   );
 }

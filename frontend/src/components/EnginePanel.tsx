@@ -2,6 +2,7 @@ import type { SessionState } from "@shared/types";
 import { pct } from "../api";
 import { needLabel } from "../catalog";
 import BeliefBars from "./BeliefBars";
+import ProfileList from "./ProfileList";
 
 const KIND_LABEL: Record<string, string> = {
   ask: "Ask", lookup: "Look up", consult: "Consult", escalate: "Escalate", send: "Send", tap: "Next tap",
@@ -25,6 +26,15 @@ export default function EnginePanel({ s }: { s: SessionState }) {
         <BeliefBars items={s.belief} set={s.prediction_set} />
         <p className="engine-note">90% set: {s.prediction_set.map(needLabel).join(", ")}</p>
         {s.prior_reasons.length > 0 && <p className="engine-note">Prior shaped by {s.prior_reasons.join(", ")}</p>}
+      </section>
+
+      <section>
+        <h3>Patient profile</h3>
+        <ProfileList items={s.profile} empty="No profile (Gemini off or nothing in the notes)." />
+        <p className="engine-note">
+          {s.baseline_interval ? `Usual pace ${s.baseline_interval.toFixed(1)} s between inputs` : "No personal pace baseline yet"}
+          {s.inconsistencies > 0 && ` · ${s.inconsistencies} inconsistent answer${s.inconsistencies === 1 ? "" : "s"}`}
+        </p>
       </section>
 
       {d && (

@@ -38,6 +38,7 @@ export default function Home() {
               <td className="dx">{p.diagnosis}</td>
               <td className="open-as">
                 <a href={`#/patient/${p.id}`}>Bedside tablet</a>
+                <a href={`#/profile/${p.id}`}>Notes and profile</a>
                 {p.people.map((person) => (
                   <a key={person.id} href={`#/family/${person.id}`}>{person.name.split(" ")[0]}, {person.relation}</a>
                 ))}

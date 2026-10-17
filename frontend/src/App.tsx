@@ -4,6 +4,7 @@ import PatientPage from "./pages/PatientPage";
 import NurseDashboard from "./pages/NurseDashboard";
 import FamilyPage from "./pages/FamilyPage";
 import ResearchPage from "./pages/ResearchPage";
+import ProfilePage from "./pages/ProfilePage";
 
 function useHashRoute() {
   const [hash, setHash] = useState(location.hash.slice(1) || "/");
@@ -37,7 +38,8 @@ export default function App() {
         {page === "patient" && id ? <PatientPage patientId={id} /> :
          page === "nurse" ? <NurseDashboard /> :
          page === "family" && id ? <FamilyPage personId={id} /> :
-         page === "research" ? <ResearchPage /> : <Home />}
+         page === "research" ? <ResearchPage /> :
+         page === "profile" && id ? <ProfilePage patientId={id} /> : <Home />}
       </main>
     </>
   );
