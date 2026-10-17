@@ -29,7 +29,7 @@ export function ModeSwitcher({
       <div
         role="radiogroup"
         aria-labelledby="mode-label"
-        className="grid grid-cols-4 gap-1 rounded-2xl border border-border bg-card p-1"
+        className="grid grid-cols-3 gap-1 rounded-2xl border border-border bg-card p-1"
       >
         {MODE_ORDER.map((id) => {
           const m = MODES[id]

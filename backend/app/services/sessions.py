@@ -18,11 +18,15 @@ from ..engine.belief import PriorContext, context_prior, entropy
 from ..engine.conformal import ConformalPredictor
 from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
+from ..engine.personal import PersonalModel
+from ..sim.learning import learning_curve
 from .gemini import Gemini, template_sbar
 from .hub import Hub
 from .research import prior_multipliers
 
 log = logging.getLogger(__name__)
+
+LEARN_DAYS = 60
 
 FATIGUE_SWITCH = 2.0
 
@@ -190,9 +194,13 @@ class SessionService:
         except Exception:
             log.exception("tap baseline lookup failed")
             baseline = None
+        personal = await self.personal_model(patient_id)
+        if personal.n:
+            reasons.append(f"{personal.n} nurse-confirmed gesture{'s' if personal.n != 1 else ''} of theirs")
         d = Dialogue(self.cat, self.cfg, prior, clip(prof.signal_reliability(profile, view["signal_reliability"])),
                      consultants, {k: v["flag"] for k, v in p["chart"].items()},
-                     baseline_interval=baseline, fatigue_sensitivity=prof.fatigue_sensitivity(profile, local_hour))
+                     baseline_interval=baseline, fatigue_sensitivity=prof.fatigue_sensitivity(profile, local_hour),
+                     personal=personal)
         s = Session(uuid.uuid4().hex[:12], p, d, mode, language or p["language"], reasons,
                     tired_mode=prof.mode_when_tired(profile))
         self.sessions[s.id] = s
@@ -201,6 +209,36 @@ class SessionService:
         out = await self.state(s)
         s.prompted_at = time.time()
         return out
+
+    async def personal_model(self, patient_id: str) -> PersonalModel:
+        """This patient's learned gesture meanings, from nurse-confirmed needs in the last LEARN_DAYS days."""
+        try:
+            rows = await self.store.confirmations(now() - timedelta(days=LEARN_DAYS), patient_id)
+        except Exception:
+            log.exception("confirmation lookup failed; no personal model")
+            rows = []
+        return PersonalModel.from_rows(rows)
+
+    async def learning(self, patient_id: str) -> dict:
+        model = await self.personal_model(patient_id)
+        return {"patient_id": patient_id, "confirmations": model.n, "alpha": model.alpha,
+                "signals": model.learned_signals(self.cat)}
+
+    async def learning_demo(self, patient_id: str, area: str, feeling: str, need: str, sessions: int) -> dict:
+        """Replay one gesture over several sessions from a blank slate, with this patient's prior and chart.
+        Runs in memory only; nothing is stored."""
+        p = PATIENT_BY_ID[patient_id]
+        if area not in self.cat.area_lik or feeling not in self.cat.feeling_lik or need not in self.cat.index:
+            raise ValueError("unknown area, feeling or need")
+        view = await self.patient_view(patient_id)
+        local_hour = now().astimezone(settings.unit_tz).hour
+        prior, _ = context_prior(self.cat, PriorContext(hour=local_hour, days_since_surgery=p["days_since_surgery"]))
+        curve = learning_curve(self.cat, self.cfg, prior, clip(view["signal_reliability"]),
+                               {k: v["flag"] for k, v in p["chart"].items()}, area, feeling, need,
+                               min(max(sessions, 2), 10))
+        return {"patient_id": patient_id, "area": area, "feeling": feeling, "need": need,
+                "need_label": self.cat.by_id[need]["label"], "high_risk": self.cat.high_risk[self.cat.index[need]],
+                "sessions": curve}
 
     @staticmethod
     def _latency_ms(s: Session) -> int:
@@ -412,6 +450,7 @@ class SessionService:
             "correct": alert["top"][0]["need"] == need_id, "escalated": alert["priority"] == "urgent",
             "taps": d.taps, "questions": d.questions_asked, "resolve_seconds": alert["seconds_to_alert"],
             "mean_tap_interval": round(sum(gaps) / len(gaps), 2) if gaps else 0.0, "mode": s.mode,
+            "area": d.area, "feeling": d.feeling,   # the gesture, so the patient's own meanings can be learned
         }
         await self._safe(self.store.log_confirmation(row))
         # Source reliability: Beta updates. The patient's signals count as reliable when the confirmed

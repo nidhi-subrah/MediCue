@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS confirmations (
 );
 ALTER TABLE confirmations ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'live_demo';
 SELECT create_hypertable('confirmations', 'time', if_not_exists => TRUE);
+-- The gesture that preceded the confirmed need (per-patient learning, engine/personal.py). Nullable so
+-- older rows and databases created before this column existed keep working.
+ALTER TABLE confirmations ADD COLUMN IF NOT EXISTS area TEXT;
+ALTER TABLE confirmations ADD COLUMN IF NOT EXISTS feeling TEXT;
 CREATE INDEX IF NOT EXISTS confirmations_patient_time ON confirmations (patient_id, time DESC);
 
 -- Every candidate action the decision engine scored at each decision cycle, not just the one it chose.

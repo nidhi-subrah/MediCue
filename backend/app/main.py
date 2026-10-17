@@ -284,6 +284,29 @@ def _patient_or_404(pid: str):
         raise HTTPException(404, "unknown patient")
 
 
+class LearningDemoBody(BaseModel):
+    area: str
+    feeling: str
+    need: str
+    sessions: int = 5
+
+
+@app.get("/api/patients/{pid}/learning")
+async def patient_learning(pid: str):
+    """What this patient's own gestures have come to mean, learned from nurse confirmations."""
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    return await svc().learning(pid)
+
+
+@app.post("/api/patients/{pid}/learning/demo")
+async def patient_learning_demo(pid: str, body: LearningDemoBody):
+    """Replay one gesture over several sessions with the real engine (in memory, nothing stored)."""
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    return await _call(svc().learning_demo(pid, body.area, body.feeling, body.need, body.sessions))
+
+
 @app.get("/api/patients/{pid}/profile")
 async def get_profile(pid: str):
     _patient_or_404(pid)
