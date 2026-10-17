@@ -4,7 +4,8 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   ScoredAction, TraceStep, SessionStatus, SessionState, SBAR, Alert, ConsultRequest,
   TrendFlag, PatientTrend, WsMessage, HypothesisStatus, ResearchActionKind, ResearchActionScore,
   ResearchEvidence, TimelineEntry, ResearchHypothesis, ResearchInquiry, ResearchDigest,
-  StaffMember } from '@shared/types'
+  StaffMember, RiskFlagLevel, RiskKey, RiskContributor, RiskScore, RiskPatient, RiskOverview,
+  TimelineCase, Timeline, SilenceStep, SilenceLadder } from '@shared/types'
 
 /** The UI's own notion of "how the person is answering right now" — a superset of the
  *  backend's ModeId (grid/large/scan). `audio` is a client-only bonus with no server concept;

@@ -73,3 +73,52 @@ def test_welfare_check_requires_preauthorised_caregiver():
         assert r.status_code == 403
         w = client.post("/api/welfare", json={"patient_id": "p-chen", "requested_by": "fam-lin"}).json()
         assert client.post(f"/api/welfare/{w['id']}/respond").json()["status"] == "responded"
+
+
+def open_consult(client):
+    """Drive p-chen to a pending consult (head + too cold, then 'unsure' to every question)."""
+    s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
+    sid = s["session_id"]
+    client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "head"})
+    s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "feeling", "tap_id": "too_cold"}).json()
+    for _ in range(5):
+        if s["status"] != "question":
+            break
+        s = client.post(f"/api/sessions/{sid}/answer",
+                        json={"question_id": s["question"]["id"], "answer": "unsure"}).json()
+    assert s["status"] == "waiting_consult"
+    return s
+
+
+def test_late_consult_answer_keeps_patients_open_question():
+    with TestClient(app) as client:
+        s = open_consult(client)
+        sid, cid = s["session_id"], s["consult"]["id"]
+        s = client.post(f"/api/sessions/{sid}/skip_consult").json()
+        assert s["status"] == "question"
+        qid = s["question"]["id"]
+        assert client.post(f"/api/consults/{cid}/answer", json={"need_id": None}).status_code == 200
+        after = client.get(f"/api/sessions/{sid}").json()
+        assert after["status"] == "question" and after["question"]["id"] == qid
+        r = client.post(f"/api/sessions/{sid}/answer", json={"question_id": qid, "answer": "yes"})
+        assert r.status_code == 200
+
+
+def test_consult_answer_outside_options_is_rejected_without_closing_it():
+    with TestClient(app) as client:
+        s = open_consult(client)
+        cid = s["consult"]["id"]
+        r = client.post(f"/api/consults/{cid}/answer", json={"need_id": "pain_chest_not_offered"})
+        assert r.status_code == 409
+        assert client.post(f"/api/consults/{cid}/answer", json={"need_id": None}).status_code == 200
+        after = client.get(f"/api/sessions/{s['session_id']}").json()
+        assert after["status"] != "waiting_consult" or after["consult"]["id"] != cid  # moved on
+
+
+def test_alert_confirm_is_once_only():
+    with TestClient(app) as client:
+        s = client.post("/api/sessions", json={"patient_id": "p-chen", "language": "en"}).json()
+        s = client.post(f"/api/sessions/{s['session_id']}/tap", json={"kind": "area", "tap_id": "chest"}).json()
+        aid = s["alert_id"]
+        assert client.post(f"/api/alerts/{aid}/confirm", json={"need_id": "pain_chest"}).status_code == 200
+        assert client.post(f"/api/alerts/{aid}/confirm", json={"need_id": "pain_chest"}).status_code == 409

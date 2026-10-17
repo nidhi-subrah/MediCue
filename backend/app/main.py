@@ -16,6 +16,7 @@ from .catalog import get_catalog
 from .config import settings
 from .data import seed
 from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
+from .risk import router as risk_router, start as start_risk, start_silence
 from .services.gemini import Gemini
 from .services.handoff import build_handoff
 from .services.hub import Hub
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
         rows, events = seed.generate(cat)
         await store.bulk_seed(rows, events)
         log.info("seeded %d synthetic confirmations", len(rows))
+    app.state.risk = await start_risk(store)
     conformal = await asyncio.to_thread(calibrate, cat, settings.engine)
     log.info("conformal q̂ = %.3f from %d calibration dialogues", conformal.qhat, conformal.n_calibration)
     gemini = Gemini()
@@ -47,6 +49,7 @@ async def lifespan(app: FastAPI):
     app.state.hub = Hub()
     app.state.profiles = ProfileService(cat, store, gemini, app.state.hub)
     app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal, app.state.profiles)
+    app.state.silence = start_silence(app.state.svc, app.state.risk)
     app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
 
     # Profiles (one Gemini request for the whole unit), then the first research cycle. With Gemini on this
@@ -70,6 +73,8 @@ async def lifespan(app: FastAPI):
         warm = None
     ticker = asyncio.create_task(_research_ticker(app.state.research))
     yield
+    if app.state.silence:
+        await app.state.silence.stop()
     ticker.cancel()
     if warm:
         warm.cancel()
@@ -88,6 +93,7 @@ async def _research_ticker(agent: ResearchAgent):
 
 app = FastAPI(title="SilentSignal", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
+app.include_router(risk_router)
 
 
 def svc() -> SessionService:

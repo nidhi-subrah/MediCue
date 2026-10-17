@@ -1,0 +1,117 @@
+{
+  "split": "test",
+  "synthetic": true,
+  "config_version": "fa826536",
+  "hold_hours": 4.0,
+  "generated_at": "2026-10-17T13:38:23+00:00",
+  "seed": 20261017,
+  "storylines": [
+    {
+      "patient_id": "syn-h1",
+      "storyline": "fall",
+      "outcome": "fall",
+      "outcome_time": "2026-10-15 05:56:00+00:00",
+      "first_flag": "watch",
+      "lead_h": 21.9,
+      "lead_days": 0.91,
+      "elevated_lead_h": null,
+      "other_risk_flags": [
+        "delirium:watch@10-14 10:00",
+        "delirium:watch@10-14 22:00"
+      ]
+    },
+    {
+      "patient_id": "syn-h2",
+      "storyline": "dehydration",
+      "outcome": "dehydration",
+      "outcome_time": "2026-10-15 14:26:00+00:00",
+      "first_flag": "watch",
+      "lead_h": 34.4,
+      "lead_days": 1.43,
+      "elevated_lead_h": 22.4,
+      "other_risk_flags": []
+    },
+    {
+      "patient_id": "syn-h3",
+      "storyline": "delirium",
+      "outcome": "delirium_infection_concern",
+      "outcome_time": "2026-10-16 02:00:00+00:00",
+      "first_flag": "watch",
+      "lead_h": 57.0,
+      "lead_days": 2.38,
+      "elevated_lead_h": 49.0,
+      "other_risk_flags": [
+        "fall:watch@10-12 08:00"
+      ]
+    },
+    {
+      "patient_id": "syn-h4",
+      "storyline": "fall",
+      "outcome": "fall",
+      "outcome_time": "2026-10-13 05:01:00+00:00",
+      "first_flag": null,
+      "lead_h": null,
+      "lead_days": null,
+      "elevated_lead_h": null,
+      "other_risk_flags": []
+    }
+  ],
+  "detection": {
+    "any_flag": 3,
+    "elevated": 2,
+    "of": 4,
+    "any_flag_rate": 0.75,
+    "elevated_rate": 0.5
+  },
+  "lead_h": {
+    "median": 34.4,
+    "min": 21.9,
+    "max": 57.0,
+    "n": 3
+  },
+  "elevated_lead_h": {
+    "median": 35.7,
+    "min": 22.4,
+    "max": 49.0,
+    "n": 2
+  },
+  "controls": [
+    {
+      "patient_id": "syn-h5",
+      "confounder": "low_appetite",
+      "patient_weeks": 1.24,
+      "elevated": 0,
+      "watch": 0,
+      "flags": []
+    },
+    {
+      "patient_id": "syn-h6",
+      "confounder": "bad_day",
+      "patient_weeks": 1.24,
+      "elevated": 1,
+      "watch": 0,
+      "flags": [
+        "dehydration:elevated@10-15 02:00"
+      ]
+    },
+    {
+      "patient_id": "syn-h7",
+      "confounder": "med_change",
+      "patient_weeks": 1.25,
+      "elevated": 0,
+      "watch": 0,
+      "flags": []
+    }
+  ],
+  "false_flags": {
+    "control_patient_weeks": 3.73,
+    "elevated": 1,
+    "any": 1,
+    "elevated_per_patient_week": 0.268,
+    "any_per_patient_week": 0.268,
+    "budget": {
+      "elevated_per_patient_week": 0.5,
+      "any_per_patient_week": 1.0
+    }
+  }
+}

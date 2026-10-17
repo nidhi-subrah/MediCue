@@ -50,6 +50,8 @@ export function AlertCard({ alert, onConfirm }: { alert: Alert; onConfirm: (need
         </span>
       </header>
 
+      {alert.label && <p className="text-base font-semibold">{alert.label}</p>}
+
       {alert.kind === 'need' && lead && (
         <div className="flex flex-wrap items-baseline gap-2">
           <span className={cn('text-2xl font-bold tracking-tight', urgent && 'text-urgent')}>{lead.label}</span>

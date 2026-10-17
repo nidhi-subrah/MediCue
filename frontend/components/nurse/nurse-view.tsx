@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useNurseStation } from '@/lib/live/nurse'
 import { cn } from '@/lib/utils'
+import { RiskPanel } from '@/components/risk/risk-panel'
+import { SilencePanel } from '@/components/risk/silence-panel'
 import { AlertCard } from './alert-card'
 import { Sparkline } from './sparkline'
 
@@ -27,6 +29,8 @@ export function NurseView() {
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div className="flex min-w-0 flex-col gap-10">
+      <SilencePanel />
       <section aria-labelledby="alerts-h" className="flex flex-col gap-4">
         <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-3">
           <h1 id="alerts-h" className="text-2xl font-bold">Requests</h1>
@@ -54,7 +58,10 @@ export function NurseView() {
         )}
         {showDone && doneAlerts.map((a) => <AlertCard key={a.id} alert={a} onConfirm={(needId) => confirm(a.id, needId)} />)}
       </section>
+      </div>
 
+      <div className="flex min-w-0 flex-col gap-10">
+      <RiskPanel />
       <section aria-labelledby="trends-h" className="flex flex-col gap-4">
         <header className="flex flex-col gap-1 border-b border-border pb-3">
           <h2 id="trends-h" className="text-xl font-bold">Changes this shift</h2>
@@ -107,6 +114,7 @@ export function NurseView() {
         )}
         <p className="text-xs text-muted-foreground">Flags are prompts for clinical review, not diagnoses.</p>
       </section>
+      </div>
     </div>
   )
 }
