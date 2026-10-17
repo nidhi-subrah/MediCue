@@ -66,6 +66,8 @@ export interface SessionState {
   inconsistencies: number;            // surprising answers (+1) and "not sure" (+0.5) this session
   baseline_interval: number | null;   // patient's usual seconds between inputs, from history
   profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
+  options: FeelingOptions | null;     // tailored second-step options (backend/app/engine/options.py)
+  choice: OptionChoice | null;        // the option the patient picked
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -86,6 +88,7 @@ export interface Alert {
   confirmed_by?: string | null;
   profile: ProfileItem[];
   nurse_note: string | null;          // observation written at confirmation
+  choice?: OptionChoice | null;       // what the patient picked at the second step
 }
 
 export interface ConsultRequest {
@@ -228,6 +231,52 @@ export interface ResearchDigest {
 
 export interface StaffMember { id: string; name: string; role: string; patients: string[] }
 
+// ---- Tiger Data analytics (Feature #4) -----------------------------------------------------------
+
+/** One candidate action the decision engine scored at a given cycle — not just the one chosen.
+ *  See `GET /api/analytics/sessions/{id}/decision-trace`. */
+export interface DecisionActionRow {
+  time: string; patient_id: string; session_id: string; decision_cycle: string;
+  kind: "ask" | "lookup" | "consult" | "escalate" | "send" | "tap";
+  action_id: string; label: string;
+  eig: number | null; fatigue_cost: number | null; delay_cost: number | null;
+  other_costs: Record<string, number>; value: number; score: number; selected: boolean; rank: number;
+  origin: "synthetic_history" | "live_demo";
+}
+
+export interface BeliefEvolutionPoint { time: string; step: number; need_id: string; label: string; prob: number }
+
+export interface CompressionStat {
+  table: string; available: boolean;
+  total_chunks?: number; compressed_chunks?: number;
+  before_bytes?: number | null; after_bytes?: number | null; compression_ratio?: number | null;
+}
+
+export interface HypertableStat { hypertable_name: string; chunk_count: number }
+
+export interface PatientAnalytics {
+  patient_id: string;
+  response_trends: { days_ago: number; avg_tap_interval: number | null; needs: number }[];
+  confirmed_need_trends: { date: string; need: string; group: string; count: number }[];
+  speech_interaction_trends: { supported: false; reason: string };
+  last_activity: { time: string; kind: string } | null;
+  interaction_baseline: { avg_tap_interval: number | null; stddev_tap_interval: number | null; avg_taps: number | null; n: number };
+  recent_sessions: { session_id: string; time: string }[];
+}
+
+/** `GET /api/analytics/tigerdata` — every field is a real measurement; missing capability
+ *  comes back as `unavailable`/`null`, never a fabricated number. */
+export interface TigerDataOverview {
+  counts: { events: number; confirmations: number; belief_snapshots: number; decision_candidates: number };
+  latest_event_time: string | null;
+  hypertable_count: number; chunk_count: number | null;
+  hypertables: HypertableStat[];
+  compression: CompressionStat[];
+  query_latency_ms: number;
+  measured_at: string;
+  patient?: PatientAnalytics;
+}
+
 export type WsMessage =
   | { type: "alert"; alert: Alert }
   | { type: "alert_updated"; alert: Alert }
@@ -308,4 +357,24 @@ export interface LearningSession {
 export interface LearningDemo {
   patient_id: string; area: string; feeling: string; need: string; need_label: string; high_risk: boolean;
   sessions: LearningSession[];
+}
+
+// ---- tailored second-step options ------------------------------------------------------------------
+
+export interface FeelingOption {
+  id: string; label: string; feeling: string;
+  high_risk: boolean;                 // always shown, whatever the ranking
+  send_now: boolean;                  // goes to the nurse with no follow-up question
+  reason: string | null;              // Gemini's one-line reason, when it ranked the options
+}
+
+export interface FeelingOptions {
+  area: string; area_label: string; prompt: string;
+  predicted: FeelingOption[];         // shown first, most likely first
+  more: FeelingOption[];              // behind "Something else": the rest, then "None of these"
+  source: "gemini" | "engine";
+}
+
+export interface OptionChoice {
+  id: string; label: string; predicted: boolean; source: "gemini" | "engine" | null; send_now: boolean;
 }
