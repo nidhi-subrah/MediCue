@@ -1,10 +1,8 @@
 'use client'
 
 import { RotateCcw, Volume2 } from 'lucide-react'
-import { Segmented } from '@/components/app/segmented'
 import { Switch } from '@/components/ui/switch'
 import { useSpeaker } from '@/hooks/use-speaker'
-import { MODES, MODE_ORDER } from '@/lib/modes'
 import { type ButtonSize, type TextSize, useSettings } from '@/lib/store/settings'
 import { cn } from '@/lib/utils'
 
@@ -94,28 +92,15 @@ function StepSlider<T extends string>({
   )
 }
 
-export function SettingsView() {
+/** The patient's own display and sound settings, opened from the bedside tablet (talk-view). They are saved on
+ *  this device only, which is why they live on the tablet and not at the nurse station. `onAudio` also switches
+ *  read-aloud for the conversation in progress, so the change is heard straight away. */
+export function SettingsPanel({ onAudio }: { onAudio?: (on: boolean) => void }) {
   const s = useSettings()
   const { say } = useSpeaker()
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold tracking-tight">Accessibility</h1>
-          <p className="text-lg leading-relaxed text-muted-foreground">
-            Changes apply straight away, everywhere in the app.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={s.resetAll}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
-        >
-          <RotateCcw className="size-4" aria-hidden="true" /> Reset to defaults
-        </button>
-      </header>
-
+    <div className="flex flex-col gap-6">
       <section aria-labelledby="see" className="rounded-3xl border border-border bg-card px-6">
         <h2 id="see" className="pt-6 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
           Seeing
@@ -160,25 +145,19 @@ export function SettingsView() {
         />
       </section>
 
-      <section aria-labelledby="talk" className="rounded-3xl border border-border bg-card px-6">
-        <h2 id="talk" className="pt-6 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          Communicating
+      <section aria-labelledby="hear" className="rounded-3xl border border-border bg-card px-6">
+        <h2 id="hear" className="pt-6 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+          Hearing
         </h2>
-        <Row title="Preferred way to communicate" hint="Used when you start. You can switch any time.">
-          <Segmented
-            label="Preferred communication method"
-            value={s.preferredMode}
-            onChange={(v) => s.update({ preferredMode: v })}
-            columns={3}
-            options={MODE_ORDER.map((m) => ({ value: m, label: MODES[m].label }))}
-          />
-        </Row>
         <ToggleRow
           id="spoken"
-          title="Audio First"
-          hint="Reads each question and its numbered choices aloud. Same as the Audio tab while talking."
+          title="Read aloud"
+          hint="Reads each question and its numbered choices aloud, starting now."
           checked={s.spokenPrompts}
-          onChange={(v) => s.update({ spokenPrompts: v })}
+          onChange={(v) => {
+            s.update({ spokenPrompts: v })
+            onAudio?.(v)
+          }}
         />
         <Row title="Speaking speed">
           <div className="flex items-center gap-4">
@@ -202,6 +181,17 @@ export function SettingsView() {
           </div>
         </Row>
       </section>
+
+      <button
+        type="button"
+        onClick={() => {
+          s.resetAll()
+          onAudio?.(false)
+        }}
+        className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
+      >
+        <RotateCcw className="size-4" aria-hidden="true" /> Reset to defaults
+      </button>
     </div>
   )
 }

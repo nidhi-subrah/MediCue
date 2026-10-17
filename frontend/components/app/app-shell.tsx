@@ -1,6 +1,6 @@
 'use client'
 
-import { FlaskConical, LogOut, Settings2, Stethoscope, Users } from 'lucide-react'
+import { FlaskConical, LogOut, Stethoscope, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -12,7 +12,6 @@ const NAV = [
   { href: '/home', label: 'Patients', icon: Users, match: ['/home', '/family'] },
   { href: '/nurse', label: 'Nurse station', icon: Stethoscope, match: ['/nurse'] },
   { href: '/research', label: 'Pattern review', icon: FlaskConical, match: ['/research'] },
-  { href: '/settings', label: 'Settings', icon: Settings2, match: ['/settings'] },
 ] as const
 
 export function AppShell({
