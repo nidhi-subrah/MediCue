@@ -177,6 +177,15 @@ async def patients(user: DemoUser = Depends(require_nurse)):
     return [await svc().patient_view(p["id"]) for p in PATIENTS]
 
 
+@app.post("/api/patients/{pid}/urgent")
+async def patient_urgent(pid: str, user: DemoUser = Depends(current_user)):
+    """Urgent help pressed on this patient's tablet: alerts the nurse station at once."""
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    check_patient_access(pid, user)
+    return await svc().patient_urgent(pid, user.email)
+
+
 @app.get("/api/patients/{pid}")
 async def patient(pid: str, user: DemoUser = Depends(current_user)):
     if pid not in PATIENT_BY_ID:
@@ -304,7 +313,7 @@ async def back(sid: str, user: DemoUser = Depends(_require_session_access)):
 
 class ConfirmBody(BaseModel):
     need_id: str | None = None
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
     note: str | None = None      # optional observation; Gemini suggests profile changes from it
     case_helpful: bool | None = None   # verdict on the alert's case packet, if it has one
 
@@ -320,17 +329,17 @@ async def alerts(status: str | None = None, user: DemoUser = Depends(require_nur
 async def confirm(aid: str, body: ConfirmBody, user: DemoUser = Depends(require_nurse)):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
+    return await _call(svc().confirm(aid, body.need_id, user.name, body.note, body.case_helpful))
 
 
 class CaseAckBody(BaseModel):
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
 
 
 @app.post("/api/cases/{cid}/acknowledge")
 async def case_acknowledge(cid: str, body: CaseAckBody, user: DemoUser = Depends(require_nurse)):
     """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
-    return await _call(svc().acknowledge_case(cid, body.nurse))
+    return await _call(svc().acknowledge_case(cid, user.name))
 
 
 @app.post("/api/cases/{cid}/gemini")

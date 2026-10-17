@@ -1028,6 +1028,36 @@ class SessionService:
         await self.state(s, publish=True)
         return self.alerts[s.alert_id]
 
+    async def patient_urgent(self, patient_id: str, pressed_by: str) -> dict:
+        """The patient pressed Urgent help on their tablet: an urgent alert for the nurse, no questions asked.
+
+        A second press while the first is still open re-sends the same alert (so the dashboard sounds again)
+        instead of stacking duplicates."""
+        p = PATIENT_BY_ID[patient_id]
+        for a in self.alerts.values():
+            if a["patient_id"] == patient_id and a["kind"] == "urgent" and a["status"] == "open":
+                a["presses"] = a.get("presses", 1) + 1
+                await self.hub.publish("nurse", {"type": "alert", "alert": a})
+                return a
+        alert = {
+            "id": uuid.uuid4().hex[:12], "patient_id": p["id"], "patient_name": p["name"], "room": p["room"],
+            "session_id": None, "kind": "urgent", "priority": "urgent", "created_at": now().isoformat(),
+            "status": "open", "top": [], "prediction_set": [], "p_high": 0.0, "asked": [], "lookups": [],
+            "consults": [], "confirmed_need": None, "seconds_to_alert": 0,
+            "label": "Urgent help pressed on the tablet",
+            "sbar": {
+                "situation": f"{p['name']} (room {p['room']}) pressed Urgent help on their bedside tablet.",
+                "background": p["diagnosis"],
+                "assessment": "No details: the patient asked for help directly. This is not an assessment.",
+                "recommendation": "Go to the bedside now.",
+            },
+            "sbar_source": "template", "reason": "Urgent help pressed by the patient", "profile": [],
+            "nurse_note": None, "case": None, "presses": 1,
+        }
+        await self.raise_alert(alert)   # nurse first
+        await self._event(patient_id, "urgent_pressed", {"alert_id": alert["id"], "by": pressed_by})
+        return alert
+
     async def raise_alert(self, alert: dict):
         """Add (or re-send, which re-sounds it) an alert built elsewhere, e.g. a silence-ladder nurse alert."""
         self.alerts[alert["id"]] = alert
