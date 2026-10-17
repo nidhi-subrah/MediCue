@@ -1,4 +1,5 @@
-import type { InputMode, ModeId, SessionState, Step } from '@/lib/types'
+import { ArrowLeft, Ellipsis } from 'lucide-react'
+import type { ChoiceItem, FeelingOption, InputMode, ModeId, SessionState, Step } from '@/lib/types'
 import { CATALOG_ICONS, catalog } from './catalog'
 
 /** UI input mode -> what the backend understands. `audio` rides on `grid`. */
@@ -20,8 +21,9 @@ export function uiMode(mode: ModeId, audio = false): InputMode {
 export function buildStep(
   s: SessionState,
   mode: InputMode,
-  onTap: (kind: 'area' | 'feeling', id: string) => void,
+  onTap: (kind: 'area' | 'feeling', id: string, optionId?: string) => void,
   onAnswer: (answer: 'yes' | 'no' | 'unsure') => void,
+  more: { open: boolean; setOpen: (open: boolean) => void } = { open: false, setOpen: () => {} },
 ): Step | null {
   if (s.status === 'area') {
     return {
@@ -34,6 +36,41 @@ export function buildStep(
         icon: CATALOG_ICONS[a.id],
         onSelect: () => onTap('area', a.id),
       })),
+    }
+  }
+
+  // Tailored options for the area tapped (backend/app/engine/options.py): the predicted few first, the
+  // rest behind "Something else".
+  if (s.options && (s.status === 'feeling' || (s.status === 'escalated' && s.taps === 1))) {
+    const o = s.options
+    const item = (x: FeelingOption): ChoiceItem => ({
+      id: x.id,
+      label: x.label,
+      icon: CATALOG_ICONS[x.feeling],
+      tone: x.high_risk ? 'urgent' : undefined,
+      onSelect: () => onTap('feeling', x.feeling, x.id),
+    })
+    if (more.open) {
+      return {
+        id: `feeling-more-${o.area}`,
+        kind: 'choice',
+        prompt: o.prompt,
+        helper: 'More choices',
+        options: [
+          ...o.more.map(item),
+          { id: '__back', label: 'Back to suggestions', icon: ArrowLeft, tone: 'control', onSelect: () => more.setOpen(false) },
+        ],
+      }
+    }
+    return {
+      id: `feeling-${o.area}`,
+      kind: 'choice',
+      prompt: o.prompt,
+      helper: s.status === 'escalated' ? 'Help is on the way. You can tell us more:' : undefined,
+      options: [
+        ...o.predicted.map(item),
+        { id: '__more', label: 'Something else', icon: Ellipsis, tone: 'control', onSelect: () => more.setOpen(true) },
+      ],
     }
   }
 

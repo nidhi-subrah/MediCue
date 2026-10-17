@@ -21,7 +21,7 @@
     { "id": "surgical_site", "label": "Surgery spot",  "icon": "🩹" },
     { "id": "mouth_throat",  "label": "Mouth / throat","icon": "👄" },
     { "id": "whole_body",    "label": "Whole body",    "icon": "🧍" },
-    { "id": "toilet",        "label": "Washroom",      "icon": "🚻" },
+    { "id": "toilet",        "label": "Washroom",      "icon": "🚻", "send_now": true },
     { "id": "people",        "label": "People / feelings", "icon": "💬" }
   ],
   "feelings": [
@@ -142,5 +142,90 @@
     { "id": "pa", "label": "ਪੰਜਾਬੀ" },
     { "id": "ar", "label": "العربية" },
     { "id": "tl", "label": "Tagalog" }
-  ]
+  ],
+  "area_options": {
+    "head": {
+      "prompt": "What's wrong with your head?",
+      "options": [
+        { "id": "head.hurts", "label": "Hurts", "feeling": "pain" },
+        { "id": "head.dizzy", "label": "Dizzy or sick", "feeling": "sick" },
+        { "id": "head.worried", "label": "Worried or confused", "feeling": "scared" },
+        { "id": "head.hot", "label": "Feel hot or feverish", "feeling": "too_hot" },
+        { "id": "head.meds", "label": "Need pain medicine", "feeling": "medicine", "send_now": true }
+      ]
+    },
+    "chest": {
+      "prompt": "What's happening in your chest?",
+      "options": [
+        { "id": "chest.hurts", "label": "Hurts or pressure", "feeling": "pain", "high_risk": true },
+        { "id": "chest.breathe", "label": "Hard to breathe", "feeling": "hard_to_breathe", "high_risk": true },
+        { "id": "chest.racing", "label": "Heart racing or scared", "feeling": "scared" },
+        { "id": "chest.sick", "label": "Feel sick", "feeling": "sick" }
+      ]
+    },
+    "belly": {
+      "prompt": "What's wrong with your belly?",
+      "options": [
+        { "id": "belly.hurts", "label": "Hurts", "feeling": "pain" },
+        { "id": "belly.sick", "label": "Feel sick", "feeling": "sick" },
+        { "id": "belly.washroom", "label": "Need the washroom", "feeling": "need_toilet", "send_now": true },
+        { "id": "belly.hungry", "label": "Hungry", "feeling": "hungry" }
+      ]
+    },
+    "back": {
+      "prompt": "What's wrong with your back?",
+      "options": [
+        { "id": "back.hurts", "label": "Hurts", "feeling": "pain" },
+        { "id": "back.move", "label": "Need to turn or move", "feeling": "uncomfortable" },
+        { "id": "back.meds", "label": "Need pain medicine", "feeling": "medicine", "send_now": true }
+      ]
+    },
+    "arms_legs": {
+      "prompt": "What's wrong with your arms or legs?",
+      "options": [
+        { "id": "arms_legs.hurts", "label": "Hurts", "feeling": "pain" },
+        { "id": "arms_legs.stiff", "label": "Stiff, need to move", "feeling": "uncomfortable" },
+        { "id": "arms_legs.cold", "label": "Cold", "feeling": "too_cold" },
+        { "id": "arms_legs.meds", "label": "Need pain medicine", "feeling": "medicine", "send_now": true }
+      ]
+    },
+    "surgical_site": {
+      "prompt": "What's wrong where you had surgery?",
+      "options": [
+        { "id": "surgical_site.hurts", "label": "Hurts", "feeling": "pain" },
+        { "id": "surgical_site.meds", "label": "Need pain medicine", "feeling": "medicine", "send_now": true },
+        { "id": "surgical_site.sick", "label": "Feel sick", "feeling": "sick" },
+        { "id": "surgical_site.move", "label": "Need to move", "feeling": "uncomfortable" }
+      ]
+    },
+    "mouth_throat": {
+      "prompt": "What's wrong with your mouth or throat?",
+      "options": [
+        { "id": "mouth_throat.thirsty", "label": "Thirsty", "feeling": "thirsty" },
+        { "id": "mouth_throat.hungry", "label": "Hungry", "feeling": "hungry" },
+        { "id": "mouth_throat.choking", "label": "Choking or can't clear throat", "feeling": "hard_to_breathe", "high_risk": true },
+        { "id": "mouth_throat.sick", "label": "Feel sick", "feeling": "sick" }
+      ]
+    },
+    "whole_body": {
+      "prompt": "How does your body feel?",
+      "options": [
+        { "id": "whole_body.hot", "label": "Too hot", "feeling": "too_hot" },
+        { "id": "whole_body.cold", "label": "Too cold", "feeling": "too_cold" },
+        { "id": "whole_body.position", "label": "Need to change position", "feeling": "uncomfortable" },
+        { "id": "whole_body.wet", "label": "Wet or need changing", "feeling": "need_toilet" },
+        { "id": "whole_body.sick", "label": "Feel sick", "feeling": "sick" },
+        { "id": "whole_body.breathe", "label": "Hard to breathe", "feeling": "hard_to_breathe", "high_risk": true }
+      ]
+    },
+    "people": {
+      "prompt": "What do you need?",
+      "options": [
+        { "id": "people.scared", "label": "Scared or worried", "feeling": "scared" },
+        { "id": "people.someone", "label": "Want someone with me", "feeling": "want_someone" },
+        { "id": "people.lonely", "label": "Lonely", "feeling": "want_someone" },
+        { "id": "people.meds", "label": "Question about my medicine", "feeling": "medicine" }
+      ]
+    }
+  }
 }

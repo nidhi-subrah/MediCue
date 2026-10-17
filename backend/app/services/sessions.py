@@ -13,8 +13,9 @@ from datetime import datetime, timedelta, timezone
 from ..catalog import Catalog
 from ..config import EngineConfig, settings
 from ..data.patients import PATIENT_BY_ID, PERSON_BY_ID
+from ..engine import options as opts
 from ..engine import profile as prof
-from ..engine.belief import PriorContext, context_prior, entropy
+from ..engine.belief import PriorContext, context_prior, entropy, tap_likelihood
 from ..engine.conformal import ConformalPredictor
 from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
@@ -72,13 +73,16 @@ class Session:
     consult_answers: list[tuple[str, str | None]] = field(default_factory=list)  # (person id, need id)
     tired_mode: str = "large"        # where the tablet goes when the patient tires (patient profile)
     auto_switched: bool = False
+    options: dict | None = None      # tailored second-step options, fixed once shown (engine/options.py)
+    choice: dict | None = None       # the option the patient picked: label, predicted or "something else"
 
 
 class SessionService:
     def __init__(self, cat: Catalog, cfg: EngineConfig, store, hub: Hub, gemini: Gemini, conformal: ConformalPredictor,
-                 profiles=None):
+                 profiles=None, predictions=None):
         self.cat, self.cfg, self.store, self.hub, self.gemini, self.conformal = cat, cfg, store, hub, gemini, conformal
         self.profiles = profiles   # services.profiles.ProfileService; None = no profiles
+        self.predictions = predictions   # services.predictions.PredictionService; None = engine ranking only
         self.sessions: dict[str, Session] = {}
         self.alerts: dict[str, dict] = {}
         self.consults: dict[str, dict] = {}
@@ -204,6 +208,8 @@ class SessionService:
         s = Session(uuid.uuid4().hex[:12], p, d, mode, language or p["language"], reasons,
                     tired_mode=prof.mode_when_tired(profile))
         self.sessions[s.id] = s
+        if self.predictions:   # Gemini ranks every area's options in the background; never waited on
+            self.predictions.refresh(patient_id, personal.learned_signals(self.cat))
         await self._event(s, "session_started", {"mode": mode, "language": s.language, "prior_reasons": reasons})
         await self._log_belief(s)
         out = await self.state(s)
@@ -244,21 +250,29 @@ class SessionService:
     def _latency_ms(s: Session) -> int:
         return round((time.time() - s.prompted_at) * 1000)
 
-    async def tap(self, sid: str, kind: str, tap_id: str) -> dict:
+    async def tap(self, sid: str, kind: str, tap_id: str, option_id: str | None = None) -> dict:
         s = self.sessions[sid]
         refining = s.status == "escalated" and kind == "feeling" and s.dialogue.feeling is None
         if not refining and s.status != kind:
             raise ValueError(f"expected a {s.status} input, got {kind} tap")
+        finish = None
+        if kind == "feeling" and option_id:
+            s.choice = self._pick_option(s, option_id, tap_id)
+            if s.choice["send_now"]:
+                finish = f"Sent straight away: “{s.choice['label']}” needs no follow-up question."
+        elif kind == "area" and opts.area_sends_now(self.cat, tap_id):
+            finish = f"Sent straight away: “{self.cat.area_labels[tap_id]}” needs no follow-up question."
         latency = self._latency_ms(s)
         s.dialogue.apply_tap(kind, tap_id)
-        await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency})
+        await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency,
+                                     "option": s.choice if kind == "feeling" else None})
         await self._log_belief(s)
         if refining:
             await self._refresh_alert(s)
             out = await self.state(s, publish=True)
             s.prompted_at = time.time()
             return out
-        return await self._advance(s)
+        return await self._advance(s, finish)
 
     async def answer(self, sid: str, question_id: str, answer: str) -> dict:
         s = self.sessions[sid]
@@ -283,11 +297,15 @@ class SessionService:
             return await self.state(s)
         return await self._advance(s)
 
-    async def _advance(self, s: Session) -> dict:
+    async def _advance(self, s: Session, finish: str | None = None) -> dict:
+        """`finish`: send to the nurse now with no follow-up question (washroom, pain medicine), unless the
+        safety floor escalates. The value is the plain-language reason shown on the alert."""
         before = len(s.dialogue.lookup_results)
         d = s.dialogue.step()
         for lid, label, flag in s.dialogue.lookup_results[before:]:
             await self._event(s, "lookup", {"lookup": lid, "flag": flag})
+        if finish and d.chosen.kind != "escalate":
+            d = Decision(Action("send", "send", "Send message to nurse", 0.0, 0.0, {}), d.ranked, finish)
         s.decision = d
         self._spawn(self._log_decision(s, d))
         kind = d.chosen.kind
@@ -300,12 +318,16 @@ class SessionService:
         if kind == "escalate":
             s.status = "escalated"
             s.dialogue.attach_context()
+            if s.dialogue.feeling is None and s.options is None:
+                s.options = self._build_options(s)   # the patient can still add detail to the open alert
             await self._create_alert(s, "urgent")
         elif kind == "send":
             s.status = "sent"
             await self._create_alert(s, "routine")
         elif kind == "tap":
             s.status = "feeling" if s.dialogue.area else "area"
+            if s.status == "feeling" and s.options is None:
+                s.options = self._build_options(s)
         elif kind == "ask":
             s.status, s.question_id = "question", d.chosen.id
         elif kind == "consult":
@@ -342,6 +364,8 @@ class SessionService:
             "trace": [t.public() for t in d.trace], "alert_id": s.alert_id, "ui_text": ui,
             "prior_reasons": s.prior_reasons, "inconsistencies": d.inconsistencies,
             "baseline_interval": d.baseline_interval, "profile": self._profile_items(s.patient["id"]),
+            "options": s.options if s.status == "feeling" or (s.status == "escalated" and d.feeling is None) else None,
+            "choice": s.choice,
         }
         if publish:
             await self.hub.publish(f"patient:{s.patient['id']}", {"type": "session", "session": out})
@@ -349,6 +373,35 @@ class SessionService:
 
     def _profile_items(self, pid: str) -> list[dict]:
         return self.profiles.public(pid)["items"] if self.profiles else []
+
+    # ---- tailored second-step options (engine/options.py) ------------------------------------------
+
+    def _build_options(self, s: Session) -> dict | None:
+        d, area = s.dialogue, s.dialogue.area
+        spec = opts.area_spec(self.cat, area) if area else None
+        if not spec:
+            return None
+
+        def feeling_lik(feeling: str) -> list[float]:
+            if d.personal and d.personal.n:   # this patient's learned meaning of the tap
+                return d.personal.likelihood(self.cat, "feeling", feeling, d.reliability)
+            return tap_likelihood(self.cat, "feeling", feeling, d.reliability)
+
+        fallback = opts.engine_order(spec["options"], d.belief, feeling_lik)
+        ranked = self.predictions.ranking(s.patient["id"], area) if self.predictions else None
+        if ranked:
+            return opts.choose(self.cat, area, opts.merge_order(spec["options"], ranked[0], fallback), "gemini",
+                               ranked[1])
+        return opts.choose(self.cat, area, fallback, "engine")
+
+    def _pick_option(self, s: Session, option_id: str, feeling: str) -> dict:
+        o = s.options or {}
+        predicted = next((x for x in o.get("predicted", []) if x["id"] == option_id), None)
+        picked = predicted or next((x for x in o.get("more", []) if x["id"] == option_id), None)
+        if not picked or picked["feeling"] != feeling:
+            raise ValueError(f"option {option_id} isn't offered for this step")
+        return {"id": picked["id"], "label": picked["label"], "predicted": predicted is not None,
+                "source": o.get("source"), "send_now": picked["send_now"]}
 
     # ---- alerts ----------------------------------------------------------------------------------
 
@@ -360,7 +413,8 @@ class SessionService:
             "top": d.top(5), "prediction_set": pset,
             "prediction_set_labels": [self.cat.by_id[n]["label"] for n in pset],
             "p_high": round(d.p_high(), 4),
-            "taps": [self.cat.area_labels.get(d.area, "-"), self.cat.feeling_labels.get(d.feeling, "-")],
+            "taps": [self.cat.area_labels.get(d.area, "-"),
+                     s.choice["label"] if s.choice else self.cat.feeling_labels.get(d.feeling, "-")],
             "asked": [{"question": q, "answer": a} for q, a in d.answers],
             "lookups": [{"label": label, "value": p["chart"][lid]["value"], "flag": flag}
                         for lid, label, flag in d.lookup_results],
@@ -387,6 +441,7 @@ class SessionService:
             "seconds_to_alert": round(time.time() - first_tap, 1),
             "reason": s.decision.reason if s.decision else "",
             "profile": self._profile_items(s.patient["id"]), "nurse_note": None,
+            "choice": s.choice,
         }
         alert["sbar"] = self._labelled(alert, template_sbar(ctx))
         s.alert_id = alert["id"]
@@ -402,6 +457,7 @@ class SessionService:
             return
         ctx = self._alert_context(s, alert["priority"])
         alert.update({k: ctx[k] for k in ("top", "prediction_set", "p_high", "lookups")})
+        alert["choice"] = s.choice
         alert["sbar"], alert["sbar_source"] = self._labelled(alert, template_sbar(ctx)), "template"
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
         self._spawn(self._enrich(alert["id"], ctx))
@@ -423,6 +479,8 @@ class SessionService:
         alert["status"], alert["confirmed_need"], alert["confirmed_by"] = "confirmed", need_id, nurse
         note = (note or "").strip() or None
         alert["nurse_note"] = note
+        if self.predictions and need_id:
+            self.predictions.invalidate(alert["patient_id"])   # new history: re-rank options next session
         if note and self.profiles:
             # Feature B: Gemini suggests profile changes from the note; a nurse approves each one.
             self._spawn(self._suggest(alert["patient_id"], alert_id, note, need_id, nurse))
