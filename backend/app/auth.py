@@ -63,6 +63,17 @@ _register(_make_user(
 ))
 
 
+def demo_accounts() -> list[dict]:
+    """The built-in demo logins, for the login page. Empty as soon as real passwords are set in the
+    environment, so a deployment with its own passwords never shows them."""
+    out = []
+    if not os.getenv("DEMO_NURSE_PASSWORD"):
+        out.append({"role": "nurse", "email": "nurse@medicare.demo", "password": "nurse"})
+    if not os.getenv("DEMO_PATIENT_PASSWORD"):
+        out.append({"role": "patient", "email": "patient@medicare.demo", "password": "patient"})
+    return out
+
+
 def verify_password(user: DemoUser, password: str) -> bool:
     return hmac.compare_digest(_hash_password(password, user._salt), user._hash)
 

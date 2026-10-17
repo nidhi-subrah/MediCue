@@ -4,7 +4,9 @@
 """
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,17 +17,19 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .auth import (
-    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session,
+    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session, demo_accounts,
     current_user, destroy_session, require_nurse, user_for_session_id, verify_password,
 )
 from .catalog import get_catalog
 from .config import settings
 from .data import seed
+from .data.unit_history import ensure_unit_history
 from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
 from .risk import router as risk_router, start as start_risk, start_silence
 from .services.analytics import get_belief_evolution, get_decision_action_history, tigerdata_overview
 from .services.gemini import Gemini
 from .services.handoff import build_handoff
+from .services.nurse_views import RANGES, NurseViews
 from .services.hub import Hub
 from .services.predictions import PredictionService
 from .services.profiles import ProfileService
@@ -34,6 +38,11 @@ from .services.sessions import SessionService
 from .services.trends import build_trends
 from .sim.simulator import calibrate
 from .store import make_store
+
+if sys.platform == "win32":
+    # psycopg's async driver (Tiger Data) can't run on Windows' default Proactor loop. This covers scripts and
+    # the test client; uvicorn picks its loop before importing the app, so run it with --reload on Windows.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("silentsignal")
@@ -53,6 +62,8 @@ async def lifespan(app: FastAPI):
         await store.bulk_seed(rows, events)
         log.info("seeded %d synthetic confirmations", len(rows))
     app.state.risk = await start_risk(store)
+    if settings.seed_demo_data:   # the unit patients' taps, chart events and risk scores (data/unit_history.py)
+        await ensure_unit_history(store, app.state.risk, cat)
     conformal = await asyncio.to_thread(calibrate, cat, settings.engine)
     log.info("conformal q̂ = %.3f from %d calibration dialogues", conformal.qhat, conformal.n_calibration)
     gemini = Gemini()
@@ -65,6 +76,7 @@ async def lifespan(app: FastAPI):
                                    app.state.predictions)
     app.state.silence = start_silence(app.state.svc, app.state.risk)
     app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
+    app.state.nurse_views = NurseViews(cat, store, app.state.risk, gemini, app.state.profiles)
 
     # Profiles (one Gemini request for the whole unit), then the first research cycle. With Gemini on this
     # runs in the background so rate-limit retries never delay startup; sessions use whatever profile is
@@ -167,6 +179,12 @@ async def logout(request: Request, response: Response):
     return {"ok": True}
 
 
+@app.get("/api/auth/demo-accounts")
+async def auth_demo_accounts():
+    """Demo logins shown on the login page, only while the built-in demo passwords are in use."""
+    return demo_accounts()
+
+
 @app.get("/api/auth/me")
 async def me(user: DemoUser = Depends(current_user)):
     return user.public()
@@ -175,6 +193,15 @@ async def me(user: DemoUser = Depends(current_user)):
 @app.get("/api/patients")
 async def patients(user: DemoUser = Depends(require_nurse)):
     return [await svc().patient_view(p["id"]) for p in PATIENTS]
+
+
+@app.post("/api/patients/{pid}/urgent")
+async def patient_urgent(pid: str, user: DemoUser = Depends(current_user)):
+    """Urgent help pressed on this patient's tablet: alerts the nurse station at once."""
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    check_patient_access(pid, user)
+    return await svc().patient_urgent(pid, user.email)
 
 
 @app.get("/api/patients/{pid}")
@@ -304,7 +331,7 @@ async def back(sid: str, user: DemoUser = Depends(_require_session_access)):
 
 class ConfirmBody(BaseModel):
     need_id: str | None = None
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
     note: str | None = None      # optional observation; Gemini suggests profile changes from it
     case_helpful: bool | None = None   # verdict on the alert's case packet, if it has one
 
@@ -320,17 +347,17 @@ async def alerts(status: str | None = None, user: DemoUser = Depends(require_nur
 async def confirm(aid: str, body: ConfirmBody, user: DemoUser = Depends(require_nurse)):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
+    return await _call(svc().confirm(aid, body.need_id, user.name, body.note, body.case_helpful))
 
 
 class CaseAckBody(BaseModel):
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
 
 
 @app.post("/api/cases/{cid}/acknowledge")
 async def case_acknowledge(cid: str, body: CaseAckBody, user: DemoUser = Depends(require_nurse)):
     """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
-    return await _call(svc().acknowledge_case(cid, body.nurse))
+    return await _call(svc().acknowledge_case(cid, user.name))
 
 
 @app.post("/api/cases/{cid}/gemini")
@@ -376,6 +403,30 @@ async def _trends():
     rows = await store.window_signals(8)
     changes = await store.mode_changes(24)
     return build_trends(rows, PATIENTS, changes)
+
+
+# ---- nurse views: Unit insights (past) and Care forecast (ahead) --------------------------------------
+
+@app.get("/api/nurse/insights")
+async def nurse_insights(range: str = "24h", timeline_hours: int = 12, user: DemoUser = Depends(require_nurse)):
+    if range not in RANGES:
+        raise HTTPException(422, f"range must be one of {', '.join(RANGES)}")
+    return await app.state.nurse_views.insights(range, timeline_hours)
+
+
+@app.get("/api/nurse/insights/cell")
+async def nurse_insights_cell(patient_id: str, start: datetime, bucket: str = "1 hour",
+                              user: DemoUser = Depends(require_nurse)):
+    if patient_id not in PATIENT_BY_ID or bucket not in ("1 hour", "1 day"):
+        raise HTTPException(422, "unknown patient or bucket")
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    return await app.state.nurse_views.cell(patient_id, start, bucket)
+
+
+@app.get("/api/nurse/forecast")
+async def nurse_forecast(user: DemoUser = Depends(require_nurse)):
+    return await app.state.nurse_views.forecast()
 
 
 @app.get("/api/analytics/tigerdata")

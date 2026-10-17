@@ -132,7 +132,10 @@ def test_api_labels_synthetic_and_explains():
         login_as_nurse(client)
         body = client.get("/api/risk/patients").json()
         assert "Synthetic data" in body["notice"] and "not diagnoses" in body["notice"]
-        assert len(body["patients"]) == 22 and all(p["synthetic"] for p in body["patients"])
+        cohort = [p for p in body["patients"] if p["patient_id"].startswith("syn-")]
+        assert len(cohort) == 22 and all(p["synthetic"] for p in cohort)
+        # The unit patients are scored too (data/unit_history.py) and are labelled as unit patients.
+        assert all(not p["synthetic"] for p in body["patients"] if not p["patient_id"].startswith("syn-"))
         detail = client.get("/api/risk/patients/syn-01").json()
         assert set(detail["risks"]) == {"fall", "dehydration", "delirium"}
         assert detail["trend"] and detail["history"]

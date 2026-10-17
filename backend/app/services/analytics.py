@@ -87,6 +87,9 @@ async def tigerdata_overview(store, patient_id: str | None = None, days: int = 8
         "hypertables": hypertables,
         "compression": compression,
         "query_latency_ms": query_latency_ms,
+        # "timescale" when connected to Tiger Data; "memory" = the in-process fallback (no hypertables), so
+        # the page can say so instead of claiming Tiger Data numbers.
+        "store": "timescale" if hasattr(store, "pool") else "memory",
         "measured_at": datetime.now(timezone.utc).isoformat(),
     }
     if patient_id:

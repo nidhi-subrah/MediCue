@@ -281,6 +281,81 @@ class TimescaleStore:
                 "INSERT INTO source_reliability (key, a, b) VALUES (%s,%s,%s) "
                 "ON CONFLICT (key) DO UPDATE SET a = EXCLUDED.a, b = EXCLUDED.b, updated_at = now()", (key, a, b))
 
+    # ---- nurse views (services/nurse_views.py) ---------------------------------------------------
+
+    async def requests_by_bucket(self, since, until, bucket: str, patient_ids, tz: str):
+        """Requests and urgent requests per patient per hour or local day, empty buckets filled with zeros
+        (time_bucket_gapfill over the hourly continuous aggregate)."""
+        return await self._all(
+            "SELECT time_bucket_gapfill(%s::interval, bucket, %s, %s, %s) AS bucket, patient_id, "
+            "       coalesce(sum(n), 0)::int AS requests, coalesce(sum(urgent), 0)::int AS urgent "
+            "FROM patient_hourly_needs WHERE bucket >= %s AND bucket < %s AND patient_id = ANY(%s) "
+            "GROUP BY 1, patient_id ORDER BY patient_id, 1",
+            (bucket, tz, since, until, since, until, list(patient_ids)))
+
+    async def needs_by_day(self, since, until, patient_ids, tz: str):
+        """Requests per patient per need type per local day, re-bucketed from the hourly aggregate."""
+        return await self._all(
+            "SELECT time_bucket('1 day', bucket, %s) AS day, patient_id, confirmed_group, sum(n)::int AS n "
+            "FROM patient_hourly_needs WHERE bucket >= %s AND bucket < %s AND patient_id = ANY(%s) "
+            "GROUP BY 1, 2, 3 ORDER BY 1",
+            (tz, since, until, list(patient_ids)))
+
+    async def hour_of_day_profile(self, patient_id, since, until, tz: str):
+        """For each local hour of day: mean and 10th/50th/90th percentile of requests over the days in
+        [since, until), per need type and in total. Zero hours count (gapfill), percentiles come from the
+        Timescale Toolkit's percentile_agg."""
+        return await self._all(
+            "WITH hourly AS ("
+            "  SELECT time_bucket_gapfill('1 hour', bucket, %(tz)s, %(since)s, %(until)s) AS h, confirmed_group,"
+            "         coalesce(sum(n), 0)::float AS n"
+            "  FROM patient_hourly_needs WHERE patient_id = %(pid)s AND bucket >= %(since)s AND bucket < %(until)s"
+            "  GROUP BY 1, 2), "
+            "total AS (SELECT h, '_total' AS confirmed_group, sum(n) AS n FROM hourly GROUP BY h), "
+            "allrows AS (SELECT * FROM hourly UNION ALL SELECT * FROM total) "
+            "SELECT confirmed_group, extract(hour FROM h AT TIME ZONE %(tz)s)::int AS hod, avg(n) AS mean, "
+            "       approx_percentile(0.1, percentile_agg(n)) AS p10, approx_percentile(0.5, percentile_agg(n)) AS p50,"
+            "       approx_percentile(0.9, percentile_agg(n)) AS p90, count(*)::int AS days "
+            "FROM allrows GROUP BY 1, 2 ORDER BY 1, 2",
+            {"tz": tz, "since": since, "until": until, "pid": patient_id})
+
+    async def events_between(self, since, until, event_types, patient_ids):
+        return await self._all(
+            "SELECT time, patient_id, session_id, event_type, payload FROM events "
+            "WHERE time >= %s AND time < %s AND event_type = ANY(%s) AND patient_id = ANY(%s) ORDER BY time",
+            (since, until, list(event_types), list(patient_ids)))
+
+    async def tap_stats(self, patient_ids, since, recent_since):
+        """Median seconds per tap recently vs before (Toolkit percentile_agg), and corrected taps recently."""
+        return await self._all(
+            "SELECT patient_id,"
+            " approx_percentile(0.5, percentile_agg((payload->>'latency_ms')::float) FILTER (WHERE time >= %(r)s)) AS recent_ms,"
+            " approx_percentile(0.5, percentile_agg((payload->>'latency_ms')::float) FILTER (WHERE time < %(r)s)) AS usual_ms,"
+            " count(*) FILTER (WHERE time >= %(r)s AND coalesce((payload->>'mistap')::boolean, false))::int AS mistaps,"
+            " count(*) FILTER (WHERE time >= %(r)s)::int AS recent_taps "
+            "FROM events WHERE event_type = 'tap' AND payload ? 'latency_ms' AND patient_id = ANY(%(ids)s) "
+            "  AND time >= %(since)s GROUP BY patient_id",
+            {"ids": list(patient_ids), "since": since, "r": recent_since})
+
+    async def unsure_answers(self, patient_ids, since):
+        rows = await self._all(
+            "SELECT patient_id, count(*)::int AS n FROM events WHERE event_type = 'answer' "
+            "AND payload->>'answer' = 'unsure' AND time >= %s AND patient_id = ANY(%s) GROUP BY 1",
+            (since, list(patient_ids)))
+        return {r["patient_id"]: r["n"] for r in rows}
+
+    async def longest_quiet(self, patient_ids, start, end, kinds):
+        """Longest gap between the patient's own interactions in [start, end), from the Toolkit's
+        heartbeat_agg / dead_ranges. Patients with no interaction at all are missing (caller: whole window)."""
+        rows = await self._all(
+            "WITH h AS (SELECT patient_id, heartbeat_agg(time, %(start)s, %(dur)s, interval '5 minutes') AS agg "
+            "           FROM events WHERE patient_id = ANY(%(ids)s) AND event_type = ANY(%(kinds)s) "
+            "             AND time >= %(start)s AND time < %(end)s GROUP BY patient_id) "
+            "SELECT h.patient_id, extract(epoch FROM max(d.\"end\" - d.start))::float AS longest_s "
+            "FROM h LEFT JOIN LATERAL dead_ranges(h.agg) d ON true GROUP BY h.patient_id",
+            {"ids": list(patient_ids), "kinds": list(kinds), "start": start, "end": end, "dur": end - start})
+        return {r["patient_id"]: r["longest_s"] or 0.0 for r in rows}
+
     async def events_of_type(self, event_type, since, patient_id=None):
         sql = "SELECT time, patient_id, session_id, event_type, payload FROM events WHERE event_type = %s AND time >= %s"
         params: tuple = (event_type, since)

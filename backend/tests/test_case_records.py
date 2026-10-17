@@ -75,7 +75,8 @@ def test_feedback_rides_on_the_normal_confirmation_and_feeds_learning():
             assert r.status_code == 200 and r.json()["status"] == "confirmed"
             updated = receive(nurse, s["alert_id"], "case")
             fb = updated["feedback"]
-            assert fb["helpful"] is True and fb["actual_need"] == top and fb["actual_rank"] == 1 and fb["by"] == "Priya"
+            assert fb["helpful"] is True and fb["actual_need"] == top and fb["actual_rank"] == 1
+            assert fb["by"] == client.get("/api/auth/me").json()["name"]               # the logged-in nurse, not a name the browser sends
             assert client.get(f"/api/cases/{s['alert_id']}").json()["feedback"] == fb
             # the same confirmation fed the existing learning: a confirmations row and a reliability update
             assert len(store.rows) == before_rows + 1 and store.rows[-1]["confirmed_need"] == top
@@ -123,12 +124,14 @@ def test_acknowledge_records_once_pushes_and_keeps_the_alert_open():
         with client.websocket_connect("/ws?channel=nurse") as nurse:
             s = chest(client)
             receive(nurse, s["alert_id"], "case")
+            me = client.get("/api/auth/me").json()["name"]
             r = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Priya"})
-            assert r.status_code == 200 and r.json()["acknowledged"]["by"] == "Priya"
-            assert receive(nurse, s["alert_id"], "case")["acknowledged"]["by"] == "Priya"
-            again = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={"nurse": "Sam"}).json()
-            assert again["acknowledged"]["by"] == "Priya"                     # the first acknowledgement stands
-            assert asyncio.run(app.state.store.get_case(s["alert_id"]))["acknowledged"]["by"] == "Priya"
+            assert r.status_code == 200 and r.json()["acknowledged"]["by"] == me   # logged-in nurse, not the body
+            first = receive(nurse, s["alert_id"], "case")["acknowledged"]
+            assert first["by"] == me
+            again = client.post(f"/api/cases/{s['alert_id']}/acknowledge", json={}).json()
+            assert again["acknowledged"] == first                             # the first acknowledgement stands
+            assert asyncio.run(app.state.store.get_case(s["alert_id"]))["acknowledged"] == first
             alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
             assert alert["status"] == "open"                                  # still needs "They needed …"
             assert client.post("/api/cases/nope/acknowledge", json={}).status_code == 404

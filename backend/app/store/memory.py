@@ -95,6 +95,110 @@ class MemoryStore:
     async def set_reliability(self, key, a, b):
         self.reliability[key] = (a, b)
 
+    # ---- nurse views: in-process mirrors of the Timescale queries -------------------------------
+
+    @staticmethod
+    def _local_floor(t, bucket: str, tz):
+        local = t.astimezone(tz)
+        local = local.replace(minute=0, second=0, microsecond=0)
+        if bucket == "1 day":
+            local = local.replace(hour=0)
+        return local.astimezone(timezone.utc)
+
+    @staticmethod
+    def _bucket_starts(since, until, bucket: str, tz):
+        step = timedelta(days=1) if bucket == "1 day" else timedelta(hours=1)
+        t = MemoryStore._local_floor(since, bucket, tz)
+        out = []
+        while t < until:
+            out.append(t)
+            # step in local time so days stay aligned to local midnight across DST changes
+            t = (t.astimezone(tz) + step).astimezone(timezone.utc) if bucket == "1 day" else t + step
+        return out
+
+    def _rows_between(self, since, until, patient_ids):
+        ids = set(patient_ids)
+        return [r for r in self.rows if since <= r["time"] < until and r["patient_id"] in ids]
+
+    async def requests_by_bucket(self, since, until, bucket, patient_ids, tz):
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(tz)
+        counts = defaultdict(lambda: [0, 0])
+        rows = self._rows_between(since, until, patient_ids)
+        for r in rows:
+            c = counts[(self._local_floor(r["time"], bucket, zone), r["patient_id"])]
+            c[0] += 1
+            c[1] += bool(r["escalated"])
+        present = sorted({r["patient_id"] for r in rows})
+        return [{"bucket": b, "patient_id": pid, "requests": counts[(b, pid)][0], "urgent": counts[(b, pid)][1]}
+                for pid in present for b in self._bucket_starts(since, until, bucket, zone)]
+
+    async def needs_by_day(self, since, until, patient_ids, tz):
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(tz)
+        counts = Counter((self._local_floor(r["time"], "1 day", zone), r["patient_id"], r["confirmed_group"])
+                         for r in self._rows_between(since, until, patient_ids))
+        return [{"day": d, "patient_id": pid, "confirmed_group": g, "n": n} for (d, pid, g), n in sorted(counts.items())]
+
+    async def hour_of_day_profile(self, patient_id, since, until, tz):
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(tz)
+        rows = self._rows_between(since, until, [patient_id])
+        hours = self._bucket_starts(since, until, "1 hour", zone)
+        counts = Counter((self._local_floor(r["time"], "1 hour", zone), r["confirmed_group"]) for r in rows)
+        groups = sorted({r["confirmed_group"] for r in rows})
+        series: dict[tuple[str, int], list[float]] = defaultdict(list)
+        for h in hours:
+            hod = h.astimezone(zone).hour
+            total = 0.0
+            for g in groups:
+                series[(g, hod)].append(float(counts[(h, g)]))
+                total += counts[(h, g)]
+            if rows:
+                series[("_total", hod)].append(total)
+
+        def pct(xs, q):
+            xs = sorted(xs)
+            return xs[min(int(q * len(xs)), len(xs) - 1)]
+        return [{"confirmed_group": g, "hod": hod, "mean": statistics.mean(xs), "p10": pct(xs, 0.1),
+                 "p50": pct(xs, 0.5), "p90": pct(xs, 0.9), "days": len(xs)}
+                for (g, hod), xs in sorted(series.items())]
+
+    async def events_between(self, since, until, event_types, patient_ids):
+        types, ids = set(event_types), set(patient_ids)
+        return sorted((e for e in self.events if since <= e["time"] < until and e["event_type"] in types
+                       and e["patient_id"] in ids), key=lambda e: e["time"])
+
+    async def tap_stats(self, patient_ids, since, recent_since):
+        out = []
+        for pid in patient_ids:
+            taps = [e for e in self.events if e["patient_id"] == pid and e["event_type"] == "tap"
+                    and e["time"] >= since and (e.get("payload") or {}).get("latency_ms")]
+            if not taps:
+                continue
+            recent = [e for e in taps if e["time"] >= recent_since]
+            before = [e for e in taps if e["time"] < recent_since]
+            med = lambda es: statistics.median(e["payload"]["latency_ms"] for e in es) if es else None   # noqa: E731
+            out.append({"patient_id": pid, "recent_ms": med(recent), "usual_ms": med(before),
+                        "mistaps": sum(bool(e["payload"].get("mistap")) for e in recent), "recent_taps": len(recent)})
+        return out
+
+    async def unsure_answers(self, patient_ids, since):
+        return dict(Counter(e["patient_id"] for e in self.events
+                            if e["event_type"] == "answer" and e["time"] >= since and e["patient_id"] in set(patient_ids)
+                            and (e.get("payload") or {}).get("answer") == "unsure"))
+
+    async def longest_quiet(self, patient_ids, start, end, kinds):
+        out = {}
+        for pid in patient_ids:
+            times = sorted(e["time"] for e in self.events if e["patient_id"] == pid and e["event_type"] in kinds
+                           and start <= e["time"] < end)
+            if times:   # like heartbeat_agg: each interaction keeps the patient "live" for 5 minutes
+                gaps = [(times[0] - start).total_seconds()] + [
+                    max((b - a).total_seconds() - 300, 0) for a, b in zip(times, times[1:] + [end])]
+                out[pid] = max(gaps)
+        return out
+
     async def events_of_type(self, event_type, since, patient_id=None):
         return [e for e in self.events if e["event_type"] == event_type and e["time"] >= since
                 and (patient_id is None or e["patient_id"] == patient_id)]
