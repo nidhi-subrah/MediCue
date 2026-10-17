@@ -34,31 +34,27 @@ export function AppShell({
         Skip to content
       </a>
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur-md">
-        <div
-          className={cn(
-            'mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 md:px-6',
-            wide ? 'max-w-6xl' : 'max-w-5xl',
-          )}
-        >
-          <Brand />
-          <nav aria-label="Main" className="hidden md:block">
-            <ul className="flex items-center gap-1 rounded-full border border-border bg-card p-1">
+        {/* Full width; on tablets the nav drops its icons and the wordmark so every label fits on one line. */}
+        <div className="flex h-16 w-full items-center justify-between gap-3 px-4 md:px-6 lg:gap-6">
+          <Brand compact />
+          <nav aria-label="Main" className="hidden min-w-0 flex-1 md:block">
+            <ul className="flex w-full items-center gap-1 rounded-full border border-border bg-card p-1">
               {NAV.map((item) => {
                 const active = item.match.some((m) => pathname.startsWith(m))
                 const Icon = item.icon
                 return (
-                  <li key={item.href}>
+                  <li key={item.href} className="min-w-0 flex-1">
                     <Link
                       href={item.href}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors',
+                        'flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full px-2 text-sm font-medium transition-colors lg:px-4',
                         active
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                       )}
                     >
-                      <Icon className="size-4" aria-hidden="true" />
+                      <Icon className="hidden size-4 shrink-0 lg:block" aria-hidden="true" />
                       {item.label}
                     </Link>
                   </li>

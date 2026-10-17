@@ -132,3 +132,44 @@ def test_session_uses_gemini_ranking_once_ready_and_never_waits_for_it():
         assert len(o["predicted"]) + len(o["more"]) == 6     # missing options filled in, plus "None of these"
         assert first["options"] is None                      # area step: no second-step options yet
     asyncio.run(run())
+
+
+# ---- Back ------------------------------------------------------------------------------------------
+
+def back(client, s):
+    return client.post(f"/api/sessions/{s['session_id']}/back")
+
+
+def test_back_from_second_step_returns_to_where_is_it():
+    with TestClient(app) as client:
+        s0 = start(client)
+        assert s0["can_go_back"] is False
+        s = tap(client, s0, "area", "head")
+        assert s["can_go_back"] is True
+        r = back(client, s)
+        assert r.status_code == 200
+        b = r.json()
+        assert b["status"] == "area" and b["taps"] == 0 and b["options"] is None
+        assert [x["need"] for x in b["belief"]] == [x["need"] for x in s0["belief"]]   # belief restored
+        s = tap(client, b, "area", "belly")                                           # and it carries on
+        assert s["options"]["area"] == "belly"
+
+
+def test_back_from_a_question_restores_the_previous_step_and_choice():
+    with TestClient(app) as client:
+        s = tap(client, start(client), "area", "mouth_throat")
+        opt = next(x for x in s["options"]["predicted"] + s["options"]["more"] if x["id"] == "mouth_throat.thirsty")
+        q = tap(client, s, "feeling", "thirsty", opt["id"])
+        if q["status"] != "question":
+            return   # the engine was sure enough to send; nothing to go back to
+        b = back(client, q).json()
+        assert b["status"] == "feeling" and b["choice"] is None and b["options"]["area"] == "mouth_throat"
+
+
+def test_back_is_refused_once_something_was_sent():
+    with TestClient(app) as client:
+        s = tap(client, start(client), "area", "toilet")
+        assert s["status"] == "sent" and s["can_go_back"] is False
+        assert back(client, s).status_code == 409
+        c = tap(client, start(client, "p-chen"), "area", "chest")    # escalated: the alert stays
+        assert c["status"] == "escalated" and back(client, c).status_code == 409

@@ -8,11 +8,16 @@ export function backendMode(mode: InputMode): ModeId {
 }
 
 /** What the patient sees. Audio is client-only, so it comes from the `spokenPrompts` setting and wins
- *  over the backend's mode (even if the backend moved a tiring patient to larger tiles). The UI has no
- *  scanning mode: a backend `scan` session is shown as Easy Touch. */
+ *  over the backend's mode. From communication-ladder level 2 the backend switches to `large` (or the
+ *  profile's `scan`), both shown as Easy Touch: bigger buttons. */
 export function uiMode(mode: ModeId, audio = false): InputMode {
   if (audio) return 'audio'
   return mode === 'large' || mode === 'scan' ? 'easy' : 'standard'
+}
+
+/** A label reworded for the current ladder level by Gemini (backend/app/engine/ladder.py), else the original. */
+function wording(s: SessionState, key: string, fallback: string): string {
+  return s.ladder?.labels?.[key] ?? fallback
 }
 
 /** Builds the one on-screen step QuestionStage should render for the session's current
@@ -25,17 +30,39 @@ export function buildStep(
   onAnswer: (answer: 'yes' | 'no' | 'unsure') => void,
   more: { open: boolean; setOpen: (open: boolean) => void } = { open: false, setOpen: () => {} },
 ): Step | null {
+  const level = s.ladder?.level ?? 1
+
   if (s.status === 'area') {
+    const area = (a: (typeof catalog.areas)[number]): ChoiceItem => ({
+      id: a.id,
+      label: wording(s, `area:${a.id}`, a.label),
+      icon: CATALOG_ICONS[a.id],
+      tone: a.id === 'chest' && level >= 2 ? 'urgent' : undefined,
+      onSelect: () => onTap('area', a.id),
+    })
+    // Level 2: only the likeliest areas (chest always kept), the rest behind "Somewhere else".
+    const likely = level === 2 ? s.ladder.options?.area : undefined
+    if (likely && !more.open) {
+      return {
+        id: 'area-likely',
+        kind: 'choice',
+        prompt: 'Where is it?',
+        options: [
+          ...catalog.areas.filter((a) => likely.includes(a.id)).map(area),
+          { id: '__more', label: 'Somewhere else', icon: Ellipsis, tone: 'control', onSelect: () => more.setOpen(true) },
+        ],
+      }
+    }
     return {
-      id: 'area',
-      kind: mode === 'standard' ? 'body' : 'choice',
+      id: likely ? 'area-all' : 'area',
+      kind: mode === 'standard' && !likely ? 'body' : 'choice',
       prompt: 'Where is it?',
-      options: catalog.areas.map((a) => ({
-        id: a.id,
-        label: a.label,
-        icon: CATALOG_ICONS[a.id],
-        onSelect: () => onTap('area', a.id),
-      })),
+      options: [
+        ...catalog.areas.map(area),
+        ...(likely
+          ? [{ id: '__back', label: 'Back', icon: ArrowLeft, tone: 'control' as const, onSelect: () => more.setOpen(false) }]
+          : []),
+      ],
     }
   }
 
@@ -45,16 +72,29 @@ export function buildStep(
     const o = s.options
     const item = (x: FeelingOption): ChoiceItem => ({
       id: x.id,
-      label: x.label,
+      label: wording(s, `option:${x.id}`, x.label),
       icon: CATALOG_ICONS[x.feeling],
       tone: x.high_risk ? 'urgent' : undefined,
       onSelect: () => onTap('feeling', x.feeling, x.id),
     })
+    const prompt = wording(s, `prompt:${o.area}`, o.prompt)
+    const helper = s.status === 'escalated' ? 'Help is on the way. You can tell us more:' : undefined
+    // Level 1 (Full): every option for the area at once, most likely first.
+    if (level === 1) {
+      return {
+        id: `feeling-all-${o.area}`,
+        kind: 'choice',
+        prompt,
+        helper,
+        options: [...o.predicted, ...o.more].map(item),
+      }
+    }
+    // Level 2 (Simplified): the predicted 3-4, the rest behind "Something else".
     if (more.open) {
       return {
         id: `feeling-more-${o.area}`,
         kind: 'choice',
-        prompt: o.prompt,
+        prompt,
         helper: 'More choices',
         options: [
           ...o.more.map(item),
@@ -65,8 +105,8 @@ export function buildStep(
     return {
       id: `feeling-${o.area}`,
       kind: 'choice',
-      prompt: o.prompt,
-      helper: s.status === 'escalated' ? 'Help is on the way. You can tell us more:' : undefined,
+      prompt,
+      helper,
       options: [
         ...o.predicted.map(item),
         { id: '__more', label: 'Something else', icon: Ellipsis, tone: 'control', onSelect: () => more.setOpen(true) },

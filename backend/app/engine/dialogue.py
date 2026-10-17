@@ -6,12 +6,12 @@ exactly the same logic.
 import time
 from dataclasses import dataclass, field
 
-from ..catalog import Catalog
+from ..catalog import SAFETY_QUESTION, Catalog
 from ..config import EngineConfig
 from .belief import (answer_likelihood, bayes_update, consult_likelihood, entropy, p_high_risk,
                      tap_likelihood, top_items)
 from .personal import PersonalModel
-from .decision import Consultant, Decision, DecisionInput, consult_options, decide
+from .decision import Action, Consultant, Decision, DecisionInput, consult_options, decide
 
 SURPRISING_ANSWER = 0.2   # an answer the belief gave less than this chance counts as inconsistent
 
@@ -60,6 +60,7 @@ class Dialogue:
         self.consulted: set[str] = set()
         self.consult_answers: list[tuple[str, str]] = []   # (person name, answer label)
         self.inconsistencies = 0.0                         # surprising answers (+1) and "not sure" (+0.5)
+        self.yes_no = False                                # communication ladder level 3+: questions, no taps
         self._record("prior", "Prior from context", "")
 
     # ---- evidence ----------------------------------------------------------------------------
@@ -70,7 +71,18 @@ class Dialogue:
 
     @property
     def dialogue_open(self) -> bool:
-        return self.area is not None and self.feeling is not None
+        return self.yes_no or (self.area is not None and self.feeling is not None)
+
+    def open_yes_no(self):
+        """Skip the remaining taps: from now on the engine reaches the need through yes/no questions only
+        (communication ladder, engine/ladder.py). Sticky, so stepping back up mid-dialogue keeps going."""
+        if not self.yes_no:
+            self.yes_no = True
+            self._record("ladder", "Switched to yes/no questions", "")
+
+    @property
+    def max_questions(self) -> int:
+        return self.cfg.max_questions + (self.cfg.yes_no_extra_questions if self.yes_no else 0)
 
     def apply_tap(self, kind: str, tap_id: str, t: float | None = None):
         self.tap_times.append(t if t is not None else time.time())
@@ -90,8 +102,10 @@ class Dialogue:
             label = self.cat.feeling_labels[tap_id]
         self._record("tap", f"Tapped {kind}: {label}", tap_id)
 
-    def apply_answer(self, question_id: str, answer: str, t: float | None = None):
+    def apply_answer(self, question_id: str, answer: str, t: float | None = None) -> bool:
+        """Returns True when the answer was surprising given the belief (the ladder counts it)."""
         q = self.cat.question_by_id[question_id]
+        surprising = False
         self.tap_times.append(t if t is not None else time.time())
         self.questions_asked += 1
         self.asked.add(question_id)
@@ -102,8 +116,10 @@ class Dialogue:
             lik = answer_likelihood(q.p_yes, answer, self.reliability)
             if sum(b * l for b, l in zip(self.belief, lik)) < SURPRISING_ANSWER:
                 self.inconsistencies += 1
+                surprising = True
         self._signal(answer_likelihood(q.p_yes, answer, self.reliability))
         self._record("answer", f"{q.text} → {answer}", question_id)
+        return surprising
 
     def apply_lookup(self, lookup_id: str):
         lk = self.cat.lookup_by_id[lookup_id]
@@ -152,7 +168,7 @@ class Dialogue:
     def decision_input(self) -> DecisionInput:
         return DecisionInput(
             belief=self.belief, reliability=self.reliability, fatigue=self.fatigue(),
-            questions_asked=self.questions_asked, asked=self.asked, used_lookups=self.used_lookups,
+            questions_asked=self.questions_asked, max_questions=self.max_questions, asked=self.asked, used_lookups=self.used_lookups,
             available_lookups=set(self.chart_flags) if self.chart_flags else set(),
             consultants=self.consultants, consulted=self.consulted, dialogue_open=self.dialogue_open,
             signal_p_high=p_high_risk(self.cat, self.signal_belief),
@@ -162,11 +178,22 @@ class Dialogue:
         """Run near-free lookups until the best action needs the patient, a person, or ends the dialogue."""
         while True:
             d = decide(self.cat, self.cfg, self.decision_input())
+            if self._needs_safety_screen(d):
+                q = self.cat.question_by_id[SAFETY_QUESTION]
+                return Decision(Action("ask", q.id, f"Ask: {q.text}", 0.0, 0.0, {}), d.ranked,
+                                "Yes/no questions replace the taps, so first rule out an emergency the "
+                                "body map would have caught in one tap.")
             if d.chosen.kind != "lookup":
                 if d.chosen.kind == "escalate":
                     self.escalated = True
                 return d
             self.apply_lookup(d.chosen.id)
+
+    def _needs_safety_screen(self, d: Decision) -> bool:
+        """In yes/no mode the patient never got to tap chest or "hard to breathe", and a low prior means the
+        engine would rarely ask about them. Screen for them first, unless the engine is already escalating."""
+        return (self.yes_no and self.feeling is None and SAFETY_QUESTION not in self.asked
+                and self.patient_can_answer and d.chosen.kind not in ("escalate", "lookup"))
 
     def attach_context(self):
         """After escalation, list the remaining chart fields for the nurse. Display only: they do not

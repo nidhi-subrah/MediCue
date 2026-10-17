@@ -1,6 +1,6 @@
-# MediCure
+# MediCue
 
-MediCure turns a few taps from a patient who can't speak into a precise, structured clinical message, and
+MediCue turns a few taps from a patient who can't speak into a precise, structured clinical message, and
 says how certain it is. Behind the interface, a decision engine picks the best next move each time: ask the
 patient a yes/no question, look up their chart, consult someone who knows them, or escalate to a nurse now.
 

@@ -52,7 +52,7 @@ export type SessionStatus =
 
 export interface SessionState {
   session_id: string; patient_id: string; status: SessionStatus; mode: ModeId; language: string;
-  question: { id: string; text: string; text_local: string } | null;
+  question: { id: string; text: string; text_full: string; text_local: string } | null;  // text: reworded for the level
   consult: { id: string; person_name: string; relation: string } | null;
   belief: BeliefItem[];               // sorted, top 6
   prediction_set: string[];           // conformal 90% set (need ids)
@@ -68,6 +68,8 @@ export interface SessionState {
   profile: ProfileItem[];             // patient profile in effect (backend/app/engine/profile.py)
   options: FeelingOptions | null;     // tailored second-step options (backend/app/engine/options.py)
   choice: OptionChoice | null;        // the option the patient picked
+  ladder: LadderState;                // communication ladder (backend/app/engine/ladder.py)
+  can_go_back: boolean;               // "Back" undoes the last input (only while nothing has been sent)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
@@ -284,6 +286,7 @@ export type WsMessage =
   | { type: "alert"; alert: Alert }
   | { type: "alert_updated"; alert: Alert }
   | { type: "session"; session: SessionState }
+  | { type: "level_changed"; patient_id: string; change: LadderChange }
   | { type: "consult"; consult: ConsultRequest }
   | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number;
       respond_path?: string }         // silence checks answer on their own endpoint
@@ -298,7 +301,7 @@ export type WsMessage =
 // ---- patient profiles, nurse-note suggestions, shift summary ----------------------------------------
 
 export type ProfileKind =
-  | "need" | "fatigue" | "person_trust" | "person_available" | "person_preferred" | "access" | "signal" | "note";
+  | "need" | "fatigue" | "person_trust" | "person_available" | "person_preferred" | "access" | "start_level" | "signal" | "note";
 
 export interface ProfileItem {
   kind: ProfileKind; target: string; value: string; hours: number[] | null;
@@ -460,4 +463,33 @@ export interface FeelingOptions {
 
 export interface OptionChoice {
   id: string; label: string; predicted: boolean; source: "gemini" | "engine" | null; send_now: boolean;
+}
+
+// ---- communication ladder (backend/app/engine/ladder.py) -------------------------------------------
+
+export type LadderLevel = 1 | 2 | 3 | 4;   // 1 Full · 2 Simplified · 3 Yes / No · 4 Assisted
+
+export interface LadderChange {
+  id?: string; at?: string; t: number;
+  from: LadderLevel; to: LadderLevel; from_label: string; to_label: string;
+  source: "auto" | "idle" | "patient" | "nurse" | "profile";
+  reason: string;                     // template, e.g. "answers 2.4× slower than usual"
+  explanation?: string | null;        // Gemini's one line for nurses, when it has written one
+}
+
+export interface LadderState {
+  level: LadderLevel; label: string;
+  floor: LadderLevel;                 // automatic recovery never goes harder than this (a manual choice)
+  strain: number;
+  changes: LadderChange[];
+  levels: Record<LadderLevel, string>;
+  options: { area: string[] } | null;           // level 2: the areas to show (chest always kept)
+  labels: Record<string, string> | null;        // level 2+: reworded labels, keys area:<id>, option:<id>, prompt:<area>
+  assist: { person_name: string; relation: string; status: string } | null;   // level 4: who was asked to help
+}
+
+export interface LadderPatient {
+  patient_id: string; patient_name: string; room: string; session_id: string | null;
+  level: LadderLevel | null; label: string | null; active: boolean;
+  changes: LadderChange[];            // this shift, oldest first
 }

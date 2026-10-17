@@ -31,6 +31,8 @@ person_available   (hours required)            The engine only consults them ins
 person_preferred   (hours optional)            Their consult cost is halved (inside the hours, if given).
 access             large, scan                 The mode the tablet switches to when the patient tires
                                                (default: large tiles).
+start_level        simplified, yes_no          Communication ladder level the tablet starts at
+                                               (engine/ladder.py). Optional hours window.
 signal             higher, lower               Patient's own tap reliability ± 0.05 (before the usual clip).
 note               free text                   Display only: shown to nurses, no engine effect.
 =================  ==========================  ==============================================================
@@ -60,7 +62,9 @@ Fatigue model (``engine/dialogue.py``)
   patient had strongly signalled), plus 0.5 for each "not sure".
 * ``sensitivity``: from a ``fatigue`` profile item, 1.0 if none.
 * After ``max_inconsistent_answers`` (2) the engine stops asking the patient and consults or sends.
-* When fatigue passes 2.0 the tablet switches to the profile's ``access`` mode (or large tiles).
+* Fatigue sensitivity also scales the communication ladder's strain points (``engine/ladder.py``), so a
+  patient who tires quickly gets a simpler screen sooner. From ladder level 2 the tablet uses the
+  profile's ``access`` mode (or large tiles).
 
 Related features
 ----------------
@@ -102,11 +106,12 @@ VALUES: dict[str, set[str] | None] = {
     "person_available": None,       # value unused; hours carry the meaning
     "person_preferred": None,
     "access": {"large", "scan"},
+    "start_level": {"simplified", "yes_no"},
     "signal": {"higher", "lower"},
     "note": None,                   # value is the display text
 }
 KINDS = tuple(VALUES)
-TIMED_KINDS = {"need", "fatigue", "person_available", "person_preferred"}   # others ignore hours
+TIMED_KINDS = {"need", "fatigue", "person_available", "person_preferred", "start_level"}   # others ignore hours
 
 
 @dataclass(frozen=True)
@@ -273,6 +278,18 @@ def mode_when_tired(profile: PatientProfile) -> str:
     return "scan" if "scan" in modes else (modes[0] if modes else "large")
 
 
+START_LEVEL = {"simplified": 2, "yes_no": 3}
+
+
+def start_level(profile: PatientProfile, hour: int | None) -> tuple[int, str]:
+    """Communication ladder level to start at, and the note it came from (level 1 and "" if none)."""
+    items = [i for i in profile.items if i.kind == "start_level" and i.active(hour)]
+    if not items:
+        return 1, ""
+    best = max(items, key=lambda i: START_LEVEL[i.value])
+    return START_LEVEL[best.value], best.evidence
+
+
 def signal_reliability(profile: PatientProfile, r: float) -> float:
     for i in profile.items:
         if i.kind == "signal":
@@ -334,6 +351,8 @@ def effect_text(item: ProfileItem, cat: Catalog, people: dict[str, str]) -> str:
         return f"Consult {who} first{w}"
     if item.kind == "access":
         return f"Switch to {'switch scanning' if item.value == 'scan' else 'large tiles'} when tired"
+    if item.kind == "start_level":
+        return f"Tablet starts at {'simplified choices' if item.value == 'simplified' else 'yes/no questions'}{w}"
     if item.kind == "signal":
         return f"Patient's taps treated as {'more' if item.value == 'higher' else 'less'} reliable"
     return item.value

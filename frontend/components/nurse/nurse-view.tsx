@@ -7,6 +7,7 @@ import { RiskPanel } from '@/components/risk/risk-panel'
 import { SilencePanel } from '@/components/risk/silence-panel'
 import { AlertCard } from './alert-card'
 import { DemoScenarioBar } from './demo-scenario'
+import { LevelsPanel } from './levels-panel'
 import { ShiftSummary } from './shift-summary'
 import { SuggestionsPanel } from './suggestions-panel'
 import { Sparkline } from './sparkline'
@@ -79,6 +80,7 @@ export function NurseView() {
       </div>
 
       <div className="flex min-w-0 flex-col gap-10">
+      <LevelsPanel />
       <SuggestionsPanel items={suggestions} onReview={reviewSuggestion} />
       <RiskPanel />
       <section aria-labelledby="trends-h" className="flex flex-col gap-4">

@@ -17,15 +17,16 @@ export function BrandMark({ className }: { className?: string }) {
   )
 }
 
-export function Brand({ href = '/home' }: { href?: string }) {
+/** `compact`: show only the mark below the lg breakpoint (tablets), so the nav fits on one line. */
+export function Brand({ href = '/home', compact = false }: { href?: string; compact?: boolean }) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-2.5 rounded-xl text-foreground"
+      className="flex shrink-0 items-center gap-2.5 rounded-xl text-foreground"
       aria-label="SilentSignal home"
     >
       <BrandMark />
-      <span className="text-lg font-bold tracking-tight">SilentSignal</span>
+      <span className={cn('text-lg font-bold tracking-tight', compact && 'hidden lg:inline')}>SilentSignal</span>
     </Link>
   )
 }

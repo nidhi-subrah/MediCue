@@ -26,6 +26,8 @@ def _retry_delay(err) -> float | None:
     m = re.search(r"retry in ([\d.]+)s", str(err)) or re.search(r"'retryDelay': '(\d+)s'", str(err))
     return float(m.group(1)) if m else None
 
+LADDER_WORDS = {2: 6, 3: 4}   # max words per rewritten label or question at each ladder level
+
 LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "zh": "Simplified Chinese",
                   "pa": "Punjabi (Gurmukhi)", "ar": "Arabic", "tl": "Tagalog"}
 
@@ -46,7 +48,7 @@ class TextModel(BaseModel):
 
 
 class ProfileItemModel(BaseModel):
-    kind: Literal["need", "fatigue", "person_trust", "person_available", "person_preferred", "access", "signal",
+    kind: Literal["need", "fatigue", "person_trust", "person_available", "person_preferred", "access", "start_level", "signal",
                   "note"]
     target: str          # need id or person id, "" if the kind has none
     value: str
@@ -99,6 +101,7 @@ PROFILE_RULES = """Item kinds (use only these):
 - person_available: target = a person id; value = ""; start_hour/end_hour REQUIRED. When that person can be reached.
 - person_preferred: target = a person id; value = "". Ask this person first. Optional hours.
 - access: value = large | scan. The input mode the patient prefers when tired (scan = switch scanning).
+- start_level: value = simplified | yes_no. The text says the patient manages better with fewer choices (simplified) or with yes/no questions only (yes_no). Optional hours.
 - signal: value = higher | lower. The patient's own taps are more or less reliable than usual.
 - note: value = a short communication note for nurses (no engine effect).
 
@@ -258,6 +261,38 @@ class Gemini:
             f"Patient first name: {patient_name.split()[0]}. Plain language, no medical jargon, no diagnosis.")
         out = await self._json(prompt, TextModel)
         return out.text if out else fallback
+
+    # ---- communication ladder (engine/ladder.py) ---------------------------------------------------
+
+    async def simplify(self, texts: list[str], level: int) -> list[str] | None:
+        """Shorter wording of tile labels and yes/no questions for ladder level 2 or 3, same order and count.
+        None when Gemini is off or the reply doesn't fit; callers keep the original wording."""
+        if not texts:
+            return []
+        words = LADDER_WORDS[level]
+        prompt = (
+            "Rewrite each string for a hospital patient who is tired or finding it hard to read. "
+            f"Use at most {words} words each, very plain and kind. Keep EXACTLY the same meaning and scope: "
+            "a yes/no question must stay a yes/no question that a 'yes' answers in exactly the same cases "
+            "(do not narrow 'drink, food, temperature or position' to just one of them, and do not widen). "
+            "Keep the same order and count. Return JSON.\n\n"
+            f"{json.dumps(texts, ensure_ascii=False)}")
+        out = await self._json(prompt, Translations, timeout=LONG_TIMEOUT_S)
+        if not out or len(out.translations) != len(texts):
+            return None
+        # A rewrite that grew, or came back empty, isn't simpler: keep the original for that string.
+        return [new.strip() if new.strip() and len(new.split()) <= max(words, len(old.split())) else old
+                for old, new in zip(texts, out.translations)]
+
+    async def level_explanation(self, patient_name: str, change: dict) -> str | None:
+        """One line for the nurse station on why the tablet changed level. None = keep the template."""
+        prompt = (
+            "Write one short sentence (max 20 words) for a bedside nurse explaining why a patient's "
+            "communication tablet just changed how it asks questions. Use only the facts given; no diagnosis, "
+            "no advice. Facts (JSON):\n"
+            f"{json.dumps({'patient': patient_name.split()[0]} | change, default=str)}")
+        out = await self._json(prompt, TextModel)
+        return out.text.strip() if out and out.text.strip() else None
 
     # ---- patient profiles (engine/profile.py validates everything returned here) -------------------
 

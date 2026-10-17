@@ -4,6 +4,7 @@ Ordering rule on the escalation path: build the alert from templates and push it
 logging and Gemini enrichment happen afterwards and may fail without affecting the alert.
 """
 import asyncio
+import copy
 import logging
 import time
 import uuid
@@ -19,6 +20,7 @@ from ..engine.belief import PriorContext, context_prior, entropy, tap_likelihood
 from ..engine.conformal import ConformalPredictor
 from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
+from ..engine.ladder import LEVELS, Change, Ladder, likely_taps
 from ..engine.personal import PersonalModel
 from ..sim.learning import learning_curve
 from .case_packet import build_case_packet, case_facts, case_feedback, template_case_sbar
@@ -29,8 +31,7 @@ from .research import prior_multipliers
 log = logging.getLogger(__name__)
 
 LEARN_DAYS = 60
-
-FATIGUE_SWITCH = 2.0
+MID_DIALOGUE = ("feeling", "question")   # waiting on the patient after their first input (risk/silence.py)
 
 PROMPTS = {
     "prompt:area": "Where is it?",
@@ -72,11 +73,22 @@ class Session:
     prompted_at: float = field(default_factory=time.time)   # when the current prompt was shown (tap latency)
     belief_step: int = 0
     consult_answers: list[tuple[str, str | None]] = field(default_factory=list)  # (person id, need id)
-    tired_mode: str = "large"        # where the tablet goes when the patient tires (patient profile)
-    auto_switched: bool = False
+    tired_mode: str = "large"        # backend mode from ladder level 2 on (patient profile `access` item)
+    ladder: Ladder = field(default_factory=Ladder)   # communication ladder (engine/ladder.py)
+    latencies: list[float] = field(default_factory=list)   # seconds from prompt to input, this session
+    assist_consult: bool = False     # level 4 has asked family for help this session
+    option_walk: list[str] | None = None   # level 3+: the area's options still to ask about one by one
     options: dict | None = None      # tailored second-step options, fixed once shown (engine/options.py)
     choice: dict | None = None       # the option the patient picked: label, predicted or "something else"
+    history: list[dict] = field(default_factory=list)   # snapshots before each patient input, for "Back"
 
+
+# What "Back" restores. Everything else (alerts, consults, logs) is either not created yet while the patient
+# is still answering, or is an audit trail that should keep the undone input.
+# The communication ladder is deliberately not undone: going back is itself a sign of strain (a correction),
+# and the level reflects how the patient is managing, not what they answered. The tablet's mode follows it.
+UNDOABLE = ("status", "question_id", "options", "choice", "decision", "option_walk")
+CAN_GO_BACK = ("feeling", "question")
 
 class SessionService:
     def __init__(self, cat: Catalog, cfg: EngineConfig, store, hub: Hub, gemini: Gemini, conformal: ConformalPredictor,
@@ -89,6 +101,8 @@ class SessionService:
         self.consults: dict[str, dict] = {}
         self.welfare: dict[str, dict] = {}
         self._ui_cache: dict[str, dict] = {}
+        self._simple: dict[int, dict[str, str]] = {}      # ladder level -> {original text: simpler wording}
+        self.level_notes: dict[str, str] = {}             # level change id -> Gemini explanation for nurses
         self._tasks: set[asyncio.Task] = set()
 
     # ---- helpers ---------------------------------------------------------------------------------
@@ -204,17 +218,24 @@ class SessionService:
         personal = await self.personal_model(patient_id)
         if personal.n:
             reasons.append(f"{personal.n} nurse-confirmed gesture{'s' if personal.n != 1 else ''} of theirs")
+        sensitivity = prof.fatigue_sensitivity(profile, local_hour)
         d = Dialogue(self.cat, self.cfg, prior, clip(prof.signal_reliability(profile, view["signal_reliability"])),
                      consultants, {k: v["flag"] for k, v in p["chart"].items()},
-                     baseline_interval=baseline, fatigue_sensitivity=prof.fatigue_sensitivity(profile, local_hour),
-                     personal=personal)
+                     baseline_interval=baseline, fatigue_sensitivity=sensitivity, personal=personal)
+        level, evidence = prof.start_level(profile, local_hour)
+        ladder = Ladder.starting(level, f'profile: "{evidence}"', time.time(), sensitivity)
         s = Session(uuid.uuid4().hex[:12], p, d, mode, language or p["language"], reasons,
-                    tired_mode=prof.mode_when_tired(profile))
+                    tired_mode=prof.mode_when_tired(profile), ladder=ladder)
         self.sessions[s.id] = s
         if self.predictions:   # Gemini ranks every area's options in the background; never waited on
             self.predictions.refresh(patient_id, personal.learned_signals(self.cat))
-        await self._event(s, "session_started", {"mode": mode, "language": s.language, "prior_reasons": reasons})
+        await self._event(s, "session_started", {"mode": mode, "language": s.language, "prior_reasons": reasons,
+                                                 "level": ladder.level})
         await self._log_belief(s)
+        for c in ladder.changes:
+            await self._level_changed(s, c)
+        if ladder.level >= 3:
+            return await self._advance(s)   # starts on a yes/no question instead of the body map
         out = await self.state(s)
         s.prompted_at = time.time()
         return out
@@ -259,17 +280,20 @@ class SessionService:
         if not refining and s.status != kind:
             raise ValueError(f"expected a {s.status} input, got {kind} tap")
         finish = None
-        if kind == "feeling" and option_id:
-            s.choice = self._pick_option(s, option_id, tap_id)
-            if s.choice["send_now"]:
-                finish = f"Sent straight away: “{s.choice['label']}” needs no follow-up question."
+        choice = self._pick_option(s, option_id, tap_id) if kind == "feeling" and option_id else None
+        if choice and choice["send_now"]:
+            finish = f"Sent straight away: “{choice['label']}” needs no follow-up question."
         elif kind == "area" and opts.area_sends_now(self.cat, tap_id):
             finish = f"Sent straight away: “{self.cat.area_labels[tap_id]}” needs no follow-up question."
         latency = self._latency_ms(s)
+        self._remember(s)
+        if choice:
+            s.choice = choice
         s.dialogue.apply_tap(kind, tap_id)
         await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency,
                                      "option": s.choice if kind == "feeling" else None})
         await self._log_belief(s)
+        await self._observe(s, latency)
         if refining:
             await self._refresh_alert(s)
             out = await self.state(s, publish=True)
@@ -281,11 +305,48 @@ class SessionService:
         s = self.sessions[sid]
         if s.status != "question" or s.question_id != question_id:
             raise ValueError("no such open question")
+        if question_id.startswith("option:"):
+            return await self._answer_option(s, question_id.removeprefix("option:"), answer)
         latency = self._latency_ms(s)
-        s.dialogue.apply_answer(question_id, answer)
+        self._remember(s)
+        surprising = s.dialogue.apply_answer(question_id, answer)
         await self._event(s, "answer", {"question": question_id, "answer": answer, "latency_ms": latency})
         await self._log_belief(s)
+        await self._observe(s, latency, surprising=surprising, unsure=answer == "unsure")
         return await self._advance(s)
+
+    # ---- "Back": undo the patient's last input while they're still answering ----------------------
+
+    def _remember(self, s: Session):
+        # The catalog, config and learned model are shared and read-only: keep them out of the copy.
+        d = s.dialogue
+        memo = {id(d.cat): d.cat, id(d.cfg): d.cfg, id(d.personal): d.personal}
+        s.history.append({"dialogue": copy.deepcopy(d, memo)} | {k: copy.deepcopy(getattr(s, k)) for k in UNDOABLE}
+                         | {"ladder_score": (s.ladder.level, s.ladder.strain, s.ladder.good)})
+
+    async def back(self, sid: str) -> dict:
+        """Go back one step: the previous question, or "Where is it?" again. Only while nothing has been sent
+        to anyone yet (the status is "feeling" or "question"), so undoing can never retract an alert."""
+        s = self.sessions[sid]
+        if s.status not in CAN_GO_BACK or not s.history:
+            raise ValueError("nothing to go back to")
+        snap = s.history.pop()
+        s.dialogue = snap.pop("dialogue")
+        level, strain, good = snap.pop("ladder_score")
+        if level == s.ladder.level:   # the undone input earns no "good input" credit
+            s.ladder.strain, s.ladder.good = strain, good
+        for k, v in snap.items():
+            setattr(s, k, v)
+        await self._event(s, "back", {"to": s.status})
+        await self._log_belief(s)
+        change = s.ladder.observe_signal("correction", time.time())
+        if change:
+            await self._level_changed(s, change)
+        if s.ladder.level >= 3 and s.status in ("area", "feeling"):
+            return await self._advance(s)   # at yes/no, the restored step is asked as a question again
+        out = await self.state(s, publish=True)
+        s.prompted_at = time.time()
+        return out
 
     async def set_mode(self, sid: str, mode: str, reason: str = "user") -> dict:
         s = self.sessions[sid]
@@ -300,9 +361,13 @@ class SessionService:
             return await self.state(s)
         return await self._advance(s)
 
-    async def _advance(self, s: Session, finish: str | None = None) -> dict:
+    async def _advance(self, s: Session, finish: str | None = None, keep_clock: bool = False) -> dict:
         """`finish`: send to the nurse now with no follow-up question (washroom, pain medicine), unless the
-        safety floor escalates. The value is the plain-language reason shown on the alert."""
+        safety floor escalates. The value is the plain-language reason shown on the alert.
+        keep_clock: a ladder change re-asked mid-request, so the silence timer keeps counting from the last
+        real prompt (the communication ladder must never delay escalation)."""
+        if s.ladder.level >= 3 and not self._walking(s):
+            s.dialogue.open_yes_no()
         before = len(s.dialogue.lookup_results)
         d = s.dialogue.step()
         for lid, label, flag in s.dialogue.lookup_results[before:]:
@@ -313,11 +378,6 @@ class SessionService:
         self._spawn(self._log_decision(s, d))
         kind = d.chosen.kind
         s.question_id = None
-        if (not s.auto_switched and s.mode == "grid" and s.mode != s.tired_mode
-                and s.dialogue.fatigue() >= FATIGUE_SWITCH and kind in ("ask", "tap")):
-            # Adaptive access: tiring patients get larger, fewer targets, or the mode their profile prefers.
-            await self._event(s, "mode_changed", {"from": s.mode, "to": s.tired_mode, "reason": "fatigue"})
-            s.mode, s.auto_switched = s.tired_mode, True
         if kind == "escalate":
             s.status = "escalated"
             s.dialogue.attach_context()
@@ -331,6 +391,10 @@ class SessionService:
             s.status = "feeling" if s.dialogue.area else "area"
             if s.status == "feeling" and s.options is None:
                 s.options = self._build_options(s)
+            if s.status == "feeling" and s.ladder.level >= 3:
+                if not self._walking(s):   # walked every option without a yes: the engine's questions
+                    return await self._advance(s, keep_clock=keep_clock)
+                s.status, s.question_id = "question", f"option:{self._next_option(s)}"
         elif kind == "ask":
             s.status, s.question_id = "question", d.chosen.id
         elif kind == "consult":
@@ -341,8 +405,199 @@ class SessionService:
         await self._event(s, "fatigue", {"score": round(s.dialogue.fatigue(), 2)})
         if len(s.dialogue.lookup_results) > before:
             await self._log_belief(s)
+        if s.ladder.level == 4 and kind in ("ask", "tap"):
+            await self._assist_consult(s)
         out = await self.state(s, publish=True)
-        s.prompted_at = time.time()
+        if not keep_clock:
+            s.prompted_at = time.time()
+        return out
+
+    # ---- communication ladder (engine/ladder.py) -------------------------------------------------
+
+    def _usual_latency(self, s: Session) -> float | None:
+        """The patient's usual seconds per input: their history, else this session's median so far."""
+        if s.dialogue.baseline_interval:
+            return s.dialogue.baseline_interval
+        if len(s.latencies) >= 2:
+            ordered = sorted(s.latencies)
+            return ordered[len(ordered) // 2]
+        return None
+
+    async def _observe(self, s: Session, latency_ms: int, surprising: bool = False, unsure: bool = False):
+        latency = latency_ms / 1000
+        change = s.ladder.observe_input(time.time(), latency, self._usual_latency(s), surprising, unsure)
+        s.latencies.append(latency)
+        if change:
+            await self._level_changed(s, change)
+
+    async def signal(self, sid: str, kind: str) -> dict:
+        """A missed tap or a correction the tablet noticed."""
+        s = self.sessions[sid]
+        if s.status not in ("area", "feeling", "question"):
+            return await self.state(s)
+        await self._event(s, "ui_signal", {"kind": kind})
+        return await self._after_ladder(s, s.ladder.observe_signal(kind, time.time()))
+
+    async def set_level(self, sid: str, level: int, by: str = "patient") -> dict:
+        if by not in ("patient", "nurse"):
+            raise ValueError("by must be 'patient' or 'nurse'")
+        s = self.sessions[sid]
+        return await self._after_ladder(s, s.ladder.set_level(level, by, time.time()))
+
+    async def idle_step_down(self, sid: str, idle_s: float) -> dict | None:
+        """Silence monitor: the patient has been quiet for half the silence timeout mid-request."""
+        s = self.sessions.get(sid)
+        if not s or s.status not in MID_DIALOGUE:
+            return None
+        return await self._after_ladder(s, s.ladder.observe_idle(idle_s, time.time()))
+
+    async def _after_ladder(self, s: Session, change: Change | None) -> dict:
+        if not change:
+            return await self.state(s)
+        await self._level_changed(s, change)
+        if s.ladder.level < 3 and (s.question_id or "").startswith("option:"):
+            # Back up from yes/no: show the area's options as a grid again instead of one at a time.
+            s.status, s.question_id = "feeling", None
+            return await self.state(s, publish=True)
+        needs_engine = (s.ladder.level >= 3 and s.status in ("area", "feeling")) or \
+                       (s.ladder.level == 4 and not s.assist_consult and s.status in ("area", "feeling", "question"))
+        if needs_engine:
+            return await self._advance(s, keep_clock=s.status in MID_DIALOGUE)
+        return await self.state(s, publish=True)
+
+    async def _level_changed(self, s: Session, c: Change):
+        mode = "grid" if c.to_level == 1 else s.tired_mode
+        if mode != s.mode:
+            await self._event(s, "mode_changed", {"from": s.mode, "to": mode, "reason": f"level {c.to_level}"})
+            s.mode = mode
+        cid = uuid.uuid4().hex[:12]
+        payload = c.public() | {"id": cid, "at": now().isoformat()}
+        await self._event(s, "level_changed", payload)
+        await self.hub.publish("nurse", {"type": "level_changed", "patient_id": s.patient["id"],
+                                         "change": payload | {"explanation": None}})
+        if c.source in ("auto", "idle") and self.gemini.enabled:
+            self._spawn(self._explain_level(s, payload))
+
+    async def _explain_level(self, s: Session, payload: dict):
+        facts = {k: payload[k] for k in ("from_label", "to_label", "reason")}
+        text = await self.gemini.level_explanation(s.patient["name"], facts)
+        if text:
+            self.level_notes[payload["id"]] = text
+            await self.hub.publish("nurse", {"type": "level_changed", "patient_id": s.patient["id"],
+                                             "change": payload | {"explanation": text}})
+
+    async def _assist_consult(self, s: Session):
+        """Level 4: ask the best available person who knows the patient, once per session. The patient's
+        screen stays on the question (status unchanged), so the silence timer keeps running."""
+        s.assist_consult = True
+        people = [c for c in s.dialogue.consultants if c.available and c.id not in s.dialogue.consulted]
+        if not people:
+            return
+        person = max(people, key=lambda c: c.reliability)
+        status, question = s.status, s.question_id
+        await self._create_consult(s, person.id)
+        s.status, s.question_id = status, question
+
+    # Level 3+ after a body-area tap: the area's tailored options (engine/options.py) one at a time as
+    # yes/no questions, high-risk first, then in the order Gemini or the engine ranked them. A "yes" is
+    # exactly the option's tap; a "no" or "not sure" moves on without evidence (a no to one wording doesn't
+    # rule its feeling out). With every option declined, the engine's own yes/no questions take over.
+
+    def _walking(self, s: Session) -> bool:
+        d = s.dialogue
+        if d.area is None or d.feeling is not None or d.yes_no or not s.options:
+            return False
+        if s.option_walk is None:
+            ranked = [o for o in [*s.options["predicted"], *s.options["more"]] if o["feeling"] != opts.NONE_OF_THESE]
+            s.option_walk = [o["id"] for o in sorted(ranked, key=lambda o: not o["high_risk"])]
+        return bool(s.option_walk)
+
+    @staticmethod
+    def _next_option(s: Session) -> str:
+        return s.option_walk[0]
+
+    def _option(self, s: Session, option_id: str) -> dict:
+        o = s.options or {}
+        return next(x for x in [*o.get("predicted", []), *o.get("more", [])] if x["id"] == option_id)
+
+    async def _answer_option(self, s: Session, option_id: str, answer: str) -> dict:
+        latency = self._latency_ms(s)
+        self._remember(s)
+        await self._event(s, "answer", {"question": f"option:{option_id}", "answer": answer, "latency_ms": latency})
+        s.option_walk = [i for i in (s.option_walk or []) if i != option_id]
+        if answer != "yes":
+            await self._observe(s, latency, unsure=answer == "unsure")
+            return await self._advance(s)
+        o = self._option(s, option_id)
+        s.choice = self._pick_option(s, option_id, o["feeling"])
+        s.dialogue.apply_tap("feeling", o["feeling"])
+        await self._event(s, "tap", {"kind": "feeling", "tap": o["feeling"], "latency_ms": latency,
+                                     "option": s.choice, "via": "yes_no"})
+        await self._log_belief(s)
+        await self._observe(s, latency)
+        finish = f"Sent straight away: “{s.choice['label']}” needs no follow-up question." if s.choice["send_now"] else None
+        return await self._advance(s, finish)
+
+    async def warm_simple(self):
+        """Gemini rewrites of every tile label and question for ladder levels 2 and 3 (one request each)."""
+        texts = list(dict.fromkeys([*self._ladder_texts().values(), *(q.text for q in self.cat.questions)]))
+        for level in (2, 3):
+            if level in self._simple:
+                continue
+            out = await self.gemini.simplify(texts, level)
+            if out:
+                self._simple[level] = dict(zip(texts, out))
+                log.info("ladder level %d wording ready", level)
+
+    def _ladder_texts(self) -> dict[str, str]:
+        """Every on-screen label the ladder can reword, keyed as the tablet looks them up."""
+        out = {f"area:{k}": v for k, v in self.cat.area_labels.items()}
+        for area, spec in self.cat.raw.get("area_options", {}).items():
+            out[f"prompt:{area}"] = spec["prompt"]
+            out |= {f"option:{o['id']}": o["label"] for o in spec["options"]}
+        return out
+
+    def simple(self, text: str, level: int) -> str:
+        return self._simple.get(min(level, 3), {}).get(text, text) if level >= 2 else text
+
+    def level_view(self, s: Session) -> dict:
+        lad, d, level = s.ladder, s.dialogue, s.ladder.level
+        out = lad.public() | {"levels": LEVELS, "options": None, "labels": None, "assist": None}
+        if level == 2:
+            # Areas: the likeliest few, chest always kept. The second step needs nothing here: level 1 shows
+            # all of an area's options, level 2 only the predicted ones (engine/options.py) + "Something else".
+            out["options"] = {"area": likely_taps(self.cat.area_lik, d.belief, self.cat.high_risk, k=4)}
+        if level >= 2:
+            out["labels"] = {k: self.simple(v, level) for k, v in self._ladder_texts().items()}
+        if level == 4:
+            c = self.consults.get(s.consult_id or "")
+            out["assist"] = {"person_name": c["person_name"], "relation": c["relation"],
+                             "status": c["status"]} if c else None
+        return out
+
+    async def ladder_overview(self, hours: int = 12) -> list[dict]:
+        """Nurse station: each patient's current level and today's level changes, newest last."""
+        try:
+            events = await self.store.events_of_type("level_changed", now() - timedelta(hours=hours))
+        except Exception:
+            log.exception("level history lookup failed")
+            events = []
+        latest: dict[str, Session] = {}
+        for s in self.sessions.values():
+            if s.patient["id"] not in latest or s.started > latest[s.patient["id"]].started:
+                latest[s.patient["id"]] = s
+        out = []
+        for p in PATIENT_BY_ID.values():
+            changes = [e["payload"] | {"explanation": self.level_notes.get(e["payload"].get("id", ""))}
+                       for e in events if e["patient_id"] == p["id"]]
+            s = latest.get(p["id"])
+            if not changes and not s:
+                continue
+            out.append({"patient_id": p["id"], "patient_name": p["name"], "room": p["room"],
+                        "session_id": s.id if s else None,
+                        "level": s.ladder.level if s else None, "label": LEVELS[s.ladder.level] if s else None,
+                        "active": bool(s and s.status in ("area", "feeling", "question", "waiting_consult")),
+                        "changes": changes})
         return out
 
     async def state(self, s: Session, publish: bool = False) -> dict:
@@ -350,8 +605,13 @@ class SessionService:
         question = None
         ui = await self.ui_text(s.language)
         if s.question_id:
-            text = self.cat.question_by_id[s.question_id].text
-            question = {"id": s.question_id, "text": text,
+            if s.question_id.startswith("option:"):
+                label = self._option(s, s.question_id.removeprefix("option:"))["label"]
+                full, text = f"{label}?", f"{self.simple(label, s.ladder.level).rstrip('?')}?"
+            else:
+                full = self.cat.question_by_id[s.question_id].text
+                text = self.simple(full, s.ladder.level)
+            question = {"id": s.question_id, "text": text, "text_full": full,
                         "text_local": (await self.gemini.translate([text], s.language))[0]}
         consult = None
         if s.consult_id and s.status == "waiting_consult":
@@ -367,8 +627,10 @@ class SessionService:
             "trace": [t.public() for t in d.trace], "alert_id": s.alert_id, "ui_text": ui,
             "prior_reasons": s.prior_reasons, "inconsistencies": d.inconsistencies,
             "baseline_interval": d.baseline_interval, "profile": self._profile_items(s.patient["id"]),
+            "ladder": self.level_view(s),
             "options": s.options if s.status == "feeling" or (s.status == "escalated" and d.feeling is None) else None,
             "choice": s.choice,
+            "can_go_back": s.status in CAN_GO_BACK and bool(s.history),
         }
         if publish:
             await self.hub.publish(f"patient:{s.patient['id']}", {"type": "session", "session": out})
@@ -621,6 +883,7 @@ class SessionService:
         person = PERSON_BY_ID[person_id]
         options = s.dialogue.consult_options()
         s.dialogue.mark_consulted(person_id)
+        s.history.clear()   # someone else is now involved: no undoing past this point
         labels = [self.cat.by_id[n]["label"] for n in options]
         taps = [self.cat.area_labels.get(s.dialogue.area, ""), self.cat.feeling_labels.get(s.dialogue.feeling, "")]
         c = {

@@ -41,6 +41,7 @@ class DecisionInput:
     reliability: float                      # patient's signal reliability
     fatigue: float                          # ≥ 1, grows with questions asked and slowing taps
     questions_asked: int = 0
+    max_questions: int | None = None        # None = cfg.max_questions (more at ladder level 3: no taps)
     asked: set[str] = field(default_factory=set)
     used_lookups: set[str] = field(default_factory=set)
     available_lookups: set[str] | None = None   # None = all catalog lookups
@@ -124,7 +125,8 @@ def decide(cat: Catalog, cfg: EngineConfig, x: DecisionInput) -> Decision:
         delay = cfg.lambda_delay * cfg.delay_lookup * risk
         actions.append(Action("lookup", lk.id, f"Look up: {lk.label}", value - delay, value, {"delay": delay}, eig))
 
-    if x.dialogue_open and x.questions_asked < cfg.max_questions and x.patient_can_answer:
+    max_q = cfg.max_questions if x.max_questions is None else x.max_questions
+    if x.dialogue_open and x.questions_asked < max_q and x.patient_can_answer:
         for q in cat.questions:
             if q.id in x.asked:
                 continue

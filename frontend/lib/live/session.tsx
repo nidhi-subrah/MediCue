@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
-import type { ModeId, Patient, SessionState } from '@/lib/types'
+import type { LadderLevel, ModeId, Patient, SessionState } from '@/lib/types'
 
 interface Welfare { id: string; requestedBy: string; expiresIn: number; startedAt: number; respondPath?: string }
 
@@ -18,6 +18,10 @@ interface LiveSessionValue {
   answerQuestion: (answer: 'yes' | 'no' | 'unsure') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
+  goBack: () => void
+  /** A missed tap: feeds the communication ladder. Never blocked by a pending request. */
+  signal: (kind: 'miss') => void
+  setLevel: (level: LadderLevel) => void
   respondWelfare: () => Promise<void>
 }
 
@@ -93,6 +97,15 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     },
     setMode: (mode) => void act('mode', { mode }),
     skipConsult: () => void act('skip_consult', {}),
+    goBack: () => void act('back', {}),
+    signal: (kind) => {
+      if (!session) return
+      api
+        .post<SessionState>(`/api/sessions/${session.session_id}/signal`, { kind })
+        .then(setSession)
+        .catch(() => {})   // a lost hint is harmless; the ladder also watches timing and answers
+    },
+    setLevel: (level) => void act('level', { level, by: 'patient' }),
     respondWelfare: async () => {
       if (!welfare) return
       await api.post(welfare.respondPath ?? `/api/welfare/${welfare.id}/respond`)

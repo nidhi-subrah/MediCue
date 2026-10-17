@@ -84,21 +84,50 @@
   --tap: 3.75rem;
 }
 
+/* Button size: --tap sizes the big choice buttons; --btn-min lifts every other button and button-style link
+   in the page content (the top bar is left alone so it keeps its layout). */
+:root {
+  --btn-min: 0px;
+}
 :root[data-button-size='large'] {
   --tap: 4.5rem;
+  --btn-min: 3.5rem;
 }
 :root[data-button-size='xl'] {
   --tap: 5.25rem;
+  --btn-min: 4.25rem;
+}
+#main :is(button, a[class*='rounded']):not([role='switch']) {
+  min-height: var(--btn-min);
 }
 
+/* Text size scales only text: Tailwind's text-* utilities read these variables, so spacing, widths and
+   layout stay put (changing the root font size would zoom the whole page instead). */
+:root {
+  --text-scale: 1;
+  --text-xs: calc(0.75rem * var(--text-scale));
+  --text-sm: calc(0.875rem * var(--text-scale));
+  --text-base: calc(1rem * var(--text-scale));
+  --text-lg: calc(1.125rem * var(--text-scale));
+  --text-xl: calc(1.25rem * var(--text-scale));
+  --text-2xl: calc(1.5rem * var(--text-scale));
+  --text-3xl: calc(1.875rem * var(--text-scale));
+  --text-4xl: calc(2.25rem * var(--text-scale));
+  --text-5xl: calc(3rem * var(--text-scale));
+  --text-6xl: calc(3.75rem * var(--text-scale));
+  --text-7xl: calc(4.5rem * var(--text-scale));
+}
 :root[data-text-size='lg'] {
-  font-size: 112.5%;
+  --text-scale: 1.15;
 }
 :root[data-text-size='xl'] {
-  font-size: 125%;
+  --text-scale: 1.3;
 }
 :root[data-text-size='xxl'] {
-  font-size: 140%;
+  --text-scale: 1.5;
+}
+body {
+  font-size: var(--text-base);
 }
 
 :root.high-contrast {
