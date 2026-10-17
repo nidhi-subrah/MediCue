@@ -35,6 +35,7 @@ class Settings:
     seed_demo_data: bool = os.getenv("SEED_DEMO_DATA", "1") == "1"
     consult_timeout_s: float = float(os.getenv("CONSULT_TIMEOUT_S", "120"))
     welfare_timeout_s: float = float(os.getenv("WELFARE_TIMEOUT_S", "45"))
+    research_tick_s: float = float(os.getenv("RESEARCH_TICK_S", "300"))
     unit_tz: ZoneInfo = ZoneInfo(os.getenv("UNIT_TZ", "America/Toronto"))
     engine: EngineConfig = field(default_factory=EngineConfig)
 

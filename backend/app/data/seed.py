@@ -4,16 +4,17 @@ Embedded patterns (what the dashboard and research loop should surface):
   * p-chen      pain requests jump in the last ~30 h, after a gabapentin reduction
   * p-alvarez   communication slowing: seconds per tap and taps per need climb; more switches to scan mode
   * p-kowalski  anxiety requests cluster in the late afternoon and evening, every day
+  * p-chen      anxiety requests often follow the end of his daughter's afternoon visit (family_visit events)
   * others      stable
 """
 import random
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from ..catalog import Catalog
 from ..config import settings
 
 DAYS = 8
+VISIT_SEED_OFFSET = 4
 
 
 def _row(cat: Catalog, rng, t, patient_id, need, taps, interval, mode="grid", correct_p=0.88):
@@ -21,7 +22,7 @@ def _row(cat: Catalog, rng, t, patient_id, need, taps, interval, mode="grid", co
     correct = rng.random() < correct_p
     predicted = need if correct else rng.choice([n for n in cat.need_ids if cat.group[cat.index[n]] == cat.group[i]] or [need])
     return {
-        "time": t, "patient_id": patient_id, "session_id": f"seed-{uuid.uuid4().hex[:10]}",
+        "time": t, "patient_id": patient_id, "session_id": f"seed-{rng.getrandbits(40):010x}",
         "predicted_need": predicted, "confirmed_need": need, "confirmed_group": cat.group[i], "risk": cat.risk[i],
         "correct": predicted == need, "escalated": cat.risk[i] == "high" or (cat.risk[i] == "medium" and rng.random() < 0.3),
         "taps": taps, "questions": max(taps - 2, 0), "resolve_seconds": round(taps * interval + rng.uniform(1, 4), 1),
@@ -91,6 +92,24 @@ def generate(cat: Catalog, now: datetime | None = None, seed: int = 42) -> tuple
             for _ in range(rng.randint(3, 4)):
                 need = rng.choice(["pain_surgical", "thirsty", "secretions", "reposition", "anxious"])
                 rows.append(_row(cat, rng, at(day, rng.randint(0, 23)), "p-okoye", need, rng.choice([2, 3]), rng.uniform(3, 5)))
+
+    # Wei Chen: daughter Lin visits most afternoons; anxiety requests tend to follow her leaving.
+    vr = random.Random(seed + VISIT_SEED_OFFSET)
+    for day in range(DAYS + 1):
+        if vr.random() < 0.1:
+            continue
+        visit_start = at(day, vr.choice([13, 14, 15]))
+        end = visit_start + timedelta(minutes=vr.randint(60, 150))
+        if end >= now:
+            continue
+        events.append({"time": visit_start, "patient_id": "p-chen", "session_id": None, "event_type": "family_visit",
+                       "payload": {"visitor": "Lin Chen", "end": end.isoformat()}})
+        if vr.random() < 0.75:
+            t = end + timedelta(minutes=vr.randint(10, 100))
+        else:
+            t = at(day, vr.choice([9, 10, 20, 21]))
+        if t < now:
+            rows.append(_row(cat, vr, t, "p-chen", "anxious", 3, vr.uniform(4, 5)))
 
     # Wei Chen: pain requests jump after the gabapentin reduction ~26 h ago (see patients.py)
     for _ in range(6):

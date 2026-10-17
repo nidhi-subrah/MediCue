@@ -37,8 +37,8 @@ flowchart LR
   N -->|one-tap confirm| L[Learning:<br/>source reliability, history]
   S --> T[(Tiger Data<br/>hypertables + continuous aggregates)]
   T --> K[Catch It Early trends]
-  T --> R[Research loop<br/>detect → hypothesis → clinician review]
-  R -->|validated findings| B
+  T --> R[Research agent<br/>hypothesis → check data / ask clinician / wait → lead review]
+  R -->|validated hypotheses| B
 ```
 
 - **Belief engine** (`backend/app/engine/belief.py`): prior from time of day, surgery recency, the patient's
@@ -87,7 +87,7 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
 | AI for Social Impact | patient tablet | ✅ Grid, large-tile and single-switch scanning modes, auto-switch to large tiles on fatigue, speech output, translated UI. Patient intent is never overwritten by chart data |
 | Healthcare & Well-being | whole app | ✅ No clinical-efficacy claims; disclaimers in the UI |
 | MLH Vultr | `infra/deploy/vultr.md`, `setup-vultr.sh` | 🟡 Scripts ready; needs an instance |
-| Papiers Autoresearch | `#/research`, `services/research.py` | ✅ Detectors → hypothesis → validate / reject / needs-more-data. Validated findings change priors; rejected ones stay rejected |
+| Papiers Autoresearch | `#/research`, `engine/research_decision.py`, `services/research*.py` | ✅ Clinician observations and detected patterns become hypotheses. An agent picks CHECK_DATA / ASK_CLINICIAN / WAIT by information gain − cost (scores shown), updates confidence, and sends hypotheses to mandatory lead review. Validated ones change priors; rejected ones stay rejected |
 | GoDaddy Registry domain | `infra/deploy/Caddyfile` | 🟡 Needs a registered domain + A record |
 | KAZE (conditional) | family view → "Check on …"; `start_welfare` | 🟡 Minimal: a pre-authorised caregiver asks for a check-in; no response in time → urgent nurse alert. Explicitly *not* unconsciousness detection |
 
@@ -100,5 +100,8 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
    consulting Lin. Open `#/family/fam-lin` and answer. One confirming question follows, then a routine SBAR alert.
    Confirm it on the nurse screen in one tap.
 4. **Catch It Early**: Wei Chen's pain requests jumped after a gabapentin reduction. Rosa Alvarez is taking longer per tap and moving to switch scanning.
-5. **Research**: validate Irena Kowalski's evening-anxiety finding; reject Meera Patel's admission artefact.
+5. **Research agent**: Priya's observation "Mr. Chen seems more anxious after his daughter leaves" is already a
+   hypothesis. Open its timeline and decision trace: the agent checked the data first (0.50 → 0.87), then chose to ask
+   Marcus rather than Priya. Answer **Agree** as Marcus. It crosses 0.90 and moves to Pending review, where you
+   **Validate** it. Then type a new observation and watch the agent pick its first action.
 6. **Accessibility**: on `#/patient/p-alvarez`, switch to *Switch scanning* and select with the space bar. Change the language to Español (needs a Gemini key).

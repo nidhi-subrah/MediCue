@@ -196,9 +196,53 @@ details summary { cursor: pointer; font-weight: 600; margin: 0.4rem 0; }
 .research-head { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
 .finding.status-validated { border-left: 4px solid var(--good); }
 .finding.status-rejected { opacity: 0.65; }
-.finding.status-needs_more_data { border-left: 4px solid var(--warning); }
 .confirm-row input { flex: 1 1 200px; }
 
 @media (prefers-reduced-motion: reduce) {
   .scan-focus, .tile:active { transform: none; }
 }
+
+/* Research agent (extends the research page styles above) */
+.research.research-agent { max-width: 1200px; }
+.research-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 1.5rem; align-items: start; }
+@media (max-width: 960px) { .research-grid { grid-template-columns: 1fr; } }
+.research-side { position: sticky; top: 1rem; }
+@media (max-width: 960px) { .research-side { position: static; } }
+.digest { border-left: 4px solid var(--accent); }
+.digest h2 { font-size: 1rem; margin-top: 0; }
+.hyp-statement { font-size: 1.1rem; margin: 0.25rem 0 0.5rem; }
+.hyp-status { font-weight: 700; }
+.tag-clinician { background: var(--warning-soft); }
+.observation { margin: 0 0 0.5rem; padding: 0.4rem 0.75rem; border-left: 3px solid var(--line); font-style: italic; }
+.observation .muted { font-style: normal; }
+.confidence { display: grid; grid-template-columns: 3.5rem minmax(120px, 1fr) auto; gap: 0.6rem; align-items: center; margin: 0.5rem 0; }
+.confidence-value { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.confidence-track { position: relative; height: 12px; background: var(--line); border-radius: 6px; }
+.confidence-fill { position: absolute; inset: 0 auto 0 0; background: var(--bar); border-radius: 6px 4px 4px 6px; }
+.confidence-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-2); }
+.hyp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.5rem; margin: 0.5rem 0; }
+.hyp-facts dt { font-size: 0.72rem; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.03em; }
+.hyp-facts dd { margin: 0; font-size: 0.9rem; }
+.ev-plus { color: var(--good); font-weight: 600; }
+.ev-minus { color: var(--critical); font-weight: 600; }
+.timeline { list-style: none; padding: 0; margin: 0.25rem 0; border-left: 2px solid var(--line); }
+.timeline li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 0.5rem; padding: 0.2rem 0 0.2rem 0.75rem; font-size: 0.85rem; position: relative; }
+.timeline li::before { content: ""; position: absolute; left: -5px; top: 0.55rem; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.timeline time { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.timeline .tl-action::before { background: var(--accent); }
+.timeline .tl-evidence::before { background: var(--bar); }
+.timeline .tl-confidence span { font-weight: 600; font-variant-numeric: tabular-nums; }
+.timeline .tl-status::before, .timeline .tl-review::before { background: var(--warning); }
+.timeline .tl-status span, .timeline .tl-review span { font-weight: 700; }
+.evidence { padding-left: 1rem; font-size: 0.875rem; }
+.evidence > li { margin: 0.35rem 0; }
+.episodes { list-style: none; padding-left: 0.5rem; margin: 0.25rem 0; color: var(--ink-2); }
+.inquiry .consult-q { font-size: 1.05rem; }
+.inquiry input { width: 100%; margin: 0.25rem 0 0.5rem; }
+.inquiry-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.observation-form label { display: flex; flex-direction: column; gap: 0.2rem; margin: 0.5rem 0; }
+.observation-form textarea { font: inherit; padding: 0.5rem; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); resize: vertical; }
+.ok { color: var(--good); }
+.finding.status-supported_pending_review { border-left: 4px solid var(--good); }
+.finding.status-rejected_pending_review { border-left: 4px solid var(--critical); }
+.finding.status-inconclusive { border-left: 4px solid var(--line); }
