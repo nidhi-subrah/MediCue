@@ -90,7 +90,7 @@ export function AlertCard({
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (
-          <div key={k} className="grid grid-cols-[7.5rem_1fr] gap-3 sm:grid-cols-[7.5rem_1fr]">
+          <div key={k} className="grid grid-cols-1 gap-1 sm:grid-cols-[7.5rem_1fr] sm:gap-3">
             <dt className="pt-0.5 text-sm text-muted-foreground">{label}</dt>
             <dd className="text-base">{alert.sbar[k]}</dd>
           </div>

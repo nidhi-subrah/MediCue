@@ -4,6 +4,8 @@ import { MotionConfig } from 'motion/react'
 import { useEffect } from 'react'
 import { Toaster } from 'sonner'
 import { useSettings } from '@/lib/store/settings'
+import { OfflineBanner } from './offline-banner'
+import { SwRegister } from './sw-register'
 import { UrgentOverlay } from './urgent-overlay'
 
 function useApplySettings() {
@@ -45,6 +47,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <MotionConfig reducedMotion={reducedMotion ? 'always' : 'user'}>
+      <SwRegister />
+      <OfflineBanner />
       {children}
       <UrgentOverlay />
       <Toaster
