@@ -9,6 +9,7 @@ from app.services.case_packet import NEXT_STEPS, case_facts, template_case_sbar
 from app.services.gemini import Gemini
 from app.sim.demo_scenarios import AMBIGUOUS_EVENING, run_offline
 from tests.test_case_sbar import FakeModels, gemini_with, receive
+from tests.conftest import login_as_nurse
 
 CHEN = PATIENT_BY_ID["p-chen"]
 
@@ -32,21 +33,24 @@ def test_offline_story_fatigue_rises_and_the_engine_stops_asking():
 
 
 def test_live_demo_puts_a_case_packet_on_the_nurse_screen():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        run = play(client)
-        assert run["status"] == "sent" and run["alert_id"]
-        assert any(s["mode"] == "large" for s in run["steps"])        # the tablet switched as he tired
-        assert receive(nurse, run["alert_id"], "alert")["patient_name"] == "Wei Chen"
-        case = receive(nurse, run["alert_id"], "case")
-        p = case["packet"]
-        assert p["stop_reason"]["code"] == "FATIGUE_HIGH" and "stopped" in p["stop_reason"]["text"]
-        offline = run_offline(AMBIGUOUS_EVENING)["packet"]
-        assert p["stop_reason"]["code"] == offline["stop_reason"]["code"]
-        assert case["sbar"]["recommendation"] == p["next_step"]["text"]
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            run = play(client)
+            assert run["status"] == "sent" and run["alert_id"]
+            assert any(s["mode"] == "large" for s in run["steps"])        # the tablet switched as he tired
+            assert receive(nurse, run["alert_id"], "alert")["patient_name"] == "Wei Chen"
+            case = receive(nurse, run["alert_id"], "case")
+            p = case["packet"]
+            assert p["stop_reason"]["code"] == "FATIGUE_HIGH" and "stopped" in p["stop_reason"]["text"]
+            offline = run_offline(AMBIGUOUS_EVENING)["packet"]
+            assert p["stop_reason"]["code"] == offline["stop_reason"]["code"]
+            assert case["sbar"]["recommendation"] == p["next_step"]["text"]
 
 
 def test_demo_endpoints():
     with TestClient(app) as client:
+        login_as_nurse(client)
         listed = client.get("/api/demo/scenarios").json()
         assert [s["id"] for s in listed] == [AMBIGUOUS_EVENING.id] and listed[0]["hour"] == 19
         assert client.post("/api/demo/scenarios/nope", json={}).status_code == 404
@@ -55,12 +59,14 @@ def test_demo_endpoints():
 # ---- Template vs Gemini: the same packet, two wordings ---------------------------------------------
 
 def test_with_gemini_off_the_case_keeps_the_template_and_the_facts():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        run = play(client)
-        case = receive(nurse, run["alert_id"], "case")
-        assert case["gemini"] == {"outcome": "disabled", "sbar": None, "problems": []}
-        assert case["sbar"] == case["sbar_template"] == template_case_sbar(case["packet"], CHEN)
-        assert case["facts"] == json.loads(json.dumps(case_facts(case["packet"], CHEN)))
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            run = play(client)
+            case = receive(nurse, run["alert_id"], "case")
+            assert case["gemini"] == {"outcome": "disabled", "sbar": None, "problems": []}
+            assert case["sbar"] == case["sbar_template"] == template_case_sbar(case["packet"], CHEN)
+            assert case["facts"] == json.loads(json.dumps(case_facts(case["packet"], CHEN)))
 
 
 def _with_gemini(reply: str | None, error: Exception | None = None) -> Gemini:
@@ -82,49 +88,55 @@ class ReadsTheFacts:
 
 
 def test_with_gemini_on_both_versions_are_kept_and_the_facts_are_identical():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        app.state.svc.gemini = gemini_with(ReadsTheFacts())
-        try:
-            run = play(client)
-            first = receive(nurse, run["alert_id"], "case")            # template first, at once
-            assert first["sbar_source"] == "template" and first["gemini"]["outcome"] == "pending"
-            case = receive(nurse, run["alert_id"], "case")             # then Gemini's checked wording
-            assert case["gemini"]["outcome"] == "gemini" and case["sbar_source"] == "gemini"
-            assert case["gemini"]["sbar"]["situation"].endswith("still unclear.")
-            assert case["sbar_template"] == first["sbar_template"]       # same packet, same template
-            assert case["sbar_template"]["situation"] != case["gemini"]["sbar"]["situation"]
-            assert case["gemini"]["sbar"]["recommendation"] == case["packet"]["next_step"]["text"]
-            assert case["facts"] == first["facts"]                      # Gemini saw only these facts
-        finally:
-            app.state.svc.gemini = Gemini(api_key=None)
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            app.state.svc.gemini = gemini_with(ReadsTheFacts())
+            try:
+                run = play(client)
+                first = receive(nurse, run["alert_id"], "case")            # template first, at once
+                assert first["sbar_source"] == "template" and first["gemini"]["outcome"] == "pending"
+                case = receive(nurse, run["alert_id"], "case")             # then Gemini's checked wording
+                assert case["gemini"]["outcome"] == "gemini" and case["sbar_source"] == "gemini"
+                assert case["gemini"]["sbar"]["situation"].endswith("still unclear.")
+                assert case["sbar_template"] == first["sbar_template"]       # same packet, same template
+                assert case["sbar_template"]["situation"] != case["gemini"]["sbar"]["situation"]
+                assert case["gemini"]["sbar"]["recommendation"] == case["packet"]["next_step"]["text"]
+                assert case["facts"] == first["facts"]                      # Gemini saw only these facts
+            finally:
+                app.state.svc.gemini = Gemini(api_key=None)
 
 
 def test_a_rejected_gemini_wording_is_shown_with_its_reasons_and_the_template_stays():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        bad = {"situation": "Wei Chen needs help.", "background": "Day 2 after a stroke.",
-               "assessment": "Probably nauseous at 91%.", "recommendation": "Give an antiemetic."}
-        app.state.svc.gemini = _with_gemini(json.dumps(bad))
-        try:
-            run = play(client)
-            receive(nurse, run["alert_id"], "case")
-            case = receive(nurse, run["alert_id"], "case")
-            assert case["gemini"]["outcome"] == "rejected" and case["gemini"]["sbar"] is None
-            assert any("91" in x for x in case["gemini"]["problems"])
-            assert case["sbar_source"] == "template" and case["sbar"] == case["sbar_template"]
-        finally:
-            app.state.svc.gemini = Gemini(api_key=None)
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            bad = {"situation": "Wei Chen needs help.", "background": "Day 2 after a stroke.",
+                   "assessment": "Probably nauseous at 91%.", "recommendation": "Give an antiemetic."}
+            app.state.svc.gemini = _with_gemini(json.dumps(bad))
+            try:
+                run = play(client)
+                receive(nurse, run["alert_id"], "case")
+                case = receive(nurse, run["alert_id"], "case")
+                assert case["gemini"]["outcome"] == "rejected" and case["gemini"]["sbar"] is None
+                assert any("91" in x for x in case["gemini"]["problems"])
+                assert case["sbar_source"] == "template" and case["sbar"] == case["sbar_template"]
+            finally:
+                app.state.svc.gemini = Gemini(api_key=None)
 
 
 def test_ask_gemini_again_after_no_reply():
-    with TestClient(app) as client, client.websocket_connect("/ws?channel=nurse") as nurse:
-        app.state.svc.gemini = _with_gemini(None, error=RuntimeError("quota"))
-        try:
-            run = play(client)
-            receive(nurse, run["alert_id"], "case")
-            assert receive(nurse, run["alert_id"], "case")["gemini"]["outcome"] == "no_reply"
-            case = client.get(f"/api/cases/{run['alert_id']}").json()
-            app.state.svc.gemini = _with_gemini(json.dumps(case["sbar_template"]))
-            again = client.post(f"/api/cases/{run['alert_id']}/gemini").json()
-            assert again["gemini"]["outcome"] == "gemini" and again["sbar_source"] == "gemini"
-        finally:
-            app.state.svc.gemini = Gemini(api_key=None)
+    with TestClient(app) as client:
+        login_as_nurse(client)
+        with client.websocket_connect("/ws?channel=nurse") as nurse:
+            app.state.svc.gemini = _with_gemini(None, error=RuntimeError("quota"))
+            try:
+                run = play(client)
+                receive(nurse, run["alert_id"], "case")
+                assert receive(nurse, run["alert_id"], "case")["gemini"]["outcome"] == "no_reply"
+                case = client.get(f"/api/cases/{run['alert_id']}").json()
+                app.state.svc.gemini = _with_gemini(json.dumps(case["sbar_template"]))
+                again = client.post(f"/api/cases/{run['alert_id']}/gemini").json()
+                assert again["gemini"]["outcome"] == "gemini" and again["sbar_source"] == "gemini"
+            finally:
+                app.state.svc.gemini = Gemini(api_key=None)

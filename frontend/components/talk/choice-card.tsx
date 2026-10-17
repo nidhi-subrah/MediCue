@@ -56,7 +56,7 @@ export const ChoiceCard = forwardRef<
         'group relative flex w-full items-center gap-4 rounded-2xl border-2 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 ease-soft active:translate-y-0 active:scale-[0.98]',
         !highlighted && 'hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10',
         tone.card,
-        huge ? 'min-h-32 justify-center p-6' : large ? 'min-h-24 p-5' : 'min-tap p-4',
+        huge ? 'min-h-32 justify-center p-6' : large ? 'min-h-[max(6rem,var(--tap))] p-5' : 'min-tap p-4',
         highlighted &&
           'z-10 border-primary bg-primary-soft shadow-[0_0_0_4px_var(--color-primary-soft),0_0_0_6px_var(--color-primary)]',
         item.tone === 'urgent' && highlighted && 'border-urgent shadow-[0_0_0_4px_var(--color-urgent-soft),0_0_0_6px_var(--color-urgent)]',
@@ -86,7 +86,7 @@ export const ChoiceCard = forwardRef<
         </span>
       )}
       <span className="flex min-w-0 flex-col">
-        <span className={cn('font-semibold leading-snug text-pretty', huge ? 'text-4xl' : large ? 'text-2xl' : 'text-lg')}>
+        <span className={cn('break-words font-semibold leading-snug text-pretty', huge ? 'text-4xl' : large ? 'text-2xl' : 'text-lg')}>
           {item.label}
         </span>
         {item.hint && (

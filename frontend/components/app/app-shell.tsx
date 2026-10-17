@@ -1,9 +1,10 @@
 'use client'
 
-import { Activity, ActivitySquare, FlaskConical, Settings2, Stethoscope, Users } from 'lucide-react'
+import { Activity, ActivitySquare, FlaskConical, LogOut, Settings2, Stethoscope, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useAuth } from './auth-provider'
 import { Brand } from './brand'
 import { UrgentButton } from './urgent-button'
 
@@ -24,6 +25,7 @@ export function AppShell({
   wide?: boolean
 }) {
   const pathname = usePathname()
+  const { user, logout } = useAuth()
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -63,6 +65,16 @@ export function AppShell({
             </ul>
           </nav>
           <UrgentButton compact />
+          {user && (
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              <span className="hidden lg:inline">Log out</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -90,14 +102,16 @@ export function AppShell({
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex h-14 flex-col items-center justify-center gap-1 rounded-2xl text-xs font-semibold transition-colors',
+                    'flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 text-xs font-semibold transition-colors',
                     active
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:bg-muted',
                   )}
                 >
-                  <Icon className="size-5" aria-hidden="true" />
-                  {item.label}
+                  <Icon className="size-5 shrink-0" aria-hidden="true" />
+                  <span className="flex h-8 items-center justify-center text-center leading-tight">
+                    {item.label}
+                  </span>
                 </Link>
               </li>
             )

@@ -7,6 +7,7 @@ from app.engine.ladder import STEP_UP_AFTER, Ladder, likely_taps
 from app.main import app
 from app.risk.silence import SilenceConfig, mid_dialogue_timeout
 from app.risk.silence_monitor import utcnow
+from tests.conftest import login_as_nurse
 
 cat = get_catalog()
 
@@ -125,6 +126,7 @@ def _start(client, pid="p-patel"):
 
 def test_session_reports_its_level_and_simplified_options():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         assert s["ladder"]["level"] == 1 and s["ladder"]["options"] is None
         s = client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 2}).json()
@@ -136,6 +138,7 @@ def test_session_reports_its_level_and_simplified_options():
 
 def test_mistaps_reshape_the_tablet_mid_conversation():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         sid = s["session_id"]
         for _ in range(4):
@@ -147,6 +150,7 @@ def test_mistaps_reshape_the_tablet_mid_conversation():
 
 def test_yes_no_level_replaces_the_taps_with_questions_and_still_resolves():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         s = client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 3}).json()
         assert s["status"] == "question" and s["taps"] == 0
@@ -170,6 +174,7 @@ def test_yes_no_level_replaces_the_taps_with_questions_and_still_resolves():
 
 def test_yes_no_level_still_escalates_chest_pain():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         s = client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 3}).json()
         chest = cat.index["pain_chest"]
@@ -184,6 +189,7 @@ def test_yes_no_level_still_escalates_chest_pain():
 
 def test_assisted_level_asks_family_without_leaving_the_question():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client, "p-chen")    # daughter Lin reads his gestures
         sid = s["session_id"]
         with client.websocket_connect("/ws?channel=family:fam-lin") as family:
@@ -196,6 +202,7 @@ def test_assisted_level_asks_family_without_leaving_the_question():
 
 def test_nurse_station_sees_the_level_timeline():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         with client.websocket_connect("/ws?channel=nurse") as nurse:
             client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 2, "by": "nurse"})
@@ -207,6 +214,7 @@ def test_nurse_station_sees_the_level_timeline():
 
 def test_silence_halfway_steps_down_and_escalation_is_not_delayed():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         sid = s["session_id"]
         s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "mouth_throat"}).json()
@@ -234,6 +242,7 @@ def _yes_no_after_area(client, area, pid="p-patel"):
 
 def test_yes_no_walks_the_areas_tailored_options_high_risk_first():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _yes_no_after_area(client, "mouth_throat")
         assert s["status"] == "question" and s["question"]["id"].startswith("option:mouth_throat.")
         spec = cat.raw["area_options"]["mouth_throat"]["options"]
@@ -244,6 +253,7 @@ def test_yes_no_walks_the_areas_tailored_options_high_risk_first():
 
 def test_a_yes_to_an_option_is_that_options_tap():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _yes_no_after_area(client, "mouth_throat")
         sid = s["session_id"]
         for _ in range(8):
@@ -260,6 +270,7 @@ def test_a_yes_to_an_option_is_that_options_tap():
 
 def test_declining_every_option_falls_back_to_the_engines_questions():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _yes_no_after_area(client, "head")
         sid = s["session_id"]
         while s["status"] == "question" and s["question"]["id"].startswith("option:"):
@@ -271,6 +282,7 @@ def test_declining_every_option_falls_back_to_the_engines_questions():
 
 def test_more_choices_from_the_walk_shows_the_options_grid_again():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _yes_no_after_area(client, "head")
         s = client.post(f"/api/sessions/{s['session_id']}/level", json={"level": 2}).json()
         assert s["status"] == "feeling" and s["question"] is None and s["options"]
@@ -294,6 +306,7 @@ def run_to_end(client, s, need):
 
 def test_going_back_counts_as_a_correction_but_keeps_the_level():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _start(client)
         sid = s["session_id"]
         for _ in range(4):
@@ -306,6 +319,7 @@ def test_going_back_counts_as_a_correction_but_keeps_the_level():
 
 def test_back_inside_the_yes_no_walk_returns_to_the_previous_option():
     with TestClient(app) as client:
+        login_as_nurse(client)
         s = _yes_no_after_area(client, "head")
         sid, first = s["session_id"], s["question"]["id"]
         s = client.post(f"/api/sessions/{sid}/answer", json={"question_id": first, "answer": "no"}).json()
