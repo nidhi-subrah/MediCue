@@ -288,3 +288,27 @@ def run_to_end(client, s, need):
         else:
             break
     return s
+
+
+# ---- Anni's "Back" with the ladder -------------------------------------------------------------------
+
+def test_going_back_counts_as_a_correction_but_keeps_the_level():
+    with TestClient(app) as client:
+        s = _start(client)
+        sid = s["session_id"]
+        for _ in range(4):
+            s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "head"}).json()
+            assert s["can_go_back"]
+            s = client.post(f"/api/sessions/{sid}/back").json()
+            assert s["status"] == "area"
+        assert s["ladder"]["level"] == 2 and "4 corrections" in s["ladder"]["changes"][-1]["reason"]
+
+
+def test_back_inside_the_yes_no_walk_returns_to_the_previous_option():
+    with TestClient(app) as client:
+        s = _yes_no_after_area(client, "head")
+        sid, first = s["session_id"], s["question"]["id"]
+        s = client.post(f"/api/sessions/{sid}/answer", json={"question_id": first, "answer": "no"}).json()
+        assert s["question"]["id"] != first
+        s = client.post(f"/api/sessions/{sid}/back").json()
+        assert s["status"] == "question" and s["question"]["id"] == first

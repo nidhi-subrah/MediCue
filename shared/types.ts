@@ -69,6 +69,7 @@ export interface SessionState {
   options: FeelingOptions | null;     // tailored second-step options (backend/app/engine/options.py)
   choice: OptionChoice | null;        // the option the patient picked
   ladder: LadderState;                // communication ladder (backend/app/engine/ladder.py)
+  can_go_back: boolean;               // "Back" undoes the last input (only while nothing has been sent)
 }
 
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }

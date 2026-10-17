@@ -15,7 +15,7 @@ import { QuestionStage } from './question-stage'
 import { SummaryPanel } from './summary-panel'
 
 export function TalkView() {
-  const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, respondWelfare,
+  const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
     signal, setLevel } = useLiveSession()
   const audio = useSettings((s) => s.spokenPrompts)
   const updateSettings = useSettings((s) => s.update)
@@ -116,8 +116,8 @@ export function TalkView() {
                 stepNumber={session.taps + 1}
                 mode={mode}
                 level={level}
-                canUndo={false}
-                onUndo={() => {}}
+                canUndo={session.can_go_back}
+                onUndo={goBack}
                 onSignal={signal}
               />
             </AnimatePresence>

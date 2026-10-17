@@ -18,8 +18,9 @@ interface LiveSessionValue {
   answerQuestion: (answer: 'yes' | 'no' | 'unsure') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
-  /** A missed tap or a correction: feeds the communication ladder. Never blocked by a pending request. */
-  signal: (kind: 'miss' | 'correction' | 'deletion') => void
+  goBack: () => void
+  /** A missed tap: feeds the communication ladder. Never blocked by a pending request. */
+  signal: (kind: 'miss') => void
   setLevel: (level: LadderLevel) => void
   respondWelfare: () => Promise<void>
 }
@@ -96,6 +97,7 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     },
     setMode: (mode) => void act('mode', { mode }),
     skipConsult: () => void act('skip_consult', {}),
+    goBack: () => void act('back', {}),
     signal: (kind) => {
       if (!session) return
       api

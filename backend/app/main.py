@@ -248,6 +248,12 @@ async def skip_consult(sid: str):
     return await _call(svc().skip_consult(sid))
 
 
+@app.post("/api/sessions/{sid}/back")
+async def back(sid: str):
+    """Undo the patient's last input (only while they're still answering; nothing sent yet)."""
+    return await _call(svc().back(sid))
+
+
 # ---- nurse ----------------------------------------------------------------------------------------
 
 class ConfirmBody(BaseModel):
