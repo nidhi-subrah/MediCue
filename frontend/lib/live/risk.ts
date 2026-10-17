@@ -53,14 +53,19 @@ export function useSilenceLadders() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  const loadLadders = useCallback(
+    () => api.get<SilenceLadder[]>('/api/risk/silence/ladders').then(setLadders).catch((e) => setError(String(e))),
+    [],
+  )
+
   useEffect(() => {
-    api.get<SilenceLadder[]>('/api/risk/silence/ladders').then(setLadders).catch((e) => setError(String(e)))
+    void loadLadders()
     api.get<Patient[]>('/api/patients').then(setPatients).catch(() => {})
-  }, [])
+  }, [loadLadders])
 
   useChannel('nurse', (m) => {
     if (m.type === 'silence_check') setLadders((all) => [m.ladder, ...all.filter((x) => x.id !== m.ladder.id)])
-  })
+  }, loadLadders)
 
   const start = useCallback(async (patientId: string) => {
     setError(null)
