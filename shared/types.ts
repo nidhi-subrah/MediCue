@@ -272,6 +272,7 @@ export interface PatientAnalytics {
 /** `GET /api/analytics/tigerdata` — every field is a real measurement; missing capability
  *  comes back as `unavailable`/`null`, never a fabricated number. */
 export interface TigerDataOverview {
+  store?: "timescale" | "memory";    // memory = in-process fallback: no hypertables or compression
   counts: { events: number; confirmations: number; belief_snapshots: number; decision_candidates: number };
   latest_event_time: string | null;
   hypertable_count: number; chunk_count: number | null;
