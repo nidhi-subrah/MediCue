@@ -17,6 +17,7 @@ from .catalog import get_catalog
 from .config import settings
 from .data import seed
 from .data.patients import PATIENT_BY_ID, PATIENTS, PERSON_BY_ID
+from .risk import router as risk_router, start as start_risk, start_silence
 from .services.gemini import Gemini
 from .services.hub import Hub
 from .services.research import run_research
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
         rows, events = seed.generate(cat)
         await store.bulk_seed(rows, events)
         log.info("seeded %d synthetic confirmations", len(rows))
+    app.state.risk = await start_risk(store)
     conformal = await asyncio.to_thread(calibrate, cat, settings.engine)
     log.info("conformal q̂ = %.3f from %d calibration dialogues", conformal.qhat, conformal.n_calibration)
     gemini = Gemini()
@@ -45,16 +47,20 @@ async def lifespan(app: FastAPI):
     app.state.cat, app.state.store, app.state.gemini = cat, store, gemini
     app.state.hub = Hub()
     app.state.svc = SessionService(cat, settings.engine, store, app.state.hub, gemini, conformal)
+    app.state.silence = start_silence(app.state.svc, app.state.risk)
     try:
         await run_research(cat, store, gemini, PATIENT_BY_ID)
     except Exception:
         log.exception("initial research run failed")
     yield
+    if app.state.silence:
+        await app.state.silence.stop()
     await store.close()
 
 
 app = FastAPI(title="SilentSignal", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
+app.include_router(risk_router)
 
 
 def svc() -> SessionService:

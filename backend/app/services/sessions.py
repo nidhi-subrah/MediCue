@@ -15,7 +15,7 @@ from ..config import EngineConfig, settings
 from ..data.patients import PATIENT_BY_ID, PERSON_BY_ID
 from ..engine.belief import PriorContext, context_prior, entropy
 from ..engine.conformal import ConformalPredictor
-from ..engine.decision import Consultant, Decision
+from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
 from .gemini import Gemini, template_sbar
 from .hub import Hub
@@ -62,6 +62,7 @@ class Session:
     alert_id: str | None = None
     decision: Decision | None = None
     started: float = field(default_factory=time.time)
+    prompted_at: float = field(default_factory=time.time)   # when the current prompt was shown (tap latency)
     belief_step: int = 0
     consult_answers: list[tuple[str, str | None]] = field(default_factory=list)  # (person id, need id)
 
@@ -155,27 +156,37 @@ class SessionService:
         self.sessions[s.id] = s
         await self._event(s, "session_started", {"mode": mode, "language": s.language, "prior_reasons": reasons})
         await self._log_belief(s)
-        return await self.state(s)
+        out = await self.state(s)
+        s.prompted_at = time.time()
+        return out
+
+    @staticmethod
+    def _latency_ms(s: Session) -> int:
+        return round((time.time() - s.prompted_at) * 1000)
 
     async def tap(self, sid: str, kind: str, tap_id: str) -> dict:
         s = self.sessions[sid]
         refining = s.status == "escalated" and kind == "feeling" and s.dialogue.feeling is None
         if not refining and s.status != kind:
             raise ValueError(f"expected a {s.status} input, got {kind} tap")
+        latency = self._latency_ms(s)
         s.dialogue.apply_tap(kind, tap_id)
-        await self._event(s, "tap", {"kind": kind, "tap": tap_id})
+        await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency})
         await self._log_belief(s)
         if refining:
             await self._refresh_alert(s)
-            return await self.state(s, publish=True)
+            out = await self.state(s, publish=True)
+            s.prompted_at = time.time()
+            return out
         return await self._advance(s)
 
     async def answer(self, sid: str, question_id: str, answer: str) -> dict:
         s = self.sessions[sid]
         if s.status != "question" or s.question_id != question_id:
             raise ValueError("no such open question")
+        latency = self._latency_ms(s)
         s.dialogue.apply_answer(question_id, answer)
-        await self._event(s, "answer", {"question": question_id, "answer": answer})
+        await self._event(s, "answer", {"question": question_id, "answer": answer, "latency_ms": latency})
         await self._log_belief(s)
         return await self._advance(s)
 
@@ -220,9 +231,12 @@ class SessionService:
             await self._create_consult(s, d.chosen.id)
         await self._event(s, "decision", {"chosen": d.chosen.public(), "reason": d.reason,
                                           "ranked": [a.public() for a in d.ranked[:5]]})
+        await self._event(s, "fatigue", {"score": round(s.dialogue.fatigue(), 2)})
         if len(s.dialogue.lookup_results) > before:
             await self._log_belief(s)
-        return await self.state(s, publish=True)
+        out = await self.state(s, publish=True)
+        s.prompted_at = time.time()
+        return out
 
     async def state(self, s: Session, publish: bool = False) -> dict:
         d = s.dialogue
@@ -268,7 +282,12 @@ class SessionService:
             "language": s.language,
         }
 
-    async def _create_alert(self, s: Session, priority: str):
+    @staticmethod
+    def _labelled(alert: dict, sbar: dict) -> dict:
+        label = alert.get("label")
+        return sbar | {"situation": f"{label}. {sbar['situation']}"} if label else sbar
+
+    async def _create_alert(self, s: Session, priority: str, label: str | None = None):
         ctx = self._alert_context(s, priority)
         first_tap = s.dialogue.tap_times[0] if s.dialogue.tap_times else s.started
         alert = {
@@ -277,10 +296,11 @@ class SessionService:
             "created_at": now().isoformat(), "status": "open",
             "top": ctx["top"], "prediction_set": ctx["prediction_set"], "p_high": ctx["p_high"],
             "asked": ctx["asked"], "lookups": ctx["lookups"], "consults": ctx["consults"],
-            "sbar": template_sbar(ctx), "sbar_source": "template", "confirmed_need": None,
+            "label": label, "sbar": None, "sbar_source": "template", "confirmed_need": None,
             "seconds_to_alert": round(time.time() - first_tap, 1),
             "reason": s.decision.reason if s.decision else "",
         }
+        alert["sbar"] = self._labelled(alert, template_sbar(ctx))
         s.alert_id = alert["id"]
         self.alerts[alert["id"]] = alert
         await self.hub.publish("nurse", {"type": "alert", "alert": alert})   # nurse first, always
@@ -294,7 +314,7 @@ class SessionService:
             return
         ctx = self._alert_context(s, alert["priority"])
         alert.update({k: ctx[k] for k in ("top", "prediction_set", "p_high", "lookups")})
-        alert["sbar"], alert["sbar_source"] = template_sbar(ctx), "template"
+        alert["sbar"], alert["sbar_source"] = self._labelled(alert, template_sbar(ctx)), "template"
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
         self._spawn(self._enrich(alert["id"], ctx))
 
@@ -304,7 +324,7 @@ class SessionService:
         sbar, source = await self.gemini.sbar(ctx)
         alert = self.alerts.get(alert_id)
         if alert and source == "gemini":
-            alert["sbar"], alert["sbar_source"] = sbar, source
+            alert["sbar"], alert["sbar_source"] = self._labelled(alert, sbar), source
             await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
 
     async def confirm(self, alert_id: str, need_id: str | None, nurse: str = "nurse") -> dict:
@@ -312,11 +332,11 @@ class SessionService:
         if alert["status"] != "open":
             # A second confirm (double tap, two dashboards) must not count twice in reliability or logs.
             raise ValueError("alert is already confirmed")
-        alert["status"], alert["confirmed_need"] = "confirmed", need_id
+        alert["status"], alert["confirmed_need"], alert["confirmed_by"] = "confirmed", need_id, nurse
         s = self.sessions.get(alert["session_id"] or "")
         if s and need_id:
             await self._learn(s, alert, need_id)
-        await self._event(alert["patient_id"], "nurse_confirmed",
+        await self._event(s or alert["patient_id"], "nurse_confirmed",
                           {"alert_id": alert_id, "need": need_id, "nurse": nurse,
                            "predicted": alert["top"][0]["need"] if alert["top"] else None})
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
@@ -474,3 +494,30 @@ class SessionService:
         for channel in ("nurse", f"patient:{w['patient_id']}", f"family:{w['person_id']}"):
             await self.hub.publish(channel, msg)
         await self._event(w["patient_id"], "welfare_check_resolved", {"id": w["id"], "outcome": w["status"]})
+
+    # ---- silence detection hooks (app/risk/silence_monitor.py) ----------------------------------
+
+    async def escalate_unresponsive(self, sid: str, idle_s: float, timeout_s: float) -> dict | None:
+        """Mode A: the patient stopped responding mid-request. Escalate the current belief now.
+
+        Re-checks on the event loop, so a tap that landed while the monitor was deciding wins.
+        """
+        s = self.sessions.get(sid)
+        if not s or s.status not in ("feeling", "question") or time.time() - s.prompted_at < timeout_s:
+            return None
+        label = "Patient stopped responding mid-request"
+        reason = (f"{label}: no input for {idle_s:.0f} s (limit {timeout_s:.0f} s, from this patient's usual "
+                  "response time). The needs below are uncertain; check in person.")
+        s.status, s.question_id = "escalated", None
+        s.decision = Decision(Action("escalate", "unresponsive", label, 0.0, 0.0, {}), [], reason)
+        s.dialogue.attach_context()
+        await self._create_alert(s, "urgent", label)
+        await self._event(s, "unresponsive_escalated", {"alert_id": s.alert_id, "idle_s": round(idle_s, 1),
+                                                         "timeout_s": round(timeout_s, 1)})
+        await self.state(s, publish=True)
+        return self.alerts[s.alert_id]
+
+    async def raise_alert(self, alert: dict):
+        """Add (or re-send, which re-sounds it) an alert built elsewhere, e.g. a silence-ladder nurse alert."""
+        self.alerts[alert["id"]] = alert
+        await self.hub.publish("nurse", {"type": "alert", "alert": alert})
