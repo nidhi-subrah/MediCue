@@ -48,6 +48,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(homeFor(user), request.url))
   }
 
+  // The bedside tablet is the patient's own screen: a nurse never answers for them.
+  if (user.role === 'nurse' && (pathname === '/talk' || pathname.startsWith('/talk/'))) {
+    return NextResponse.redirect(new URL(homeFor(user), request.url))
+  }
+
   return NextResponse.next()
 }
 
