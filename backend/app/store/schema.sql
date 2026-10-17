@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS confirmations (
     mode              TEXT        NOT NULL
 );
 SELECT create_hypertable('confirmations', 'time', if_not_exists => TRUE);
+-- The gesture that preceded the confirmed need (per-patient learning, engine/personal.py). Nullable so
+-- older rows and databases created before this column existed keep working.
+ALTER TABLE confirmations ADD COLUMN IF NOT EXISTS area TEXT;
+ALTER TABLE confirmations ADD COLUMN IF NOT EXISTS feeling TEXT;
 CREATE INDEX IF NOT EXISTS confirmations_patient_time ON confirmations (patient_id, time DESC);
 
 -- Hourly per-patient signals. Stores sums and counts (not averages) so any window can be re-aggregated

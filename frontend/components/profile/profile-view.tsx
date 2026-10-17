@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePatientProfile } from '@/lib/live/profile'
 import { timeAgo } from '@/lib/services/backend'
+import { LearningPanel } from './learning-panel'
 import { ProfileList } from './profile-list'
 
 /** A patient's chart notes and the profile Gemini read from them, with the quote behind every item. */
@@ -107,6 +108,8 @@ export function ProfileView({ patientId }: { patientId: string }) {
           )}
         </section>
       </div>
+
+      <LearningPanel patientId={patient.id} firstName={patient.name.split(' ')[0]} />
     </div>
   )
 }

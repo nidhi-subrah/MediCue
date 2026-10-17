@@ -282,3 +282,30 @@ export interface HandoffSummary {
   generated_at: string; window_hours: number; source: "gemini" | "template";
   patients: HandoffPatient[]; stable: { patient_id: string; name: string; room: string }[];
 }
+
+// ---- Per-patient gesture learning (backend/app/engine/personal.py) ---------------------------------
+
+/** A gesture (area + feeling) that has consistently meant one need for this patient. */
+export interface LearnedSignal {
+  area: string; area_label: string; feeling: string; feeling_label: string;
+  need: string; need_label: string;
+  count: number; of: number;            // confirmations of this need / all confirmations of this gesture
+  usual_need: string; usual_label: string;
+  personal: boolean;                    // true when it differs from what the gesture means for most patients
+}
+
+export interface PatientLearning {
+  patient_id: string; confirmations: number; alpha: number; signals: LearnedSignal[];
+}
+
+/** One replayed session in the learning demo (real engine, in memory, nothing stored). */
+export interface LearningSession {
+  session: number; inputs: number; questions: number; outcome: "send" | "escalate";
+  top_need: string; top_label: string; top_p: number; correct: boolean; learned_from: number;
+  first_guess: string; first_guess_label: string; first_guess_p: number; p_true_after_gesture: number;
+}
+
+export interface LearningDemo {
+  patient_id: string; area: string; feeling: string; need: string; need_label: string; high_risk: boolean;
+  sessions: LearningSession[];
+}

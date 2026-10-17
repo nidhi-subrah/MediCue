@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
-import type { HandoffSummary, Patient, PatientProfile } from '@/lib/types'
+import type { HandoffSummary, LearningDemo, Patient, PatientLearning, PatientProfile } from '@/lib/types'
 
 /** A patient's chart notes and the profile Gemini read from them. Saving notes re-reads them; the
  *  backend pushes the finished profile on the nurse channel when extraction completes. */
@@ -45,4 +45,42 @@ export function useHandoff(hours = 12) {
   }, [hours])
 
   return { summary, error }
+}
+
+/** What this patient's own gestures have come to mean, plus the replay demo. */
+export function usePatientLearning(patientId: string) {
+  const [learning, setLearning] = useState<PatientLearning | null>(null)
+  const [demo, setDemo] = useState<LearningDemo | null>(null)
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(
+    () => api.get<PatientLearning>(`/api/patients/${patientId}/learning`).then(setLearning).catch((e) => setError(String(e))),
+    [patientId],
+  )
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // A nurse confirming one of this patient's alerts is exactly what teaches the engine: refresh then.
+  useChannel('nurse', (m) => {
+    if (m.type === 'alert_updated' && m.alert.patient_id === patientId && m.alert.status === 'confirmed') void load()
+  })
+
+  const runDemo = useCallback(
+    async (area: string, feeling: string, need: string, sessions = 5) => {
+      setRunning(true)
+      setError(null)
+      try {
+        setDemo(await api.post<LearningDemo>(`/api/patients/${patientId}/learning/demo`, { area, feeling, need, sessions }))
+      } catch (e) {
+        setError(String(e))
+      } finally {
+        setRunning(false)
+      }
+    },
+    [patientId],
+  )
+
+  return { learning, demo, running, error, runDemo }
 }

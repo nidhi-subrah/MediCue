@@ -10,6 +10,7 @@ from ..catalog import Catalog
 from ..config import EngineConfig
 from .belief import (answer_likelihood, bayes_update, consult_likelihood, entropy, p_high_risk,
                      tap_likelihood, top_items)
+from .personal import PersonalModel
 from .decision import Consultant, Decision, DecisionInput, consult_options, decide
 
 SURPRISING_ANSWER = 0.2   # an answer the belief gave less than this chance counts as inconsistent
@@ -40,6 +41,7 @@ class Dialogue:
     chart_flags: dict[str, bool] = field(default_factory=dict)
     baseline_interval: float | None = None   # patient's usual seconds between inputs (from history)
     fatigue_sensitivity: float = 1.0         # from the patient profile (engine/profile.py)
+    personal: PersonalModel | None = None    # this patient's learned gesture meanings (engine/personal.py)
 
     def __post_init__(self):
         self.belief = list(self.prior)
@@ -71,7 +73,14 @@ class Dialogue:
 
     def apply_tap(self, kind: str, tap_id: str, t: float | None = None):
         self.tap_times.append(t if t is not None else time.time())
-        self._signal(tap_likelihood(self.cat, kind, tap_id, self.reliability))
+        standard = tap_likelihood(self.cat, kind, tap_id, self.reliability)
+        if self.personal and self.personal.n:
+            # Learned meanings steer the decision belief; the safety belief keeps the standard reading,
+            # so a patient's history can never suppress escalation of a high-risk tap.
+            self.belief = bayes_update(self.belief, self.personal.likelihood(self.cat, kind, tap_id, self.reliability))
+            self.signal_belief = bayes_update(self.signal_belief, standard)
+        else:
+            self._signal(standard)
         if kind == "area":
             self.area = tap_id
             label = self.cat.area_labels[tap_id]

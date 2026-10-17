@@ -44,7 +44,7 @@ MIN_BASELINE_ROWS = 5
 
 CONFIRMATION_COLS = ("time", "patient_id", "session_id", "predicted_need", "confirmed_need", "confirmed_group",
                      "risk", "correct", "escalated", "taps", "questions", "resolve_seconds",
-                     "mean_tap_interval", "mode")
+                     "mean_tap_interval", "mode", "area", "feeling")
 
 
 def _statements(sql: str) -> list[str]:
@@ -82,7 +82,7 @@ class TimescaleStore:
                 await cur.executemany(
                     f"INSERT INTO confirmations ({', '.join(CONFIRMATION_COLS)}) "
                     f"VALUES ({', '.join(['%s'] * len(CONFIRMATION_COLS))})",
-                    [tuple(r[c] for c in CONFIRMATION_COLS) for r in confirmations])
+                    [tuple(r.get(c) for c in CONFIRMATION_COLS) for r in confirmations])
                 await cur.executemany(
                     "INSERT INTO events (time, patient_id, session_id, event_type, payload) VALUES (%s,%s,%s,%s,%s)",
                     [(e["time"], e["patient_id"], e["session_id"], e["event_type"], json.dumps(e["payload"]))
@@ -109,7 +109,7 @@ class TimescaleStore:
             await conn.execute(
                 f"INSERT INTO confirmations ({', '.join(CONFIRMATION_COLS)}) "
                 f"VALUES ({', '.join(['%s'] * len(CONFIRMATION_COLS))})",
-                tuple(row[c] for c in CONFIRMATION_COLS))
+                tuple(row.get(c) for c in CONFIRMATION_COLS))
 
     async def window_signals(self, days=8):
         return await self._all(WINDOW_SQL, (days,))
