@@ -14,7 +14,7 @@ The contract between backend and frontend. Both read these files directly; there
   likelihoods `P(tap | need)` with a small background probability for unlisted taps, then mixes in the patient's
   signal reliability.
 - **`needs[].question`**: a yes/no question targeting that need. Groups get one question each, plus `extra_questions`.
-- **`risk_levels`**: `miss_cost` drives the asymmetric loss (missing chest pain costs 25x confusing thirst with
+- **`risk_levels`**: `miss_cost` drives the asymmetric loss (missing chest pain costs 12.5x confusing thirst with
   cold), `urgency` drives the delay cost.
 - **`lookups`**: chart fields the decision engine can pull. `p_true` gives `P(field is flagged | need)`.
   Keys are need ids or `group:<id>`.

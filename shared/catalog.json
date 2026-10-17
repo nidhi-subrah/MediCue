@@ -1,9 +1,9 @@
 {
   "version": 1,
   "risk_levels": {
-    "high":   { "miss_cost": 100, "urgency": 10,  "label": "High risk" },
-    "medium": { "miss_cost": 20,  "urgency": 2,   "label": "Medium risk" },
-    "low":    { "miss_cost": 4,   "urgency": 0.3, "label": "Low risk" }
+    "high":   { "miss_cost": 250, "urgency": 10,  "label": "High risk" },
+    "medium": { "miss_cost": 50,  "urgency": 2,   "label": "Medium risk" },
+    "low":    { "miss_cost": 20,  "urgency": 0.3, "label": "Low risk" }
   },
   "groups": [
     { "id": "pain",      "label": "Pain",              "question": "Is it about pain?" },
