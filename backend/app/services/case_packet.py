@@ -198,9 +198,13 @@ def stop_reason(cat: Catalog, cfg: EngineConfig, d: Dialogue, decision: Decision
         return "RESOLVED"
     if consult and consult.get("status") in ("pending", "expired"):
         return "CONSULT_PENDING"
+    if not d.patient_can_answer:
+        # The engine stopped asking because the answers stopped being reliable (decision.py turns
+        # questions off); that is the real reason even when the question limit was reached too.
+        return "FATIGUE_HIGH"
     if d.questions_asked >= cfg.max_questions:
         return "MAX_QUESTIONS"
-    if not d.patient_can_answer or d.fatigue() >= pc.fatigue_high:
+    if d.fatigue() >= pc.fatigue_high:   # the fatigue score includes questions asked, so it comes after the cap
         return "FATIGUE_HIGH"
     return "INFO_GAIN_BELOW_COST"
 

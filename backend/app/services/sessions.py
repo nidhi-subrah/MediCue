@@ -21,7 +21,7 @@ from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
 from ..engine.personal import PersonalModel
 from ..sim.learning import learning_curve
-from .case_packet import build_case_packet, case_feedback, template_case_sbar
+from .case_packet import build_case_packet, case_facts, case_feedback, template_case_sbar
 from .gemini import Gemini, template_sbar
 from .hub import Hub
 from .research import prior_multipliers
@@ -167,10 +167,12 @@ class SessionService:
 
     # ---- session lifecycle -----------------------------------------------------------------------
 
-    async def start(self, patient_id: str, language: str | None = None, mode: str = "grid") -> dict:
+    async def start(self, patient_id: str, language: str | None = None, mode: str = "grid",
+                    hour: int | None = None) -> dict:
+        """`hour` replaces the local hour for the time-of-day context (scripted demo scenarios only)."""
         p = PATIENT_BY_ID[patient_id]
         view = await self.patient_view(patient_id)
-        local_hour = now().astimezone(settings.unit_tz).hour
+        local_hour = hour if hour is not None else now().astimezone(settings.unit_tz).hour
         try:
             history = await self.store.history_counts(patient_id)
             visits = await self.store.events_of_type("family_visit", now() - timedelta(hours=12), patient_id)
@@ -494,9 +496,13 @@ class SessionService:
                     alert["case"] = None
                     await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
                 return
+            template = template_case_sbar(pkt, s.patient)
             record = {"id": alert_id, "alert_id": alert_id, "patient_id": s.patient["id"], "session_id": s.id,
                       "created_at": alert["created_at"], "packet": pkt,
-                      "sbar": template_case_sbar(pkt, s.patient), "sbar_source": "template",
+                      "sbar": template, "sbar_source": "template", "sbar_template": template,
+                      "facts": case_facts(pkt, s.patient),
+                      "gemini": {"outcome": "pending" if self.gemini.enabled else "disabled",
+                                 "sbar": None, "problems": []},
                       "feedback": (alert.get("case") or {}).get("feedback"),
                       "acknowledged": (alert.get("case") or {}).get("acknowledged")}
             alert["case"] = record
@@ -505,15 +511,31 @@ class SessionService:
             await self._event(s, "case_packet", {"alert_id": alert_id, "variant": pkt["variant"],
                                                  "stop_reason": pkt["stop_reason"]["code"],
                                                  "next_step": pkt["next_step"]["code"]})
-            if not self.gemini.enabled:
-                return
-            sbar, source = await self.gemini.case_sbar(pkt, s.patient, self.cat)
-            if source == "gemini" and alert.get("case") is record:   # still the latest packet
-                record["sbar"], record["sbar_source"] = sbar, source
-                await self.hub.publish("nurse", {"type": "case", "case": record})
-                await self._safe(self.store.upsert_case(record))
+            if self.gemini.enabled:
+                await self._gemini_case_sbar(alert, record, s.patient)
         except Exception:
             log.exception("case packet failed (the alert itself is unaffected)")
+
+    async def _gemini_case_sbar(self, alert: dict, record: dict, patient: dict):
+        """Ask Gemini to reword the packet; keep its version only if it passes every check."""
+        sbar, source, outcome, problems = await self.gemini.case_sbar_detail(record["packet"], patient, self.cat)
+        if alert.get("case") is not record:   # a newer packet replaced this one meanwhile
+            return
+        record["gemini"] = {"outcome": outcome, "sbar": sbar if outcome == "gemini" else None, "problems": problems}
+        if source == "gemini":
+            record["sbar"], record["sbar_source"] = sbar, source
+        await self.hub.publish("nurse", {"type": "case", "case": record})
+        await self._safe(self.store.upsert_case(record))
+
+    async def regenerate_case_sbar(self, case_id: str) -> dict:
+        """Ask Gemini again for a case's SBAR (e.g. the first call hit a quota). Template if Gemini is off."""
+        alert = self.alerts.get(case_id) or {}
+        case = alert.get("case")
+        if not case:
+            raise KeyError(case_id)
+        if self.gemini.enabled:
+            await self._gemini_case_sbar(alert, case, PATIENT_BY_ID[case["patient_id"]])
+        return case
 
     async def acknowledge_case(self, case_id: str, nurse: str = "nurse") -> dict:
         """The nurse has read the case packet and is acting on it. Does not close the alert: what the patient
