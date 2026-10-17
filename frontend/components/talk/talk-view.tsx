@@ -4,25 +4,24 @@ import { CircleCheckBig, Siren, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ModeSwitcher } from '@/components/app/mode-switcher'
 import { useLiveSession } from '@/lib/live/session'
-import { backendMode, buildStep, uiMode } from '@/lib/live/talk-adapter'
+import { buildStep, uiMode } from '@/lib/live/talk-adapter'
 import { useSettings } from '@/lib/store/settings'
-import type { InputMode } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { AssistCard } from './assist-card'
 import { ConsultBanner } from './consult-banner'
+import { LevelBar, LevelTransition } from './level-bar'
 import { QuestionStage } from './question-stage'
-import { SuggestionBanner } from './suggestion-banner'
 import { SummaryPanel } from './summary-panel'
 
 export function TalkView() {
-  const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, setMode, skipConsult, respondWelfare } =
-    useLiveSession()
+  const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, respondWelfare,
+    signal, setLevel } = useLiveSession()
   const audio = useSettings((s) => s.spokenPrompts)
   const updateSettings = useSettings((s) => s.update)
   const [showEngine, setShowEngine] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
-  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}` : ''
+  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.ladder.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
 
   if (error && !session) {
@@ -44,12 +43,7 @@ export function TalkView() {
   const mode = uiMode(session.mode, audio)
   const step = buildStep(session, mode, tap, answerQuestion, { open: moreOpen, setOpen: setMoreOpen })
 
-  // Audio has no backend mode: it's the spokenPrompts setting, with the backend kept on `grid`.
-  const chooseMode = (next: InputMode) => {
-    updateSettings({ spokenPrompts: next === 'audio' })
-    const wanted = backendMode(next)
-    if (wanted !== session.mode) setMode(wanted)
-  }
+  const level = session.ladder.level
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
 
   return (
@@ -69,8 +63,11 @@ export function TalkView() {
         </div>
       </div>
 
-      <ModeSwitcher mode={mode} onChange={chooseMode} />
-      <SuggestionBanner onAccept={chooseMode} />
+      {/* Communication ladder: the backend steps the level down when answering gets harder, up when it
+          gets easier again (backend/app/engine/ladder.py). Bigger buttons come with level 2. */}
+      <LevelBar ladder={session.ladder} audio={audio} onLevel={setLevel} onAudio={(on) => updateSettings({ spokenPrompts: on })} />
+      <LevelTransition level={level} />
+      {level === 4 && !done && <AssistCard assist={session.ladder.assist} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-6">
@@ -114,12 +111,14 @@ export function TalkView() {
           ) : step ? (
             <AnimatePresence mode="wait" initial={false}>
               <QuestionStage
-                key={`${step.id}-${mode}`}
+                key={`${step.id}-${mode}-${level}`}
                 step={step}
                 stepNumber={session.taps + 1}
                 mode={mode}
+                level={level}
                 canUndo={false}
                 onUndo={() => {}}
+                onSignal={signal}
               />
             </AnimatePresence>
           ) : null}

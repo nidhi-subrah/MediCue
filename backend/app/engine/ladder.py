@@ -1,7 +1,7 @@
 """Communication ladder: a live ability level per patient session, so the tablet simplifies itself.
 
-    1 · Full        body map, then all 13 feelings
-    2 · Simplified  only the most likely options (from the belief), larger buttons, shorter labels
+    1 · Full        body map, then all of that area's options (engine/options.py)
+    2 · Simplified  only the 3-4 most likely options, larger buttons, shorter labels
     3 · Yes / No    no grids: every step is one yes/no question from the engine, read aloud
     4 · Assisted    "show someone" screen, a consult to family, and a shorter silence timer
     floor           no input at all: the silence monitor (risk/silence.py) escalates, as before
@@ -165,7 +165,7 @@ class Ladder:
 
 # ---- level 2: which options to show ----------------------------------------------------------------
 
-def likely_taps(lik: dict[str, list[float]], belief: list[float], high_risk: list[bool], k: int = 5) -> list[str]:
+def likely_taps(lik: dict[str, list[float]], belief: list[float], high_risk: list[bool], k: int = 4) -> list[str]:
     """The k taps the patient most likely means next, P(tap) = Σ_n b(n)·P(tap | n), plus, always, the tap
     that best signals each high-risk need, so simplifying can never hide a way to report an emergency."""
     score = {t: sum(b * l for b, l in zip(belief, row)) for t, row in lik.items()}

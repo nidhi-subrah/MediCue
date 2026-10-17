@@ -441,8 +441,7 @@ class SessionService:
 
     async def warm_simple(self):
         """Gemini rewrites of every tile label and question for ladder levels 2 and 3 (one request each)."""
-        texts = list(dict.fromkeys([*self.cat.area_labels.values(), *self.cat.feeling_labels.values(),
-                                    *(q.text for q in self.cat.questions)]))
+        texts = list(dict.fromkeys([*self._ladder_texts().values(), *(q.text for q in self.cat.questions)]))
         for level in (2, 3):
             if level in self._simple:
                 continue
@@ -451,6 +450,14 @@ class SessionService:
                 self._simple[level] = dict(zip(texts, out))
                 log.info("ladder level %d wording ready", level)
 
+    def _ladder_texts(self) -> dict[str, str]:
+        """Every on-screen label the ladder can reword, keyed as the tablet looks them up."""
+        out = {f"area:{k}": v for k, v in self.cat.area_labels.items()}
+        for area, spec in self.cat.raw.get("area_options", {}).items():
+            out[f"prompt:{area}"] = spec["prompt"]
+            out |= {f"option:{o['id']}": o["label"] for o in spec["options"]}
+        return out
+
     def simple(self, text: str, level: int) -> str:
         return self._simple.get(min(level, 3), {}).get(text, text) if level >= 2 else text
 
@@ -458,11 +465,11 @@ class SessionService:
         lad, d, level = s.ladder, s.dialogue, s.ladder.level
         out = lad.public() | {"levels": LEVELS, "options": None, "labels": None, "assist": None}
         if level == 2:
-            out["options"] = {"area": likely_taps(self.cat.area_lik, d.belief, self.cat.high_risk),
-                              "feeling": likely_taps(self.cat.feeling_lik, d.belief, self.cat.high_risk)}
+            # Areas: the likeliest few, chest always kept. The second step needs nothing here: level 1 shows
+            # all of an area's options, level 2 only the predicted ones (engine/options.py) + "Something else".
+            out["options"] = {"area": likely_taps(self.cat.area_lik, d.belief, self.cat.high_risk, k=4)}
         if level >= 2:
-            out["labels"] = {f"area:{k}": self.simple(v, level) for k, v in self.cat.area_labels.items()} | \
-                            {f"feeling:{k}": self.simple(v, level) for k, v in self.cat.feeling_labels.items()}
+            out["labels"] = {k: self.simple(v, level) for k, v in self._ladder_texts().items()}
         if level == 4:
             c = self.consults.get(s.consult_id or "")
             out["assist"] = {"person_name": c["person_name"], "relation": c["relation"],
@@ -488,6 +495,7 @@ class SessionService:
             if not changes and not s:
                 continue
             out.append({"patient_id": p["id"], "patient_name": p["name"], "room": p["room"],
+                        "session_id": s.id if s else None,
                         "level": s.ladder.level if s else None, "label": LEVELS[s.ladder.level] if s else None,
                         "active": bool(s and s.status in ("area", "feeling", "question", "waiting_consult")),
                         "changes": changes})

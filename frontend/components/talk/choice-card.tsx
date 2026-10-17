@@ -4,7 +4,7 @@ import { forwardRef } from 'react'
 import type { ChoiceItem } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-type Size = 'regular' | 'large'
+type Size = 'regular' | 'large' | 'huge'   // huge: ladder level 3+, one yes/no at a time
 
 const toneClasses: Record<NonNullable<ChoiceItem['tone']>, { card: string; chip: string }> = {
   default: {
@@ -41,7 +41,8 @@ export const ChoiceCard = forwardRef<
 >(function ChoiceCard({ item, size = 'regular', number, highlighted = false, tabbable = true }, ref) {
   const tone = toneClasses[item.tone ?? 'default']
   const Icon = item.icon
-  const large = size === 'large'
+  const huge = size === 'huge'
+  const large = size === 'large' || huge
 
   return (
     <button
@@ -55,7 +56,7 @@ export const ChoiceCard = forwardRef<
         'group relative flex w-full items-center gap-4 rounded-2xl border-2 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 ease-soft active:translate-y-0 active:scale-[0.98]',
         !highlighted && 'hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10',
         tone.card,
-        large ? 'min-h-24 p-5' : 'min-tap p-4',
+        huge ? 'min-h-32 justify-center p-6' : large ? 'min-h-24 p-5' : 'min-tap p-4',
         highlighted &&
           'z-10 border-primary bg-primary-soft shadow-[0_0_0_4px_var(--color-primary-soft),0_0_0_6px_var(--color-primary)]',
         item.tone === 'urgent' && highlighted && 'border-urgent shadow-[0_0_0_4px_var(--color-urgent-soft),0_0_0_6px_var(--color-urgent)]',
@@ -85,7 +86,7 @@ export const ChoiceCard = forwardRef<
         </span>
       )}
       <span className="flex min-w-0 flex-col">
-        <span className={cn('font-semibold leading-snug text-pretty', large ? 'text-2xl' : 'text-lg')}>
+        <span className={cn('font-semibold leading-snug text-pretty', huge ? 'text-4xl' : large ? 'text-2xl' : 'text-lg')}>
           {item.label}
         </span>
         {item.hint && (
