@@ -86,10 +86,9 @@ export interface Alert {
   confirmed_by?: string | null;
   profile: ProfileItem[];
   nurse_note: string | null;          // observation written at confirmation
-  // Clinician copilot: set shortly after the alert when the episode ended without a confident answer.
-  case_packet?: CasePacket | null;
-  case_sbar?: SBAR | null;            // from the packet; recommendation is always the packet's next_step
-  case_sbar_source?: "template" | "gemini" | null;
+  // Clinician copilot: set shortly after the alert when the episode ended without a confident answer
+  // (full packet) or escalated on the safety floor (light packet). Also at GET /api/cases/{alert id}.
+  case?: CaseRecord | null;
 }
 
 export interface ConsultRequest {
@@ -240,6 +239,7 @@ export type WsMessage =
   | { type: "welfare_check"; id: string; patient_id: string; requested_by: string; expires_in: number;
       respond_path?: string }         // silence checks answer on their own endpoint
   | { type: "silence_check"; ladder: SilenceLadder }
+  | { type: "case"; case: CaseRecord }
   | { type: "welfare_resolved"; id: string; patient_id: string; outcome: "responded" | "no_response" }
   | { type: "profile"; profile: PatientProfile }
   | { type: "suggestions"; patient_id: string; suggestions: ProfileSuggestion[] }
@@ -350,6 +350,7 @@ export interface ChartChange {
 
 export interface CasePacket {
   session_id: string; patient_id: string; created_at: string;
+  variant: "full" | "light";          // light: high-risk escalation; less_likely and chart_context left empty
   selections: CaseSelection[];
   top_needs: CaseNeed[];              // top 3, with 90% conformal-set membership
   less_likely: LessLikelyNeed[];
@@ -357,4 +358,21 @@ export interface CasePacket {
   stop_reason: { code: StopReason; text: string };
   uncertainty: { set_size: number; top_p: number; p_high: number; text: string };
   next_step: { code: NextStepCode; text: string; need: string | null };   // fixed whitelist; never treatment
+}
+
+/** The nurse's verdict, given with the normal confirmation (POST /api/alerts/{id}/confirm). */
+export interface CaseFeedback {
+  helpful: boolean | null;
+  actual_need: string | null; actual_label: string | null;   // what the patient actually needed
+  actual_rank: number | null;         // 1-3 if it was in the packet's top needs, else null
+  actual_was_less_likely: boolean;    // it was listed as "less likely given answers"
+  by: string; at: string;
+}
+
+export interface CaseRecord {
+  id: string;                         // = the alert id
+  alert_id: string; patient_id: string; session_id: string; created_at: string;
+  packet: CasePacket;
+  sbar: SBAR; sbar_source: "template" | "gemini";   // recommendation is always packet.next_step
+  feedback: CaseFeedback | null;
 }
