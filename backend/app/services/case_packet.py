@@ -308,7 +308,9 @@ def build_case_packet(cat: Catalog, cfg: EngineConfig, d: Dialogue, *, session_i
 BANNED_TERMS = re.compile(
     r"\b(diagnos\w*|treat\w*|therap\w*|medicat\w*|medicine|drug|dose|dosage|mg|mcg|administer\w*|prescri\w*|"
     r"give|giving|start|stop|increase|decrease|titrat\w*|analgesi\w*|opioid\w*|antibiotic\w*|morphine|"
-    r"acetaminophen|paracetamol|ibuprofen|tylenol|infection|sepsis|stroke|delirium|dehydrated|"
+    r"acetaminophen|paracetamol|ibuprofen|tylenol|infection|sepsis|septic|stroke|delirium|dehydrated|"
+    r"pneumonia|uti|heart attack|myocardial|infarct\w*|angina|embolism|fractur\w*|dementia|seizure\w*|"
+    r"iv|intraven\w*|catheter\w*|"
     r"definitely|certainly|confirmed|clearly|obviously|ruled out|rules out|rule out|excluded|no doubt)\b", re.I)
 CERTAINTY = re.compile(r"definitely|certainly|confirmed|clearly|obviously|ruled out|rules out|rule out|excluded|no doubt")
 HEDGES = re.compile(r"\b(likely|possible|possibly|unclear|uncertain|unsure|may|might|not clear|not sure)\b", re.I)

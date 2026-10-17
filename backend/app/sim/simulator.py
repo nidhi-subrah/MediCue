@@ -12,7 +12,7 @@ from ..catalog import Catalog
 from ..config import EngineConfig
 from ..engine.belief import argmax, yes_prob
 from ..engine.conformal import ConformalPredictor
-from ..engine.decision import Consultant
+from ..engine.decision import Consultant, Decision
 from ..engine.dialogue import Dialogue
 
 
@@ -27,6 +27,8 @@ class SimResult:
     consults: int
     escalated_without_question: bool
     sim_seconds_to_alert: float
+    dialogue: Dialogue | None = None      # the finished dialogue and final decision (e.g. for case packets)
+    decision: Decision | None = None
 
 
 def _sample(rng: random.Random, probs: list[float]) -> int:
@@ -117,7 +119,7 @@ def run_dialogue(cat: Catalog, cfg: EngineConfig, rng: random.Random, true_need:
         outcome=decision.chosen.kind if decision.chosen.kind in ("escalate", "send") else "send",
         taps=d.taps, questions=d.questions_asked, consults=consults,
         escalated_without_question=decision.chosen.kind == "escalate" and d.questions_asked == 0,
-        sim_seconds_to_alert=t)
+        sim_seconds_to_alert=t, dialogue=d, decision=decision)
 
 
 def calibrate(cat: Catalog, cfg: EngineConfig, n: int = 600, seed: int = 7) -> ConformalPredictor:
