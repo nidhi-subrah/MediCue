@@ -86,6 +86,10 @@ export interface Alert {
   confirmed_by?: string | null;
   profile: ProfileItem[];
   nurse_note: string | null;          // observation written at confirmation
+  // Clinician copilot: set shortly after the alert when the episode ended without a confident answer.
+  case_packet?: CasePacket | null;
+  case_sbar?: SBAR | null;            // from the packet; recommendation is always the packet's next_step
+  case_sbar_source?: "template" | "gemini" | null;
 }
 
 export interface ConsultRequest {
