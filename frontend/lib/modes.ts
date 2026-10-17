@@ -1,4 +1,4 @@
-import { Ear, Hand, Keyboard, ScanLine } from 'lucide-react'
+import { Ear, Hand, Keyboard } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { InputMode } from './types'
 
@@ -18,12 +18,6 @@ export const MODES: Record<
     description: 'Bigger buttons, fewer choices at a time.',
     icon: Hand,
   },
-  switch: {
-    label: 'Single-Switch',
-    short: 'Switch',
-    description: 'Choices light up in turn. Press Space, Enter, or tap Select.',
-    icon: ScanLine,
-  },
   audio: {
     label: 'Audio First',
     short: 'Audio',
@@ -32,4 +26,6 @@ export const MODES: Record<
   },
 }
 
-export const MODE_ORDER: InputMode[] = ['standard', 'easy', 'switch', 'audio']
+export const MODE_ORDER: InputMode[] = ['standard', 'easy', 'audio']
+
+export const isInputMode = (v: unknown): v is InputMode => typeof v === 'string' && v in MODES

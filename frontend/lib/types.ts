@@ -8,14 +8,14 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   TimelineCase, Timeline, SilenceStep, SilenceLadder, ProfileItem, PatientProfile, ProfileSuggestion,
   HandoffPatient, HandoffSummary, LearnedSignal, PatientLearning, LearningSession, LearningDemo } from '@shared/types'
 
-/** The UI's own notion of "how the person is answering right now" — a superset of the
- *  backend's ModeId (grid/large/scan). `audio` is a client-only bonus with no server concept;
- *  it's sent to the backend as `grid`. */
-export type InputMode = 'standard' | 'easy' | 'switch' | 'audio'
+/** The UI's own notion of "how the person is answering right now". `standard` and `easy` map to
+ *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to
+ *  the backend as `grid`. A backend `scan` session is shown as `easy`. */
+export type InputMode = 'standard' | 'easy' | 'audio'
 export type Language = 'en' | 'es' | 'fr'
 
 /** One selectable thing on screen — a body region, a feeling, a need, a yes/no choice.
- *  Generic so the same ChoiceCard/QuestionStage/ScanningList/BodyMap render any real step. */
+ *  Generic so the same ChoiceCard/QuestionStage/BodyMap render any real step. */
 export interface ChoiceItem {
   id: string
   label: string

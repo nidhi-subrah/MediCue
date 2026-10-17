@@ -1,6 +1,6 @@
 'use client'
 
-import { CircleCheckBig, Siren, Volume2, X } from 'lucide-react'
+import { CircleCheckBig, Siren, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -8,6 +8,7 @@ import { ModeSwitcher } from '@/components/app/mode-switcher'
 import { useLiveSession } from '@/lib/live/session'
 import { backendMode, buildStep, uiMode } from '@/lib/live/talk-adapter'
 import { useSettings } from '@/lib/store/settings'
+import type { InputMode } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { ConsultBanner } from './consult-banner'
 import { QuestionStage } from './question-stage'
@@ -17,7 +18,7 @@ import { SummaryPanel } from './summary-panel'
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, setMode, skipConsult, respondWelfare } =
     useLiveSession()
-  const spokenPrompts = useSettings((s) => s.spokenPrompts)
+  const audio = useSettings((s) => s.spokenPrompts)
   const updateSettings = useSettings((s) => s.update)
   const [showEngine, setShowEngine] = useState(false)
 
@@ -37,8 +38,15 @@ export function TalkView() {
     return <p className="text-lg text-muted-foreground">Loading…</p>
   }
 
-  const mode = uiMode(session.mode)
+  const mode = uiMode(session.mode, audio)
   const step = buildStep(session, mode, tap, answerQuestion)
+
+  // Audio has no backend mode: it's the spokenPrompts setting, with the backend kept on `grid`.
+  const chooseMode = (next: InputMode) => {
+    updateSettings({ spokenPrompts: next === 'audio' })
+    const wanted = backendMode(next)
+    if (wanted !== session.mode) setMode(wanted)
+  }
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
 
   return (
@@ -56,22 +64,10 @@ export function TalkView() {
             {patient.name} · {patient.room}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => updateSettings({ spokenPrompts: !spokenPrompts })}
-          aria-pressed={spokenPrompts}
-          className={cn(
-            'inline-flex h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold',
-            spokenPrompts ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:bg-muted',
-          )}
-        >
-          <Volume2 className="size-4" aria-hidden="true" />
-          Read aloud
-        </button>
       </div>
 
-      <ModeSwitcher mode={mode} onChange={(next) => setMode(backendMode(next))} />
-      <SuggestionBanner onAccept={(next) => setMode(backendMode(next))} />
+      <ModeSwitcher mode={mode} onChange={chooseMode} />
+      <SuggestionBanner onAccept={chooseMode} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-6">

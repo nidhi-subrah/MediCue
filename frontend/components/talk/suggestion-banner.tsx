@@ -1,6 +1,6 @@
 'use client'
 
-import { Hand, ScanLine } from 'lucide-react'
+import { Hand } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useUiAssist } from '@/lib/live/ui-assist'
 import type { InputMode } from '@/lib/types'
@@ -9,20 +9,12 @@ export function SuggestionBanner({ onAccept }: { onAccept: (mode: InputMode) => 
   const suggestion = useUiAssist((s) => s.suggestion)
   const resolve = useUiAssist((s) => s.resolve)
 
-  const copy =
-    suggestion === 'easy'
-      ? {
-          icon: Hand,
-          title: 'Would larger buttons make this easier?',
-          body: 'Easy Touch shows bigger buttons and fewer choices. Everything confirmed so far stays.',
-          accept: 'Switch to Easy Touch',
-        }
-      : {
-          icon: ScanLine,
-          title: 'Would it help if choices lit up one at a time?',
-          body: 'With Single-Switch, press Space, Enter, or one big button when the right choice is lit.',
-          accept: 'Switch to Single-Switch',
-        }
+  const copy = {
+    icon: Hand,
+    title: 'Would larger buttons make this easier?',
+    body: 'Easy Touch shows bigger buttons and fewer choices. Everything confirmed so far stays.',
+    accept: 'Switch to Easy Touch',
+  }
 
   return (
     <div aria-live="polite">

@@ -121,26 +121,14 @@ export function SettingsView() {
             label="Preferred communication method"
             value={s.preferredMode}
             onChange={(v) => s.update({ preferredMode: v })}
-            options={MODE_ORDER.map((m) => ({ value: m, label: MODES[m].label }))}
-          />
-        </Row>
-        <Row title="Switch scanning speed" hint="How long each choice stays highlighted in Single-Switch.">
-          <Segmented<string>
-            label="Scanning speed"
-            value={String(s.scanSpeed)}
             columns={3}
-            onChange={(v) => s.update({ scanSpeed: Number(v) })}
-            options={[
-              { value: '2800', label: 'Slow', hint: '2.8 seconds' },
-              { value: '1800', label: 'Medium', hint: '1.8 seconds' },
-              { value: '1100', label: 'Fast', hint: '1.1 seconds' },
-            ]}
+            options={MODE_ORDER.map((m) => ({ value: m, label: MODES[m].label }))}
           />
         </Row>
         <ToggleRow
           id="spoken"
-          title="Speak questions aloud"
-          hint="Reads each question as it appears."
+          title="Audio First"
+          hint="Reads each question and its numbered choices aloud. Same as the Audio tab while talking."
           checked={s.spokenPrompts}
           onChange={(v) => s.update({ spokenPrompts: v })}
         />
