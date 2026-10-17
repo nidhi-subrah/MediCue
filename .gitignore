@@ -6,5 +6,6 @@ venv/
 .env
 node_modules/
 dist/
+.next/
 .DS_Store
 *.log
