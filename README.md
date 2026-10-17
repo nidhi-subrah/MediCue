@@ -104,4 +104,4 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
    hypothesis. Open its timeline and decision trace: the agent checked the data first (0.50 → 0.87), then chose to ask
    Marcus rather than Priya. Answer **Agree** as Marcus. It crosses 0.90 and moves to Pending review, where you
    **Validate** it. Then type a new observation and watch the agent pick its first action.
-6. **Accessibility**: on `#/patient/p-alvarez`, switch to *Switch scanning* and select with the space bar. Change the language to Español (needs a Gemini key).
+6. **Accessibility**: on `#/patient/p-alvarez`, switch to *Switch scanning* and select with the space bar.
