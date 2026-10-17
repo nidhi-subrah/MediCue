@@ -52,7 +52,7 @@ class SilenceConfig:
     rearm_s: float = 2 * 3600           # after a ladder closes, wait this long (or for a new interaction)
     # ladder timers
     tablet_timeout_s: float = 90
-    contact_timeout_s: float = 600
+    contact_timeout_s: float = 300       # 5 min for the trusted contact to answer
     nurse_reminder_s: float = 300
 
 
