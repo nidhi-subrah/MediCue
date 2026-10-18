@@ -5,6 +5,7 @@ import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
+import { useSpeaker } from '@/hooks/use-speaker'
 import { ShowSomeone } from '@/components/app/show-someone'
 import { UrgentButton } from '@/components/app/urgent-button'
 import { useLiveSession } from '@/lib/live/session'
@@ -16,6 +17,7 @@ import { ConsultBanner } from './consult-banner'
 import { LevelBar, LevelTransition } from './level-bar'
 import { QuestionStage } from './question-stage'
 import { SummaryPanel } from './summary-panel'
+import { VoiceInput } from './voice-input'
 
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
@@ -27,6 +29,15 @@ export function TalkView() {
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
   const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.ladder.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
+
+  // With read-aloud on, the confirmation is spoken too. (An escalation is spoken by the urgent overlay instead.)
+  const { say, stop } = useSpeaker()
+  const sent = session?.status === 'sent'
+  useEffect(() => {
+    if (!sent || !audio) return
+    say("Your nurse has your message. We'll let you know if anyone needs more from you.")
+    return () => stop()
+  }, [sent, audio, say, stop])
   const [showToSomeone, setShowToSomeone] = useState(false)
 
   if (error && !session) {
@@ -155,6 +166,7 @@ export function TalkView() {
         </div>
 
         <aside className="flex flex-col gap-4">
+          {!done && session.status !== 'waiting_consult' && <VoiceInput />}
           <SummaryPanel session={session} showEngine={showEngine} onToggleEngine={() => setShowEngine((v) => !v)} />
         </aside>
       </div>

@@ -131,7 +131,8 @@ def _need(fn, *args):
 async def health():
     return {"ok": True, "gemini": app.state.gemini.enabled, "gemini_paused_s": round(app.state.gemini.paused_for),
             "store": type(app.state.store).__name__,
-            "conformal_qhat": svc().conformal.qhat}
+            "conformal_qhat": svc().conformal.qhat,
+            "voice_enabled": app.state.gemini.enabled}
 
 
 @app.get("/api/catalog")
@@ -206,11 +207,13 @@ class TapBody(BaseModel):
     kind: str          # "area" | "feeling"
     tap_id: str
     option_id: str | None = None   # which tailored option sent this feeling tap (engine/options.py)
+    via: str | None = None         # "voice" if this confirms a transcribed suggestion
 
 
 class AnswerBody(BaseModel):
     question_id: str
     answer: str        # "yes" | "no" | "unsure"
+    via: str | None = None         # "voice" if this confirms a transcribed suggestion
 
 
 class ModeBody(BaseModel):
@@ -258,12 +261,31 @@ async def get_session(sid: str, user: DemoUser = Depends(_require_session_access
 
 @app.post("/api/sessions/{sid}/tap")
 async def tap(sid: str, body: TapBody, user: DemoUser = Depends(_require_session_access)):
-    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id))
+    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id, body.via))
 
 
 @app.post("/api/sessions/{sid}/answer")
 async def answer(sid: str, body: AnswerBody, user: DemoUser = Depends(_require_session_access)):
-    return await _call(svc().answer(sid, body.question_id, body.answer))
+    return await _call(svc().answer(sid, body.question_id, body.answer, body.via))
+
+
+class VoiceBody(BaseModel):
+    transcript: str            # from the browser's own speech recognition (free; no audio sent here)
+    retry_count: int = 0
+
+
+@app.post("/api/sessions/{sid}/voice")
+async def voice(sid: str, body: VoiceBody, user: DemoUser = Depends(_require_session_access)):
+    """A transcript matched against the patient's current step as a suggestion only (never applied
+    without a follow-up `tap`/`answer` with via="voice")."""
+    return await _call(svc().voice_utterance(sid, body.transcript, body.retry_count))
+
+
+@app.post("/api/sessions/{sid}/voice/correction")
+async def voice_correction(sid: str, user: DemoUser = Depends(_require_session_access)):
+    """The patient edited a transcript before confirming it; feeds the communication ladder like any
+    other correction the tablet notices."""
+    return await _call(svc().voice_correction(sid))
 
 
 @app.post("/api/sessions/{sid}/mode")

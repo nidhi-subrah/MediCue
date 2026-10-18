@@ -8,7 +8,9 @@ interface UrgentState {
   open: boolean
   message: string | null
   reason: string | null
-  openUrgent: (message?: string, reason?: string) => void
+  /** How it opened: the Urgent help button, or urgent words heard by the mic. Picks the alert sound. */
+  source: 'button' | 'voice'
+  openUrgent: (message?: string, reason?: string, source?: 'button' | 'voice') => void
   closeUrgent: () => void
 }
 
@@ -16,6 +18,8 @@ export const useUrgent = create<UrgentState>((set) => ({
   open: false,
   message: null,
   reason: null,
-  openUrgent: (message, reason) => set({ open: true, message: message ?? null, reason: reason ?? null }),
+  source: 'button',
+  openUrgent: (message, reason, source = 'button') =>
+    set({ open: true, message: message ?? null, reason: reason ?? null, source }),
   closeUrgent: () => set({ open: false, message: null, reason: null }),
 }))

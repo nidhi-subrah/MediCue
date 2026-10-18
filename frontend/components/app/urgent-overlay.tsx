@@ -13,6 +13,7 @@ export function UrgentOverlay() {
   const open = useUrgent((s) => s.open)
   const message = useUrgent((s) => s.message)
   const reason = useUrgent((s) => s.reason)
+  const source = useUrgent((s) => s.source)
   const closeUrgent = useUrgent((s) => s.closeUrgent)
   const { say, stop } = useSpeaker()
   const [toneOn, setToneOn] = useState(false)
@@ -23,13 +24,17 @@ export function UrgentOverlay() {
   useEffect(() => {
     if (!open) return
     say(text)
+    if (source === 'voice') {   // urgent words were heard: the soft alert sounds on its own (the button's siren is manual)
+      stopTone.current = startAlertTone('calm')
+      setToneOn(true)
+    }
     return () => {
       stop()
       stopTone.current?.()
       stopTone.current = null
       setToneOn(false)
     }
-  }, [open, text, say, stop])
+  }, [open, text, source, say, stop])
 
   const toggleTone = () => {
     if (toneOn) {
@@ -37,7 +42,7 @@ export function UrgentOverlay() {
       stopTone.current = null
       setToneOn(false)
     } else {
-      stopTone.current = startAlertTone()
+      stopTone.current = startAlertTone(source === 'button' ? 'siren' : 'calm')
       setToneOn(true)
     }
   }

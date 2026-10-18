@@ -19,7 +19,7 @@
     { "id": "back",          "label": "Back",          "icon": "🔙" },
     { "id": "arms_legs",     "label": "Arms / legs",   "icon": "💪" },
     { "id": "surgical_site", "label": "Surgery spot",  "icon": "🩹" },
-    { "id": "mouth_throat",  "label": "Mouth / throat","icon": "👄" },
+    { "id": "mouth_throat",  "label": "Face","icon": "🙂" },
     { "id": "whole_body",    "label": "Whole body",    "icon": "🧍" },
     { "id": "toilet",        "label": "Washroom",      "icon": "🚻", "send_now": true },
     { "id": "people",        "label": "People / feelings", "icon": "💬" }
@@ -199,12 +199,16 @@
       ]
     },
     "mouth_throat": {
-      "prompt": "What's wrong with your mouth or throat?",
+      "prompt": "What's wrong with your face?",
       "options": [
         { "id": "mouth_throat.thirsty", "label": "Thirsty", "feeling": "thirsty" },
         { "id": "mouth_throat.hungry", "label": "Hungry", "feeling": "hungry" },
         { "id": "mouth_throat.choking", "label": "Choking or can't clear throat", "feeling": "hard_to_breathe", "high_risk": true },
-        { "id": "mouth_throat.sick", "label": "Feel sick", "feeling": "sick" }
+        { "id": "mouth_throat.sick", "label": "Feel sick", "feeling": "sick" },
+        { "id": "mouth_throat.eyes", "label": "Eyes hurt or can't see well", "feeling": "pain" },
+        { "id": "mouth_throat.nose", "label": "Nose hurts or feels blocked", "feeling": "pain" },
+        { "id": "mouth_throat.ears", "label": "Ears hurt or can't hear well", "feeling": "pain" },
+        { "id": "mouth_throat.mouth", "label": "Mouth or throat hurts", "feeling": "pain" }
       ]
     },
     "whole_body": {

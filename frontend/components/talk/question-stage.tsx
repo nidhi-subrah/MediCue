@@ -2,8 +2,10 @@
 
 import { ArrowLeft, ChevronsRight } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSpeaker } from '@/hooks/use-speaker'
+import { isSpeaking } from '@/lib/speech'
+import { useVoiceMode } from '@/lib/live/voice-mode'
 import type { ChoiceItem, InputMode, LadderLevel, Step } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BodyMap } from './body-map'
@@ -42,6 +44,24 @@ export function QuestionStage({
     },
   }))
 
+  // With the mic on the patient answers out loud, so read-aloud speaks only the question: nobody in distress
+  // should have to wait through the options. A ref (not a dependency) so toggling the mic doesn't re-read.
+  const micOn = useVoiceMode((s) => s.on)
+  const micOnRef = useRef(micOn)
+  micOnRef.current = micOn
+  const spokenText = () => {
+    if (micOnRef.current) return step.prompt
+    const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
+    return `${step.prompt}. ${list}`
+  }
+
+  // Turning the mic on while the options are already being read cuts them off: restart with just the question.
+  const wasMicOn = useRef(micOn)
+  useEffect(() => {
+    if (micOn && !wasMicOn.current && mode === 'audio' && isSpeaking()) say(step.prompt)
+    wasMicOn.current = micOn
+  }, [micOn])
+
   // Audio First speaks the question, then each numbered choice. Yes / No level reads the question aloud.
   useEffect(() => {
     if (yesNo && mode !== 'audio') {
@@ -49,10 +69,11 @@ export function QuestionStage({
       return () => stop()
     }
     if (mode !== 'audio') return
-    const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
-    say(`${step.prompt}. ${list}`)
+    say(spokenText())
     return () => stop()
-  }, [step, mode, yesNo, say, stop])
+    // Keyed on what the question *is*, not the `step` object: that is rebuilt on every render of the page,
+    // so depending on it re-read the same question each time anything (a pending answer, a toast) re-rendered.
+  }, [step.id, step.prompt, mode, yesNo, say, stop])
 
   useEffect(() => {
     if (mode !== 'audio') return
@@ -63,8 +84,7 @@ export function QuestionStage({
         e.preventDefault()
         items[n - 1]?.onSelect()
       } else if (e.key.toLowerCase() === 'r') {
-        const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
-        say(`${step.prompt}. ${list}`)
+        say(spokenText())
       } else if (e.key === 'Backspace' && canUndo) {
         onUndo()
       }

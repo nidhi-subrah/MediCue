@@ -86,6 +86,21 @@ export function AlertCard({
         </div>
       )}
 
+      {(alert.voice_transcripts?.length ?? 0) > 0 && (
+        <details className="text-sm">
+          <summary className="w-fit cursor-pointer text-primary">
+            Patient&apos;s own words (voice) · {alert.voice_transcripts!.length}
+          </summary>
+          <ul className="mt-2 flex flex-col gap-1.5 pl-1">
+            {alert.voice_transcripts!.map((t, i) => (
+              <li key={i} className="rounded-xl bg-surface p-3 text-base italic text-muted-foreground">
+                &ldquo;{t}&rdquo;
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} initiallyOpen={openCase} />}
 
       <dl className="grid gap-1.5">

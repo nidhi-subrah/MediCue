@@ -1,8 +1,8 @@
 """Demo auth: two fixed accounts (patient / nurse), server-side sessions, httpOnly cookie.
 
 Passwords come from env vars so the real values never land in source control (see .env.example).
-Falls back to the hackathon demo passwords ("patient" / "nurse") when unset, since this app only
-ever holds synthetic data.
+Falls back to the demo credentials below when unset, since this app only ever holds synthetic data.
+The passwords are deliberately not common words, so browsers do not flag them as breached.
 """
 import hashlib
 import hmac
@@ -54,11 +54,11 @@ def _register(user: DemoUser) -> None:
 
 
 _register(_make_user(
-    "u-patient-demo", "patient@medicare.demo", os.getenv("DEMO_PATIENT_PASSWORD", "patient"),
+    "u-patient-demo", "patient@medicure.test", os.getenv("DEMO_PATIENT_PASSWORD", "Pt-Harbor-4821!"),
     "patient", "Demo Patient", DEMO_PATIENT_ID,
 ))
 _register(_make_user(
-    "u-nurse-demo", "nurse@medicare.demo", os.getenv("DEMO_NURSE_PASSWORD", "nurse"),
+    "u-nurse-demo", "nurse@medicure.test", os.getenv("DEMO_NURSE_PASSWORD", "Rn-Lantern-6307!"),
     "nurse", "Demo Nurse",
 ))
 

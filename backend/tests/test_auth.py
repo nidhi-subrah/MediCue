@@ -13,13 +13,13 @@ def test_me_requires_a_session():
 
 def test_login_rejects_wrong_password():
     with TestClient(app) as client:
-        r = client.post("/api/auth/login", json={"email": "nurse@medicare.demo", "password": "wrong"})
+        r = client.post("/api/auth/login", json={"email": "nurse@medicure.test", "password": "wrong"})
         assert r.status_code == 401
 
 
 def test_login_rejects_unknown_email():
     with TestClient(app) as client:
-        r = client.post("/api/auth/login", json={"email": "nobody@medicare.demo", "password": "nurse"})
+        r = client.post("/api/auth/login", json={"email": "nobody@medicure.test", "password": "Rn-Lantern-6307!"})
         assert r.status_code == 401
 
 
