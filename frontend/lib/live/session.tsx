@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
-import type { CommunicationLevel, ModeId, Patient, SessionState } from '@/lib/types'
+import type { CommunicationLevel, ModeId, Patient, SessionState, VoiceResult } from '@/lib/types'
 
 interface Welfare { id: string; requestedBy: string; expiresIn: number; startedAt: number; respondPath?: string }
 
@@ -13,10 +13,12 @@ interface LiveSessionValue {
   busy: boolean
   welfare: Welfare | null
   welfareSecondsLeft: number
+  voiceEnabled: boolean
   start: (mode?: ModeId) => Promise<void>
-  /** confirmMs: time spent on an "Is that right?" confirmation, so confirming doesn't count as slowness. */
-  tap: (kind: 'area' | 'feeling', tapId: string, optionId?: string, confirmMs?: number) => void
-  answerQuestion: (answer: 'yes' | 'no' | 'unsure') => void
+  /** confirmMs: time spent on an "Is that right?" confirmation, so confirming doesn't count as slowness.
+   *  via: "voice" when this confirms what the mic heard. */
+  tap: (kind: 'area' | 'feeling', tapId: string, optionId?: string, confirmMs?: number, via?: 'voice') => void
+  answerQuestion: (answer: 'yes' | 'no' | 'unsure', via?: 'voice') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
   goBack: () => void
@@ -27,6 +29,10 @@ interface LiveSessionValue {
   setAudio: (enabled: boolean) => void
   answerOffer: (offer: 'audio_first' | 'assisted', choice: string) => void
   respondWelfare: () => Promise<void>
+  /** A transcript from the browser's own speech recognition; never applies anything itself (see VoiceResult). */
+  voiceTranscript: (transcript: string, retryCount: number) => Promise<VoiceResult | null>
+  /** The patient edited a transcript before confirming it: a correction, like any the tablet notices. */
+  voiceCorrection: () => void
 }
 
 const LiveSessionContext = createContext<LiveSessionValue | null>(null)
@@ -38,6 +44,11 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
   const [error, setError] = useState<string | null>(null)
   const [welfare, setWelfare] = useState<Welfare | null>(null)
   const [now, setNow] = useState(Date.now())
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
+
+  useEffect(() => {
+    api.get<{ voice_enabled: boolean }>('/api/health').then((h) => setVoiceEnabled(h.voice_enabled)).catch(() => {})
+  }, [])
 
   const start = useCallback(
     async (mode: ModeId = 'grid') => {
@@ -93,12 +104,13 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     busy,
     welfare,
     welfareSecondsLeft: welfare ? Math.max(0, Math.ceil(welfare.expiresIn - (now - welfare.startedAt) / 1000)) : 0,
+    voiceEnabled,
     start,
-    tap: (kind, tapId, optionId, confirmMs = 0) =>
-      void act('tap', { kind, tap_id: tapId, option_id: optionId, confirm_ms: Math.round(confirmMs) }),
-    answerQuestion: (answer) => {
+    tap: (kind, tapId, optionId, confirmMs = 0, via) =>
+      void act('tap', { kind, tap_id: tapId, option_id: optionId, confirm_ms: Math.round(confirmMs), via }),
+    answerQuestion: (answer, via) => {
       const q = session?.question
-      if (q) void act('answer', { question_id: q.id, answer })
+      if (q) void act('answer', { question_id: q.id, answer, via })
     },
     setMode: (mode) => void act('mode', { mode }),
     skipConsult: () => void act('skip_consult', {}),
@@ -117,6 +129,26 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
       if (!welfare) return
       await api.post(welfare.respondPath ?? `/api/welfare/${welfare.id}/respond`)
       setWelfare(null)
+    },
+    voiceTranscript: async (transcript, retryCount) => {
+      if (!session) return null
+      try {
+        const result = await api.post<VoiceResult>(`/api/sessions/${session.session_id}/voice`, {
+          transcript, retry_count: retryCount,
+        })
+        setSession(result.session)
+        return result
+      } catch (e) {
+        setError(String(e))
+        return null
+      }
+    },
+    voiceCorrection: () => {
+      if (!session) return
+      api
+        .post<SessionState>(`/api/sessions/${session.session_id}/voice/correction`)
+        .then(setSession)
+        .catch(() => {})
     },
   }
 

@@ -1,8 +1,8 @@
 """Demo auth: two fixed accounts (patient / nurse), server-side sessions, httpOnly cookie.
 
 Passwords come from env vars so the real values never land in source control (see .env.example).
-Falls back to the hackathon demo passwords ("patient" / "nurse") when unset, since this app only
-ever holds synthetic data.
+Falls back to the demo passwords in DEFAULT_PASSWORDS when unset, since this app only ever holds
+synthetic data.
 """
 import hashlib
 import hmac
@@ -48,6 +48,9 @@ def _make_user(id: str, email: str, password: str, role: str, name: str, patient
 
 USERS_BY_EMAIL: dict[str, DemoUser] = {}
 
+# Deliberately not common words: "patient" / "nurse" are on breached-password lists, so browsers warn on them.
+DEFAULT_PASSWORDS = {"patient": "Pt-Harbor-4821!", "nurse": "Rn-Lantern-6307!"}
+
 
 LEGACY_DOMAIN = "@medicare.demo"   # the demo accounts' old addresses still sign in (saved logins, old docs)
 
@@ -58,11 +61,11 @@ def _register(user: DemoUser) -> None:
 
 
 _register(_make_user(
-    "u-patient-demo", "patient@medicue.demo", os.getenv("DEMO_PATIENT_PASSWORD", "patient"),
+    "u-patient-demo", "patient@medicue.demo", os.getenv("DEMO_PATIENT_PASSWORD", DEFAULT_PASSWORDS["patient"]),
     "patient", "Demo Patient", DEMO_PATIENT_ID,
 ))
 _register(_make_user(
-    "u-nurse-demo", "nurse@medicue.demo", os.getenv("DEMO_NURSE_PASSWORD", "nurse"),
+    "u-nurse-demo", "nurse@medicue.demo", os.getenv("DEMO_NURSE_PASSWORD", DEFAULT_PASSWORDS["nurse"]),
     "nurse", "Demo Nurse",
 ))
 
@@ -72,9 +75,9 @@ def demo_accounts() -> list[dict]:
     environment, so a deployment with its own passwords never shows them."""
     out = []
     if not os.getenv("DEMO_NURSE_PASSWORD"):
-        out.append({"role": "nurse", "email": "nurse@medicue.demo", "password": "nurse"})
+        out.append({"role": "nurse", "email": "nurse@medicue.demo", "password": DEFAULT_PASSWORDS["nurse"]})
     if not os.getenv("DEMO_PATIENT_PASSWORD"):
-        out.append({"role": "patient", "email": "patient@medicue.demo", "password": "patient"})
+        out.append({"role": "patient", "email": "patient@medicue.demo", "password": DEFAULT_PASSWORDS["patient"]})
     return out
 
 

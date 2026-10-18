@@ -1,5 +1,5 @@
 import {
-  Activity, Bone, Brain, CircleHelp, Droplet, Frown, HeartPulse, Pill, Snowflake,
+  Activity, Bone, Brain, CircleHelp, Droplet, Frown, HeartPulse, Pill, Smile, Snowflake,
   Thermometer, Toilet, TriangleAlert, Users, Utensils, type LucideIcon,
 } from 'lucide-react'
 // Duplicated from ../../shared/catalog.json — Turbopack can't resolve a symlink or an
@@ -20,7 +20,7 @@ export const CATALOG_ICONS: Record<string, LucideIcon> = {
   back: Bone,
   arms_legs: Activity,
   surgical_site: TriangleAlert,
-  mouth_throat: CircleHelp,
+  mouth_throat: Smile,
   whole_body: Users,
   toilet: Toilet,
   people: Users,

@@ -4,6 +4,7 @@ import { CircleCheckBig, Eye, LogOut, Siren, SlidersHorizontal } from 'lucide-re
 import { AnimatePresence } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
+import { useSpeaker } from '@/hooks/use-speaker'
 import { ShowSomeone } from '@/components/app/show-someone'
 import { UrgentButton } from '@/components/app/urgent-button'
 import { useLiveSession } from '@/lib/live/session'
@@ -15,6 +16,7 @@ import { ConsultBanner } from './consult-banner'
 import { LevelBar, LevelTransition, OfferCard } from './level-bar'
 import { QuestionStage } from './question-stage'
 import { TabletSettings } from './tablet-settings'
+import { VoiceInput } from './voice-input'
 
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
@@ -31,6 +33,16 @@ export function TalkView() {
     sentPreference.current = session.session_id
     if (!session.communication.audio_enabled) setAudio(true)
   }, [session, audioPreference, setAudio])
+
+  // With read-aloud on, the confirmation is spoken too. (An escalation is spoken by the urgent overlay instead.)
+  const { say, stop } = useSpeaker()
+  const sent = session?.status === 'sent'
+  const readAloud = !!session?.communication.audio_enabled
+  useEffect(() => {
+    if (!sent || !readAloud) return
+    say("Your nurse has your message. We'll let you know if anyone needs more from you.")
+    return () => stop()
+  }, [sent, readAloud, say, stop])
   const [showToSomeone, setShowToSomeone] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
@@ -110,7 +122,7 @@ export function TalkView() {
 
       {/* The patient's screen is only the question and its answers: no step log, engine or profile (those are
           for the care team, in the nurse station). */}
-      <div className="mx-auto grid w-full max-w-4xl gap-6">
+      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-6">
           {session.status === 'waiting_consult' && session.consult ? (
             <ConsultBanner personName={session.consult.person_name} relation={session.consult.relation} onSkip={skipConsult} />
@@ -170,6 +182,9 @@ export function TalkView() {
           {error && <p className="text-base text-urgent">{error}</p>}
         </div>
 
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
+          {!done && session.status !== 'waiting_consult' && <VoiceInput />}
+        </aside>
       </div>
 
       {welfare && (

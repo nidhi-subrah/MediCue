@@ -290,10 +290,11 @@ class CommunicationMixin:
         o = s.options or {}
         return next(x for x in [*o.get("predicted", []), *o.get("more", [])] if x["id"] == option_id)
 
-    async def _answer_option(self, s, option_id: str, answer: str) -> dict:
+    async def _answer_option(self, s, option_id: str, answer: str, via: str | None = None) -> dict:
         latency = self._latency_ms(s)
         self._remember(s)
-        await self._event(s, "answer", {"question": f"option:{option_id}", "answer": answer, "latency_ms": latency})
+        await self._event(s, "answer", {"question": f"option:{option_id}", "answer": answer, "latency_ms": latency,
+                                        "via": via})
         s.option_walk = [i for i in (s.option_walk or []) if i != option_id]
         if answer != "yes":
             await self._observe(s, latency, unsure=answer == "unsure")
@@ -302,7 +303,9 @@ class CommunicationMixin:
         s.choice = self._pick_option(s, option_id, o["feeling"])
         s.dialogue.apply_tap("feeling", o["feeling"])
         await self._event(s, "tap", {"kind": "feeling", "tap": o["feeling"], "latency_ms": latency,
-                                     "option": s.choice, "via": "yes_no"})
+                                     "option": s.choice, "via": via or "yes_no"})
+        if via == "voice":
+            await self._confirm_voice(s)
         await self._log_belief(s)
         await self._observe(s, latency)
         finish = f"Sent straight away: “{s.choice['label']}” needs no follow-up question." if s.choice["send_now"] else None

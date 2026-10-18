@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 
 def login_as_nurse(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"email": "nurse@medicue.demo", "password": "nurse"})
+    r = client.post("/api/auth/login", json={"email": "nurse@medicue.demo", "password": "Rn-Lantern-6307!"})
     assert r.status_code == 200, r.text
 
 
 def login_as_patient(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"email": "patient@medicue.demo", "password": "patient"})
+    r = client.post("/api/auth/login", json={"email": "patient@medicue.demo", "password": "Pt-Harbor-4821!"})
     assert r.status_code == 200, r.text

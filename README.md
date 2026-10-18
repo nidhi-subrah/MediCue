@@ -20,8 +20,8 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd frontend && npm install && npm run dev       # open http://localhost:3000
 ```
 
-Sign in with a demo account (the login page has one-tap buttons for them): nurse `nurse@medicue.demo` / `nurse`,
-patient `patient@medicue.demo` / `patient`. Set `DEMO_NURSE_PASSWORD` / `DEMO_PATIENT_PASSWORD` to change them.
+Sign in with a demo account (the login page has one-tap buttons for them): nurse `nurse@medicue.demo` / `Rn-Lantern-6307!`,
+patient `patient@medicue.demo` / `Pt-Harbor-4821!`. Set `DEMO_NURSE_PASSWORD` / `DEMO_PATIENT_PASSWORD` to change them.
 
 No database or API key is needed: it falls back to an in-memory store and template text.
 Set `DATABASE_URL` (Tiger Data) and `GEMINI_API_KEY` to turn those on (see `backend/.env.example`).

@@ -16,12 +16,13 @@ from ..config import EngineConfig, settings
 from ..data.patients import PATIENT_BY_ID, PERSON_BY_ID
 from ..engine import options as opts
 from ..engine import profile as prof
+from ..engine import voice_match
 from ..engine.belief import PriorContext, context_prior, entropy, tap_likelihood
 from ..engine.conformal import ConformalPredictor
 from ..engine.decision import Action, Consultant, Decision
 from ..engine.dialogue import Dialogue
 from ..engine.communication import policy as cp
-from ..engine.communication.signals import CORRECTION, PersonalBaseline
+from ..engine.communication.signals import CORRECTION, MISS, PersonalBaseline
 from ..engine.personal import PersonalModel
 from ..sim.learning import learning_curve
 from .case_packet import build_case_packet, case_facts, case_feedback, template_case_sbar
@@ -91,6 +92,9 @@ class Session:
     options: dict | None = None      # tailored second-step options, fixed once shown (engine/options.py)
     choice: dict | None = None       # the option the patient picked: label, predicted or "something else"
     history: list[dict] = field(default_factory=list)   # snapshots before each patient input, for "Back"
+    last_input_method: str = "touch"   # "touch" | "voice" - for communication.input_method_changed
+    voice_transcripts: list[str] = field(default_factory=list)   # patient's own words, confirmed only
+    pending_voice_transcript: str | None = None   # a suggested transcript awaiting the patient's tap/answer confirm
     sent_as: str | None = None       # what the patient tapped when it was sent straight away ("Washroom")
 
 
@@ -297,13 +301,21 @@ class SessionService(CommunicationMixin):
     def _latency_ms(s: Session) -> int:
         return round((time.time() - s.prompted_at) * 1000)
 
-    async def tap(self, sid: str, kind: str, tap_id: str, option_id: str | None = None, confirm_ms: int = 0) -> dict:
+    async def _note_input_method(self, s: Session, method: str):
+        """`communication.input_method_changed`: fired on the first input after a switch, not every input."""
+        if s.last_input_method != method:
+            await self._event(s, "communication.input_method_changed", {"from": s.last_input_method, "to": method})
+            s.last_input_method = method
+
+    async def tap(self, sid: str, kind: str, tap_id: str, option_id: str | None = None, confirm_ms: int = 0,
+                  via: str | None = None) -> dict:
         """confirm_ms: time the patient spent on a "Is that right?" confirmation (communication modifier),
         subtracted from the latency so confirming doesn't read as slowing down."""
         s = self.sessions[sid]
         refining = s.status == "escalated" and kind == "feeling" and s.dialogue.feeling is None
         if not refining and s.status != kind:
             raise ValueError(f"expected a {s.status} input, got {kind} tap")
+        await self._note_input_method(s, "voice" if via == "voice" else "touch")
         finish = None
         choice = self._pick_option(s, option_id, tap_id) if kind == "feeling" and option_id else None
         if choice and choice["send_now"]:
@@ -317,8 +329,10 @@ class SessionService(CommunicationMixin):
         if choice:
             s.choice = choice
         s.dialogue.apply_tap(kind, tap_id)
-        await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency,
+        await self._event(s, "tap", {"kind": kind, "tap": tap_id, "latency_ms": latency, "via": via,
                                      "option": s.choice if kind == "feeling" else None})
+        if via == "voice":
+            await self._confirm_voice(s)
         await self._log_belief(s)
         # "None of these" is the patient saying they aren't sure: uncertainty, never a "no".
         await self._observe(s, latency, unsure=kind == "feeling" and tap_id == opts.NONE_OF_THESE)
@@ -329,19 +343,30 @@ class SessionService(CommunicationMixin):
             return out
         return await self._advance(s, finish)
 
-    async def answer(self, sid: str, question_id: str, answer: str) -> dict:
+    async def answer(self, sid: str, question_id: str, answer: str, via: str | None = None) -> dict:
         s = self.sessions[sid]
         if s.status != "question" or s.question_id != question_id:
             raise ValueError("no such open question")
+        await self._note_input_method(s, "voice" if via == "voice" else "touch")
         if question_id.startswith("option:"):
-            return await self._answer_option(s, question_id.removeprefix("option:"), answer)
+            return await self._answer_option(s, question_id.removeprefix("option:"), answer, via)
         latency = self._latency_ms(s)
         self._remember(s)
         surprising = s.dialogue.apply_answer(question_id, answer)
-        await self._event(s, "answer", {"question": question_id, "answer": answer, "latency_ms": latency})
+        await self._event(s, "answer", {"question": question_id, "answer": answer, "latency_ms": latency, "via": via})
+        if via == "voice":
+            await self._confirm_voice(s)
         await self._log_belief(s)
         await self._observe(s, latency, surprising=surprising, unsure=answer == "unsure")
         return await self._advance(s)
+
+    async def _confirm_voice(self, s: Session):
+        """A patient confirmed a voice suggestion: keep their own words with the request (never applied
+        without this explicit confirm)."""
+        if s.pending_voice_transcript:
+            s.voice_transcripts.append(s.pending_voice_transcript)
+            await self._event(s, "voice.intent_confirmed", {})
+            s.pending_voice_transcript = None
 
     # ---- "Back": undo the patient's last input while they're still answering ----------------------
 
@@ -442,6 +467,112 @@ class SessionService(CommunicationMixin):
             s.prompted_at = time.time()
         return out
 
+    # ---- voice input (frontend/hooks/use-speech-recognition.ts -> POST /api/sessions/{sid}/voice) ---
+
+    def _step_context(self, s: Session) -> dict | None:
+        """The patient's current step as {prompt, options, kind}, for matching a voice transcript against
+        — the exact same choices the buttons on screen offer right now. None when there's nothing to
+        match against (e.g. waiting on a consult)."""
+        if s.status == "area":
+            return {"kind": "area", "prompt": PROMPTS["prompt:area"],
+                    "options": [{"id": a["id"], "label": a["label"]} for a in self.cat.raw["areas"]]}
+        if s.status == "feeling" and s.options:
+            seen, options = set(), []
+            for o in (*s.options["predicted"], *s.options["more"]):
+                if o["id"] not in seen:
+                    seen.add(o["id"])
+                    options.append({"id": o["id"], "label": o["label"],
+                                    "concept": o["feeling"] if o["feeling"] != opts.NONE_OF_THESE else None})
+            return {"kind": "feeling", "prompt": s.options["prompt"], "options": options}
+        if s.status == "question" and s.question_id:
+            if s.question_id.startswith("option:"):
+                label = self._option(s, s.question_id.removeprefix("option:"))["label"]
+                prompt = f"{label}?"
+            else:
+                prompt = self.cat.question_by_id[s.question_id].text
+            return {"kind": "question", "prompt": prompt,
+                    "options": [{"id": "yes", "label": "Yes"}, {"id": "no", "label": "No"},
+                               {"id": "unsure", "label": "Not sure"}]}
+        return None
+
+    def _voice_confirm_action(self, s: Session, kind: str, option_id: str) -> dict:
+        """What confirming `option_id` for this step kind means as a normal tap/answer call."""
+        if kind == "area":
+            return {"action": "tap", "kind": "area", "tap_id": option_id}
+        if kind == "feeling":
+            option = self._option(s, option_id)
+            return {"action": "tap", "kind": "feeling", "tap_id": option["feeling"], "option_id": option_id}
+        return {"action": "answer", "question_id": s.question_id, "answer": option_id}
+
+    async def voice_utterance(self, sid: str, transcript: str, retry_count: int = 0) -> dict:
+        """A transcript from the patient's browser-side speech recognition (free; no audio reaches the
+        backend). Matched onto the current step by `engine/voice_match.py` - a free, local, catalog-driven
+        matcher, no external call or quota involved. If it resolves, offer the patient a suggestion to
+        confirm - never applied on its own, confirming still goes through the normal `tap`/`answer` call.
+        Difficulty (empty/unclear) feeds adaptive communication via the same signal path a
+        missed tap uses, instead of a separate adaptive system."""
+        s = self.sessions[sid]
+        transcript = transcript.strip()
+        if not transcript:
+            await self._event(s, "voice.transcription_failed", {"retry_count": retry_count})
+            await self._voice_strain(s, MISS)
+            return {"outcome": "empty", "session": await self.state(s)}
+        await self._event(s, "voice.transcription_completed", {"length": len(transcript), "retry_count": retry_count})
+        await self._note_input_method(s, "voice")
+        if voice_match.detect_urgent(transcript):
+            await self._event(s, "voice.intent_suggested", {"confidence": "n/a", "matched": False, "urgent": True})
+            await self._escalate_voice_urgent(s, transcript)
+            return {"outcome": "urgent", "transcript": transcript, "session": await self.state(s, publish=True)}
+        step = self._step_context(s)
+        if not step:
+            return {"outcome": "transcribed", "transcript": transcript, "session": await self.state(s)}
+        matched, confidence = voice_match.match_option(transcript, step["options"])
+        await self._event(s, "voice.intent_suggested", {"confidence": confidence, "matched": matched is not None,
+                                                         "urgent": False})
+        if matched:
+            # Case A (clear) and Case B (partial) both resolved onto a real choice - how confident the
+            # match is, never the patient's fault, so neither counts as strain on adaptive communication.
+            # Only "unclear" (no usable match at all) does.
+            s.pending_voice_transcript = transcript
+            confirm = self._voice_confirm_action(s, step["kind"], matched)
+            label = next(o["label"] for o in step["options"] if o["id"] == matched)
+            outcome = "suggested" if confidence == "clear" else "partial"
+            return {"outcome": outcome, "transcript": transcript, "label": label, "confirm": confirm,
+                    "session": await self.state(s)}
+        await self._voice_strain(s, MISS)
+        return {"outcome": "unclear", "transcript": transcript, "clarifying_question": voice_match.CLARIFYING.get(step["kind"]),
+                "session": await self.state(s)}
+
+    async def _escalate_voice_urgent(self, s: Session, transcript: str):
+        """The patient said an urgency word: alert the nurse now, with their own words, like any other
+        escalation (nurse first, enrichment after). Nothing is inferred or applied from the words - the
+        alert just says what was said and that someone needs to check in person. Already-escalated or sent
+        requests are left alone (no duplicate alert)."""
+        if s.status not in ("area", "feeling", "question"):
+            return
+        label = "Patient said an urgent phrase by voice"
+        reason = f"{label}: “{transcript}”. Check in person; nothing was inferred from the words."
+        s.status, s.question_id = "escalated", None
+        s.decision = Decision(Action("escalate", "voice_urgent", label, 0.0, 0.0, {}), [], reason)
+        s.dialogue.attach_context()
+        if s.dialogue.feeling is None and s.options is None:
+            s.options = self._build_options(s)   # the patient can still add detail to the open alert
+        s.voice_transcripts.append(transcript)
+        await self._create_alert(s, "urgent", label)
+        await self._event(s, "voice.urgent_escalated", {"alert_id": s.alert_id})
+
+    async def voice_correction(self, sid: str) -> dict:
+        """The patient edited a transcript before confirming it: a correction, same as the tablet noticing
+        one on a tap (feeds adaptive communication exactly like `signal('correction')`)."""
+        s = self.sessions[sid]
+        await self._event(s, "voice.transcript_corrected", {})
+        await self._voice_strain(s, CORRECTION)
+        return await self.state(s)
+
+    async def _voice_strain(self, s: Session, kind: str):
+        """A voice attempt that didn't resolve is a missed tap (kind MISS) or a correction, to adaptive
+        communication - the same signal path the tablet's own `signal()` uses, not a separate system."""
+        await self._after_change(s, await self._observe(s, kind=kind))
     async def state(self, s: Session, publish: bool = False) -> dict:
         d = s.dialogue
         question = None
@@ -530,6 +661,7 @@ class SessionService(CommunicationMixin):
             "consults": [{"person": who, "answer": ans} for who, ans in d.consult_answers],
             "language": s.language,
             "profile": [i["effect"] for i in self._profile_items(p["id"])],
+            "voice_transcripts": list(s.voice_transcripts),
         }
 
     @staticmethod
@@ -552,6 +684,7 @@ class SessionService(CommunicationMixin):
             "profile": self._profile_items(s.patient["id"]), "nurse_note": None,
             "case": None,
             "choice": s.choice,
+            "voice_transcripts": ctx["voice_transcripts"],
         }
         alert["sbar"] = self._labelled(alert, template_sbar(ctx))
         s.alert_id = alert["id"]
@@ -567,7 +700,7 @@ class SessionService(CommunicationMixin):
         if not alert:
             return
         ctx = self._alert_context(s, alert["priority"])
-        alert.update({k: ctx[k] for k in ("top", "prediction_set", "p_high", "lookups")})
+        alert.update({k: ctx[k] for k in ("top", "prediction_set", "p_high", "lookups", "voice_transcripts")})
         alert["choice"] = s.choice
         alert["sbar"], alert["sbar_source"] = self._labelled(alert, template_sbar(ctx)), "template"
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
