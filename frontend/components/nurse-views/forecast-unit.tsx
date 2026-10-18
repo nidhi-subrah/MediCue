@@ -58,7 +58,7 @@ export function ForecastWhy({ f }: { f: CareForecast }) {
     <ChartCard id="why" question="What should I be ready for in the next 4 hours?" bullets={bullets} chartLabel="See the next 12 hours">
       <label className="flex items-center gap-2 self-start text-sm">
         <span className="text-muted-foreground">Patient</span>
-        <select value={pick} onChange={(e) => setPick(e.target.value)} className="min-h-10 rounded-full border border-border bg-card px-3 font-semibold">
+        <select value={pick} onChange={(e) => setPick(e.target.value)} className="min-h-10 rounded-lg border border-border bg-card px-3 font-semibold">
           {f.patients.map((p) => <option key={p.patient_id} value={p.patient_id}>{p.name}</option>)}
         </select>
       </label>

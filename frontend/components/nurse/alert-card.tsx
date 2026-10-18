@@ -46,14 +46,14 @@ export function AlertCard({
     <article
       aria-label={`${urgent ? 'Urgent' : 'Routine'} alert for ${alert.patient_name}`}
       className={cn(
-        'flex flex-col gap-3 rounded-3xl border-2 p-5 md:p-6',
+        'flex flex-col gap-3 rounded-2xl border p-5 md:p-6',
         urgent ? 'border-urgent bg-urgent-soft' : 'border-border bg-card',
         !open && 'opacity-60',
       )}
     >
       <header className="flex flex-wrap items-baseline gap-3">
         <span className="font-mono text-sm font-medium text-muted-foreground">{alert.room}</span>
-        <span className="text-lg font-bold">{alert.patient_name}</span>
+        <span className="text-lg font-semibold">{alert.patient_name}</span>
         <span className={cn('text-sm font-semibold', urgent ? 'text-urgent' : 'text-muted-foreground')}>
           {urgent ? 'Urgent' : 'Routine'}
         </span>
@@ -73,9 +73,17 @@ export function AlertCard({
         </p>
       )}
 
+      {alert.details && alert.details.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {alert.details.map((d, i) => (
+            <span key={d.id}>{i > 0 && ' · '}{d.label}: <span className="font-semibold text-foreground">{d.answer}</span></span>
+          ))}
+        </p>
+      )}
+
       {alert.kind === 'need' && lead && (
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className={cn('text-2xl font-bold tracking-tight', urgent && 'text-urgent')}>{lead.label}</span>
+          <span className={cn('text-2xl font-semibold tracking-tight', urgent && 'text-urgent')}>{lead.label}</span>
           <span className="font-mono text-lg">{pct(lead.p)}</span>
           {rest.length > 0 && (
             <span className="text-sm text-muted-foreground">
@@ -193,7 +201,7 @@ export function AlertCard({
             disabled={busy}
             onChange={(e) => setNote(e.target.value)}
             placeholder="e.g. Took ages on the second question. Easier to ask his daughter after 8pm."
-            className="rounded-xl border-2 border-input bg-background p-3 text-base"
+            className="rounded-xl border border-input bg-background p-3 text-base"
           />
         </label>
       )}
@@ -208,7 +216,7 @@ export function AlertCard({
                 type="button"
                 disabled={busy}
                 onClick={() => confirm(n)}
-                className="min-tap inline-flex items-center rounded-xl border-2 border-border bg-card px-4 text-base font-semibold hover:border-primary disabled:opacity-40"
+                className="min-tap inline-flex items-center rounded-xl border border-border bg-card px-4 text-base font-semibold hover:border-primary disabled:opacity-40"
               >
                 {needLabel(n)}
               </button>
@@ -221,7 +229,7 @@ export function AlertCard({
                 setOther(e.target.value)
                 if (e.target.value) confirm(e.target.value)
               }}
-              className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
+              className="min-h-11 rounded-xl border border-input bg-background px-3 text-base"
             >
               <option value="">Something else…</option>
               {catalog.needs.map((n) => (

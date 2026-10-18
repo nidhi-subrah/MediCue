@@ -20,7 +20,7 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
   return (
     <section aria-labelledby="learn-h" className="flex flex-col gap-4">
       <header className="flex flex-col gap-1 border-b border-border pb-3">
-        <h2 id="learn-h" className="text-xl font-bold">Learned from confirmations</h2>
+        <h2 id="learn-h" className="text-xl font-semibold">Learned from confirmations</h2>
         <p className="text-sm text-muted-foreground">
           Each time a nurse confirms what {firstName} needed, MediCue remembers the taps that led there and reads
           them that way next time. Learning only changes the interpretation. The urgent-escalation check always reads
@@ -28,7 +28,7 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
         </p>
       </header>
 
-      <div className="rounded-3xl border border-border bg-card p-5">
+      <div className="rounded-2xl border border-border bg-card p-5">
         {learning && learning.signals.length === 0 && (
           <p className="text-sm text-muted-foreground">
             Nothing learned yet{learning.confirmations ? ` (${learning.confirmations} confirmation${learning.confirmations === 1 ? '' : 's'} so far)` : ''}.
@@ -53,8 +53,8 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
         {!learning && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-5">
-        <h3 className="text-base font-bold">Replay: how fast does a gesture get understood?</h3>
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
+        <h3 className="text-base font-semibold">Replay: how fast does a gesture get understood?</h3>
         <p className="text-sm text-muted-foreground">
           Runs the real engine in memory for five sessions, starting from nothing learned. {firstName} taps the gesture
           and answers truthfully; after each session a nurse confirms the need. Nothing is saved.
@@ -62,20 +62,20 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-sm text-muted-foreground">
             Taps
-            <select value={area} onChange={(e) => setArea(e.target.value)} className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
+            <select value={area} onChange={(e) => setArea(e.target.value)} className="min-h-11 rounded-xl border border-input bg-background px-3 text-base text-foreground">
               {catalog.areas.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
             </select>
           </label>
           <span className="pb-2.5 text-base">+</span>
           <label className="flex flex-col gap-1 text-sm text-muted-foreground">
             <span className="sr-only">Feeling</span>&nbsp;
-            <select value={feeling} onChange={(e) => setFeeling(e.target.value)} aria-label="Feeling" className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
+            <select value={feeling} onChange={(e) => setFeeling(e.target.value)} aria-label="Feeling" className="min-h-11 rounded-xl border border-input bg-background px-3 text-base text-foreground">
               {catalog.feelings.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm text-muted-foreground">
             to mean
-            <select value={need} onChange={(e) => setNeed(e.target.value)} className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
+            <select value={need} onChange={(e) => setNeed(e.target.value)} className="min-h-11 rounded-xl border border-input bg-background px-3 text-base text-foreground">
               {catalog.needs.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
             </select>
           </label>

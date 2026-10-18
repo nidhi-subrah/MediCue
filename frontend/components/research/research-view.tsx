@@ -6,6 +6,7 @@ import type { ResearchHypothesis } from '@/lib/types'
 import { HypothesisCard } from './hypothesis-card'
 import { InquiryCard } from './inquiry-card'
 import { ObservationForm } from './observation-form'
+import { PageHeader } from '@/components/app/page-header'
 
 const PENDING = new Set(['SUPPORTED_PENDING_REVIEW', 'REJECTED_PENDING_REVIEW'])
 const DONE = new Set(['VALIDATED', 'REJECTED'])
@@ -30,24 +31,23 @@ export function ResearchView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold tracking-tight">Research</h1>
-          <p className="text-lg text-muted-foreground">
-            {pending.length} awaiting review · {active.length} under investigation · {inquiries.length} question
-            {inquiries.length === 1 ? '' : 's'} for clinicians
-          </p>
-        </div>
-        <button
+      <PageHeader
+        eyebrow="Pattern review · Research agent"
+        title="Research"
+        description={<>
+          {pending.length} awaiting review · {active.length} under investigation · {inquiries.length} question
+          {inquiries.length === 1 ? '' : 's'} for clinicians
+        </>}
+        actions={<button
           type="button"
           onClick={runCycle}
           disabled={running}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40"
         >
           <FlaskConical className="size-4" aria-hidden="true" />
           {running ? 'Running…' : 'Run research cycle'}
-        </button>
-      </header>
+        </button>}
+      />
 
       <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
         Clinician observations and patterns found in confirmed requests become hypotheses. For each one the agent
@@ -56,7 +56,7 @@ export function ResearchView() {
       </p>
 
       {digest && (
-        <section aria-label="Research digest" className="flex flex-col gap-1.5 rounded-3xl border border-primary/30 bg-primary-soft p-5">
+        <section aria-label="Research digest" className="flex flex-col gap-1.5 rounded-2xl border border-primary/30 bg-primary-soft p-5">
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">This shift</p>
           <p className="text-lg leading-relaxed">{digest.text}</p>
           {digest.source === 'gemini' && <p className="text-xs text-muted-foreground">Phrased by Gemini from the counts</p>}
@@ -67,11 +67,11 @@ export function ResearchView() {
         <div className="flex flex-col gap-8">
           <section aria-labelledby="pending-h" className="flex flex-col gap-4">
             <header className="flex items-baseline justify-between border-b border-border pb-2">
-              <h2 id="pending-h" className="text-xl font-bold">Pending review</h2>
+              <h2 id="pending-h" className="text-xl font-semibold">Pending review</h2>
               <span className="text-sm text-muted-foreground">{pending.length}</span>
             </header>
             {pending.length === 0 ? (
-              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+              <p className="rounded-2xl border border-border bg-card p-6 text-base text-muted-foreground">
                 Nothing has crossed a review threshold yet.
               </p>
             ) : (
@@ -82,11 +82,11 @@ export function ResearchView() {
 
           <section aria-labelledby="active-h" className="flex flex-col gap-4">
             <header className="flex items-baseline justify-between border-b border-border pb-2">
-              <h2 id="active-h" className="text-xl font-bold">Active hypotheses</h2>
+              <h2 id="active-h" className="text-xl font-semibold">Active hypotheses</h2>
               <span className="text-sm text-muted-foreground">{active.length}</span>
             </header>
             {active.length === 0 && (
-              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+              <p className="rounded-2xl border border-border bg-card p-6 text-base text-muted-foreground">
                 No hypotheses under investigation.
               </p>
             )}
@@ -95,11 +95,11 @@ export function ResearchView() {
 
           <section aria-labelledby="history-h" className="flex flex-col gap-4">
             <header className="flex items-baseline justify-between border-b border-border pb-2">
-              <h2 id="history-h" className="text-xl font-bold">Validated and rejected</h2>
+              <h2 id="history-h" className="text-xl font-semibold">Validated and rejected</h2>
               <span className="text-sm text-muted-foreground">{done.length}</span>
             </header>
             {done.length === 0 && (
-              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+              <p className="rounded-2xl border border-border bg-card p-6 text-base text-muted-foreground">
                 Nothing reviewed yet. Evidence and history stay here after review.
               </p>
             )}
@@ -110,11 +110,11 @@ export function ResearchView() {
         <aside className="flex flex-col gap-8">
           <section aria-labelledby="inq-h" className="flex flex-col gap-4">
             <header className="flex items-baseline justify-between border-b border-border pb-2">
-              <h2 id="inq-h" className="text-xl font-bold">Questions for clinicians</h2>
+              <h2 id="inq-h" className="text-xl font-semibold">Questions for clinicians</h2>
               <span className="text-sm text-muted-foreground">{inquiries.length}</span>
             </header>
             {inquiries.length === 0 && (
-              <p className="rounded-3xl border border-border bg-card p-6 text-base text-muted-foreground">
+              <p className="rounded-2xl border border-border bg-card p-6 text-base text-muted-foreground">
                 The agent has no open questions.
               </p>
             )}

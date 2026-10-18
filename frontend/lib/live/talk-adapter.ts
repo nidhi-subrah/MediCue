@@ -32,7 +32,7 @@ export function buildStep(
   s: SessionState,
   mode: InputMode,
   onTap: (kind: 'area' | 'feeling', id: string, optionId?: string, confirmMs?: number) => void,
-  onAnswer: (answer: 'yes' | 'no' | 'unsure') => void,
+  onAnswer: (answer: string) => void,
   more: { open: boolean; setOpen: (open: boolean) => void } = { open: false, setOpen: () => {} },
 ): Step | null {
   const shown = s.communication?.options ?? { area: null, feeling: null }
@@ -123,6 +123,16 @@ export function buildStep(
         icon: CATALOG_ICONS[f.id],
         onSelect: () => onTap('feeling', f.id),
       })),
+    }
+  }
+
+  if (s.status === 'question' && s.question?.choices) {
+    // A follow-up page with its own choices (how strong, when it started), not yes / no.
+    return {
+      id: `detail-${s.question.id}`,
+      kind: 'choice',
+      prompt: s.question.text,
+      options: s.question.choices.map((c) => ({ id: c.id, label: c.label, onSelect: () => onAnswer(c.id) })),
     }
   }
 

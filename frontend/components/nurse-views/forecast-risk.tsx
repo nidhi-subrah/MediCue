@@ -66,7 +66,7 @@ export function ForecastRisks({ f }: { f: CareForecast }) {
     <ChartCard id="risks" question="Whose risks are heading up?" bullets={bullets}>
       <label className="flex items-center gap-2 self-start text-sm">
         <span className="text-muted-foreground">Patient</span>
-        <select value={pick} onChange={(e) => setPick(e.target.value)} className="min-h-10 rounded-full border border-border bg-card px-3 font-semibold">
+        <select value={pick} onChange={(e) => setPick(e.target.value)} className="min-h-10 rounded-lg border border-border bg-card px-3 font-semibold">
           {f.patients.filter((p) => p.risk.length).map((p) => <option key={p.patient_id} value={p.patient_id}>{p.name}</option>)}
         </select>
       </label>

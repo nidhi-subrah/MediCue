@@ -41,18 +41,19 @@ export function LoginView() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4 py-10">
-      <div className="flex w-full max-w-md flex-col gap-8">
+    <div className="flex min-h-dvh items-center justify-center bg-[radial-gradient(700px_400px_at_50%_-100px,oklch(0.93_0.03_262/0.45),transparent_70%)] px-4 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
+      <div className="rise flex w-full max-w-md flex-col gap-8">
         <div className="flex flex-col items-center gap-3 text-center">
-          <Brand href="/login" />
+          <Brand />
+          <h1 className="page-title">Sign in</h1>
           <p className="text-base leading-relaxed text-muted-foreground">
-            Sign in to continue to your bedside tablet or the nurse station.
+            Continue to your bedside tablet or the nurse station.
           </p>
         </div>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-5 rounded-3xl border-2 border-border bg-card p-6 md:p-8">
+        <form onSubmit={onSubmit} className="panel flex flex-col gap-5 p-6 md:p-8">
           <div className="flex flex-col gap-2">
-            <label htmlFor="email" className="text-sm font-semibold text-foreground">
+            <label htmlFor="email" className="eyebrow">
               Email
             </label>
             <input
@@ -63,13 +64,13 @@ export function LoginView() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="min-h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="min-h-12 rounded-lg border border-input bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               placeholder="you@medicue.demo"
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label htmlFor="password" className="text-sm font-semibold text-foreground">
+            <label htmlFor="password" className="eyebrow">
               Password
             </label>
             <input
@@ -80,7 +81,7 @@ export function LoginView() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="min-h-12 rounded-2xl border border-border bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="min-h-12 rounded-lg border border-input bg-surface px-4 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               placeholder="••••••••"
             />
           </div>
@@ -94,14 +95,14 @@ export function LoginView() {
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex min-h-12 items-center justify-center rounded-lg bg-gradient-to-b from-[oklch(0.35_0.08_259)] to-primary text-base font-medium text-primary-foreground shadow-[0_6px_14px_-8px_oklch(0.3_0.08_259/0.5),inset_0_1px_0_oklch(1_0_0/0.1)] transition-all hover:-translate-y-px disabled:opacity-50"
           >
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
         {demo.length > 0 ? (
-          <div className="flex flex-col gap-3 rounded-3xl border-2 border-dashed border-border p-5">
+          <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-input bg-card/60 p-5">
             <p className="text-sm font-semibold text-foreground">Demo accounts (synthetic data)</p>
             <div className="grid gap-2">
               {demo.map((a) => (

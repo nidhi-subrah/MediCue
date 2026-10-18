@@ -53,7 +53,8 @@ export type SessionStatus =
 export interface SessionState {
   session_id: string; patient_id: string; status: SessionStatus; mode: ModeId; language: string;
   question: { id: string; text: string; text_full: string; text_local: string;   // text: reworded for the mode
-              wording: "standard" | "simple" | "binary" } | null;
+              wording: "standard" | "simple" | "binary";
+              choices?: { id: string; label: string }[] | null } | null;   // choices: a multiple-choice follow-up page (pain strength, onset)
   consult: { id: string; person_name: string; relation: string } | null;
   belief: BeliefItem[];               // sorted, top 6
   prediction_set: string[];           // conformal 90% set (need ids)
@@ -117,6 +118,7 @@ export interface Alert {
   communication?: CommunicationSummary | null;
   case?: CaseRecord | null;
   choice?: OptionChoice | null;       // what the patient picked at the second step
+  details?: { id: string; label: string; answer: string }[];   // pain follow-up pages: how strong, when it started
   voice_transcripts?: string[];       // patient's own words (voice), confirmed only - not an AI inference
 }
 

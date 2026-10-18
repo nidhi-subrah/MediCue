@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
 import type { Alert, CommunicationPatient, Patient, PatientTrend } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { PageHeader } from '@/components/app/page-header'
 
 const initials = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('')
 
@@ -52,25 +53,20 @@ export function HomeView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
-        <span className="w-fit rounded-md border border-border px-1.5 font-mono text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
-          Synthetic demo patients
-        </span>
-        <h1 className="text-4xl font-bold leading-tight tracking-tight text-balance md:text-5xl">Patients</h1>
-        <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground text-pretty">
-          Who needs you now, how each patient is communicating, and what their chart flags. Requests from bedside
-          tablets update here live.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Workspace · Synthetic demo patients"
+        title="Patients"
+        description="Who needs you now, how each patient is communicating, and what their chart flags. Requests from bedside tablets update here live."
+      />
 
       {error && (
-        <p className="rounded-3xl border border-urgent/30 bg-urgent-soft p-5 text-base text-urgent">
+        <p className="rounded-2xl border border-urgent/30 bg-urgent-soft p-5 text-base text-urgent">
           Can&apos;t reach the patient directory right now. ({error})
         </p>
       )}
 
       {patients.length > 0 && (
-        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <dl className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
             icon={urgentCount > 0 ? Siren : BellRing}
             tone={urgentCount > 0 ? 'urgent' : alerts.length > 0 ? 'primary' : 'calm'}
@@ -88,7 +84,7 @@ export function HomeView() {
         </dl>
       )}
 
-      <ul className="grid gap-4 lg:grid-cols-2">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
         {sorted.map((p, i) => (
           <motion.li
             key={p.id}
@@ -130,13 +126,13 @@ function Stat({ icon: Icon, tone, label, value, note, href }: {
       <div className="flex min-w-0 flex-col">
         <dt className="text-sm font-semibold text-muted-foreground">{label}</dt>
         <dd className="flex flex-col">
-          <span className="text-3xl font-bold leading-tight tabular-nums">{value}</span>
+          <span className="text-3xl font-semibold leading-tight tabular-nums">{value}</span>
           <span className={cn('text-sm', tone === 'urgent' ? 'font-semibold text-urgent' : 'text-muted-foreground')}>{note}</span>
         </dd>
       </div>
     </>
   )
-  const cls = 'flex items-center gap-3 rounded-3xl border-2 border-border bg-card p-4'
+  const cls = 'flex items-center gap-3 rounded-2xl border border-border bg-card p-4'
   return href ? (
     <Link href={href} className={cn(cls, 'hover:border-primary/40')}>{body}</Link>
   ) : (
@@ -157,17 +153,17 @@ function PatientCard({ patient: p, open, level, trend }: {
     <article
       aria-label={`${p.name}, room ${p.room}`}
       className={cn(
-        'flex h-full flex-col gap-5 rounded-3xl border-2 bg-card p-6',
+        'panel flex h-full flex-col gap-5 p-5 sm:p-6',
         urgent ? 'border-urgent' : open.length > 0 ? 'border-primary/50' : 'border-border',
       )}
     >
-      <header className="flex items-start gap-4">
-        <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-lg font-bold text-primary" aria-hidden="true">
+      <header className="flex flex-wrap items-start gap-x-4 gap-y-3 [&>div]:min-w-[10rem]">
+        <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-lg font-semibold text-primary" aria-hidden="true">
           {initials(p.name)}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <h2 className="text-2xl font-bold">{p.name}</h2>
+            <h2 className="text-2xl font-semibold">{p.name}</h2>
             <span className="text-base text-muted-foreground">{p.age}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
@@ -184,7 +180,7 @@ function PatientCard({ patient: p, open, level, trend }: {
         <Link
           href="/nurse"
           className={cn(
-            'flex items-center gap-3 rounded-2xl border px-4 py-3 hover:border-primary/40',
+            'flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3 hover:border-primary/40',
             urgent ? 'border-urgent/40 bg-urgent-soft' : 'border-primary/30 bg-primary-soft',
           )}
         >
@@ -200,7 +196,7 @@ function PatientCard({ patient: p, open, level, trend }: {
         </Link>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
         <div className="flex flex-col gap-1 rounded-2xl bg-surface p-3">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tablet</span>
           <span className="inline-flex items-center gap-1.5 font-semibold">
@@ -217,7 +213,7 @@ function PatientCard({ patient: p, open, level, trend }: {
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requests per day</span>
           {requests.length > 1 ? (
             <div className="flex items-end gap-2">
-              <span className="text-xl font-bold tabular-nums">{Math.round(requests[requests.length - 1] ?? 0)}</span>
+              <span className="text-xl font-semibold tabular-nums">{Math.round(requests[requests.length - 1] ?? 0)}</span>
               <Sparkline values={requests} label={`Requests per day over 7 days, ending at ${Math.round(requests[requests.length - 1] ?? 0)} in the last 24 hours`} />
             </div>
           ) : (
@@ -256,7 +252,7 @@ function PatientCard({ patient: p, open, level, trend }: {
       <footer className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-4">
         <Link
           href={`/profile/${p.id}`}
-          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
         >
           <NotebookPen className="size-4" aria-hidden="true" />
           Notes and profile
@@ -265,7 +261,7 @@ function PatientCard({ patient: p, open, level, trend }: {
           <Link
             key={person.id}
             href={`/family/${person.id}`}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold hover:border-primary/40"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-semibold hover:border-primary/40"
           >
             <Users className="size-4" aria-hidden="true" />
             {person.name.split(' ')[0]}, {person.relation}

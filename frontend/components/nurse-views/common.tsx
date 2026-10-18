@@ -52,9 +52,9 @@ export function ChartCard({
   className?: string
 }) {
   return (
-    <section aria-labelledby={`${id}-h`} className={cn('flex flex-col gap-3 rounded-3xl border border-border bg-card p-5 md:p-6', className)}>
+    <section aria-labelledby={`${id}-h`} className={cn('flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 md:p-6', className)}>
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <h2 id={`${id}-h`} className="text-xl font-bold text-balance">{question}</h2>
+        <h2 id={`${id}-h`} className="text-xl font-semibold text-balance">{question}</h2>
         {actions}
       </header>
       <ul className="flex list-disc flex-col gap-1.5 pl-6 text-lg leading-relaxed marker:text-muted-foreground">
@@ -62,7 +62,7 @@ export function ChartCard({
       </ul>
       {children && (
         <details className="group mt-1">
-          <summary className="inline-flex min-tap cursor-pointer list-none items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold text-primary hover:bg-muted [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex min-tap cursor-pointer list-none items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-primary hover:bg-muted [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">{chartLabel}</span>
             <span className="hidden group-open:inline">Hide</span>
           </summary>
@@ -113,7 +113,7 @@ export function Toggle<T extends string | number>({
   onChange: (v: T) => void
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 gap-1 rounded-full border border-border bg-surface p-1">
+    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 gap-1 rounded-lg border border-border bg-surface p-1">
       {options.map((o) => (
         <button
           key={String(o.value)}
@@ -122,7 +122,7 @@ export function Toggle<T extends string | number>({
           aria-checked={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'min-h-9 rounded-full px-3.5 text-sm font-semibold transition-colors',
+            'min-h-9 rounded-md px-3.5 text-sm font-semibold transition-colors',
             o.value === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
           )}
         >

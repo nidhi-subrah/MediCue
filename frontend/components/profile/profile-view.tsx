@@ -20,7 +20,7 @@ export function ProfileView({ patientId }: { patientId: string }) {
   }, [profile?.notes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error && !patient) {
-    return <p className="rounded-3xl border border-urgent/30 bg-urgent-soft p-5 text-base text-urgent">{error}</p>
+    return <p className="rounded-2xl border border-urgent/30 bg-urgent-soft p-5 text-base text-urgent">{error}</p>
   }
   if (!patient || !profile) return <p className="text-base text-muted-foreground">Loading…</p>
 
@@ -44,13 +44,13 @@ export function ProfileView({ patientId }: { patientId: string }) {
         All patients
       </Link>
 
-      <header className="flex flex-col gap-5 rounded-3xl border-2 border-border bg-card p-6">
+      <header className="panel rise flex flex-col gap-5 p-6">
         <div className="flex items-start gap-4">
-          <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-xl font-bold text-primary" aria-hidden="true">
+          <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-xl font-semibold text-primary" aria-hidden="true">
             {patient.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}
           </span>
           <div className="flex min-w-0 flex-col gap-1.5">
-            <h1 className="text-3xl font-bold">
+            <h1 className="page-title">
               {patient.name} <span className="text-lg font-normal text-muted-foreground">{patient.age}</span>
             </h1>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
@@ -97,13 +97,13 @@ export function ProfileView({ patientId }: { patientId: string }) {
 
       <div className="grid gap-8 lg:grid-cols-2">
         <section aria-labelledby="notes-h" className="flex flex-col gap-3">
-          <h2 id="notes-h" className="text-xl font-bold">Chart notes</h2>
+          <h2 id="notes-h" className="text-xl font-semibold">Chart notes</h2>
           <textarea
             aria-label="Chart notes"
             rows={8}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="rounded-2xl border-2 border-input bg-background p-3 text-base leading-relaxed"
+            className="rounded-2xl border border-input bg-background p-3 text-base leading-relaxed"
           />
           <div className="flex flex-wrap gap-2">
             <button
@@ -132,12 +132,12 @@ export function ProfileView({ patientId }: { patientId: string }) {
         </section>
 
         <section aria-labelledby="profile-h" className="flex flex-col gap-3">
-          <h2 id="profile-h" className="text-xl font-bold">Profile</h2>
+          <h2 id="profile-h" className="text-xl font-semibold">Profile</h2>
           <p className="text-sm text-muted-foreground">
             {profile.source === 'gemini' ? 'Read by Gemini' : 'Gemini off: no profile from notes'}
             {profile.updated_at && ` · ${timeAgo(profile.updated_at)}`}
           </p>
-          <div className="rounded-3xl border border-border bg-card p-5">
+          <div className="rounded-2xl border border-border bg-card p-5">
             <ProfileList items={profile.items} empty="Nothing in the notes changes how the engine behaves." />
           </div>
           {profile.dropped.length > 0 && (

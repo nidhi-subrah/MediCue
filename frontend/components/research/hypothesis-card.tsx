@@ -55,7 +55,7 @@ export function HypothesisCard({
   return (
     <article
       className={cn(
-        'flex flex-col gap-4 rounded-3xl border p-5 md:p-6',
+        'flex flex-col gap-4 rounded-2xl border p-5 md:p-6',
         h.status === 'VALIDATED' && 'border-success/30 bg-success-soft',
         h.status === 'REJECTED' && 'border-border bg-card opacity-55',
         h.status !== 'VALIDATED' && h.status !== 'REJECTED' && 'border-border bg-card',
@@ -75,7 +75,7 @@ export function HypothesisCard({
         <span>{h.cohort}</span>
       </p>
 
-      <h2 className="text-xl font-bold">{h.statement}</h2>
+      <h2 className="text-xl font-semibold">{h.statement}</h2>
 
       {h.observation_text && (
         <blockquote className="rounded-2xl border-l-4 border-primary/40 bg-surface py-2 pl-4 text-base italic text-muted-foreground">
@@ -240,7 +240,7 @@ export function HypothesisCard({
             placeholder="Add a note (optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="min-h-11 w-full flex-1 rounded-xl border-2 border-input bg-background px-3 text-base sm:min-w-[220px]"
+            className="min-h-11 w-full flex-1 rounded-xl border border-input bg-background px-3 text-base sm:min-w-[220px]"
           />
           <button
             type="button"
@@ -254,7 +254,7 @@ export function HypothesisCard({
             type="button"
             disabled={busy}
             onClick={() => review('needs_more_data')}
-            className="min-h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
+            className="min-h-11 rounded-xl border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
           >
             Needs more data
           </button>

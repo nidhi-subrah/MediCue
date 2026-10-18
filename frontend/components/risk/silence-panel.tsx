@@ -64,11 +64,11 @@ function LadderCard({ l, now, onAcknowledge }: { l: SilenceLadder; now: number; 
 
   return (
     <article aria-label={`Inactivity check for ${l.patient_name}`}
-             className={cn('flex flex-col gap-3 rounded-3xl border border-border border-l-4 bg-card p-5',
+             className={cn('flex flex-col gap-3 rounded-2xl border border-border border-l-4 bg-card p-5',
                            l.active ? 'border-l-caution' : 'opacity-75')}>
       <header className="flex flex-wrap items-baseline gap-2">
         <span className="font-mono text-sm text-muted-foreground">{l.room}</span>
-        <span className="text-lg font-bold">{l.patient_name}</span>
+        <span className="text-lg font-semibold">{l.patient_name}</span>
         <span role="status" className="text-sm font-semibold">
           {l.active ? `Now: ${STEP[l.current ?? 'tablet'].title}` : `Closed ${clock(l.closed_at as string)}`}
         </span>
@@ -136,7 +136,7 @@ export function SilencePanel() {
   return (
     <section aria-labelledby="silence-h" className="flex flex-col gap-4">
       <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-3">
-        <h2 id="silence-h" className="text-xl font-bold">Inactivity checks</h2>
+        <h2 id="silence-h" className="text-xl font-semibold">Inactivity checks</h2>
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <SyntheticTag>Synthetic demo patients</SyntheticTag>{active.length === 0 ? 'None running' : `${active.length} running`}
         </p>

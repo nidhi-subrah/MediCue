@@ -28,9 +28,9 @@ export function ShiftSummary({ onClose }: { onClose: () => void }) {
   const { summary, error } = useHandoff(12)
 
   return (
-    <section aria-labelledby="handoff-h" className="flex flex-col gap-4 rounded-3xl border-2 border-primary/30 bg-primary-soft p-5 md:p-6">
+    <section aria-labelledby="handoff-h" className="flex flex-col gap-4 rounded-2xl border border-primary/30 bg-primary-soft p-5 md:p-6">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 id="handoff-h" className="text-xl font-bold">Shift summary</h2>
+        <h2 id="handoff-h" className="text-xl font-semibold">Shift summary</h2>
         <p className="flex items-baseline gap-3 text-sm text-muted-foreground">
           {summary
             ? `Last ${summary.window_hours}h · ${summary.source === 'gemini' ? 'headlines by Gemini' : 'template headlines (Gemini off)'}`

@@ -24,7 +24,7 @@ export function InquiryCard({
   }
 
   return (
-    <article aria-label={`Question for ${inquiry.clinician_name}`} className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-5">
+    <article aria-label={`Question for ${inquiry.clinician_name}`} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
       <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <span className="font-semibold text-foreground">For {inquiry.clinician_name}</span>
         <span>{inquiry.clinician_role}</span>
@@ -36,7 +36,7 @@ export function InquiryCard({
         placeholder="Add a note (optional)"
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
+        className="min-h-11 rounded-xl border border-input bg-background px-3 text-base"
       />
       <div className="flex flex-wrap gap-2">
         <button
@@ -51,7 +51,7 @@ export function InquiryCard({
           type="button"
           disabled={busy}
           onClick={() => answer('disagree')}
-          className="min-h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
+          className="min-h-11 rounded-xl border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
         >
           Disagree
         </button>

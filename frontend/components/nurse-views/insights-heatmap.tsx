@@ -91,7 +91,7 @@ export function InsightsHeatmap({ data }: { data: UnitInsights }) {
       {cell && (
         <div className="rounded-2xl border border-border bg-surface p-4" aria-live="polite">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="font-bold">
+            <h3 className="font-semibold">
               {cell.name} · {hourly ? whenLabel(cell.start) : dayLabel(cell.start)}
             </h3>
             <button type="button" onClick={close} aria-label="Close" className="rounded-full p-1 hover:bg-muted">

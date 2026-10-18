@@ -18,7 +18,7 @@ interface LiveSessionValue {
   /** confirmMs: time spent on an "Is that right?" confirmation, so confirming doesn't count as slowness.
    *  via: "voice" when this confirms what the mic heard. */
   tap: (kind: 'area' | 'feeling', tapId: string, optionId?: string, confirmMs?: number, via?: 'voice') => void
-  answerQuestion: (answer: 'yes' | 'no' | 'unsure', via?: 'voice') => void
+  answerQuestion: (answer: string, via?: 'voice') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
   goBack: () => void

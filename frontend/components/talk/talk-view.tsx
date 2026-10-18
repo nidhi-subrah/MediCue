@@ -1,9 +1,10 @@
 'use client'
 
-import { CircleCheckBig, Eye, LogOut, Siren, SlidersHorizontal } from 'lucide-react'
-import { AnimatePresence } from 'motion/react'
+import { CircleCheckBig, Eye, LogOut, Siren, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
+import { Brand } from '@/components/app/brand'
 import { useSpeaker } from '@/hooks/use-speaker'
 import { ShowSomeone } from '@/components/app/show-someone'
 import { UrgentButton } from '@/components/app/urgent-button'
@@ -23,10 +24,9 @@ export function TalkView() {
     signal, setLevel, setAudio, answerOffer } = useLiveSession()
   const { user, logout } = useAuth()
   const audioPreference = useSettings((s) => s.spokenPrompts)
-  const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
+  const [moreOpen, setMoreOpen] = useState(false)
   const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.communication.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
-  // "Read aloud" chosen in Display and sound is an explicit accessibility preference: carry it into the session once.
   const sentPreference = useRef<string | null>(null)
   useEffect(() => {
     if (!session || !audioPreference || sentPreference.current === session.session_id) return
@@ -34,7 +34,6 @@ export function TalkView() {
     if (!session.communication.audio_enabled) setAudio(true)
   }, [session, audioPreference, setAudio])
 
-  // With read-aloud on, the confirmation is spoken too. (An escalation is spoken by the urgent overlay instead.)
   const { say, stop } = useSpeaker()
   const sent = session?.status === 'sent'
   const readAloud = !!session?.communication.audio_enabled
@@ -48,104 +47,131 @@ export function TalkView() {
 
   if (error && !session) {
     return (
-      <div className="flex flex-col items-start gap-4 rounded-3xl border border-border bg-card p-8">
-        <h1 className="text-3xl font-bold">Couldn&apos;t load this session</h1>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="patient-section flex flex-col items-start gap-5"
+      >
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-urgent/10">
+          <Siren className="size-7 text-urgent" aria-hidden="true" />
+        </div>
+        <h1 className="text-3xl font-semibold">Couldn&apos;t load this session</h1>
         <p className="text-lg leading-relaxed text-muted-foreground">{error}</p>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground"
+          className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90"
         >
           Try again
         </button>
-      </div>
+      </motion.div>
     )
   }
 
   if (!session || !patient) {
-    return <p className="text-lg text-muted-foreground">Loading…</p>
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <div className="size-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+          <p className="text-base text-muted-foreground">Preparing your session…</p>
+        </motion.div>
+      </div>
+    )
   }
 
   const comm = session.communication
-  const mode = uiMode(session.mode, false)   // read aloud is a modifier on any mode (comm.presentation.audio)
+  const mode = uiMode(session.mode, false)
   const step = buildStep(session, mode, tap, answerQuestion, { open: moreOpen, setOpen: setMoreOpen })
 
   const level = comm.level
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
-  const lastMessage = patientMessage(session)   // what the patient said, never the engine's internal steps
+  const lastMessage = patientMessage(session)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col gap-5">
+      {/* Top bar: patient info + actions */}
+      <motion.header
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="glass flex flex-wrap items-center justify-between gap-3 px-4 py-2.5"
+      >
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
+          <Brand />
+          <span className="patient-chip">
+            <span className="size-2 rounded-full bg-success" aria-hidden="true" />
             {patient.name} · {patient.room}
           </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setShowToSomeone(true)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+            className="patient-btn"
           >
             <Eye className="size-4" aria-hidden="true" />
-            Show to someone
+            <span className="hidden sm:inline">Show to someone</span>
           </button>
           <button
             type="button"
             onClick={() => setShowSettings(true)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+            className="patient-btn"
           >
             <SlidersHorizontal className="size-4" aria-hidden="true" />
-            Display and sound
+            <span className="hidden sm:inline">Display &amp; sound</span>
           </button>
-        </div>
-        <div className="flex items-center gap-2">
           {user?.role === 'patient' && (
             <button
               type="button"
               onClick={() => logout()}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+              className="patient-btn"
             >
               <LogOut className="size-4" aria-hidden="true" />
-              Log out
+              <span className="hidden sm:inline">Log out</span>
             </button>
           )}
           <UrgentButton compact patientId={patient.id} />
         </div>
-      </div>
+      </motion.header>
 
-      {/* Adaptive communication: the backend decides how to ask (backend/app/engine/communication); this page
-          only renders it. Urgent help (above) stays one tap away in every mode. */}
       <LevelBar comm={comm} onLevel={setLevel} onAudio={setAudio} />
       <LevelTransition message={comm.message} />
       {!done && <OfferCard comm={comm} onAnswer={answerOffer} />}
       {level === 4 && !done && <AssistCard comm={comm} />}
 
-      {/* The patient's screen is only the question and its answers: no step log, engine or profile (those are
-          for the care team, in the nurse station). */}
-      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="flex flex-col gap-6">
+      <div className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_16rem] xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex flex-col gap-5">
           {session.status === 'waiting_consult' && session.consult ? (
             <ConsultBanner personName={session.consult.person_name} relation={session.consult.relation} onSkip={skipConsult} />
           ) : done ? (
-            <section
+            <motion.section
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
               className={cn(
-                'flex flex-col items-start gap-5 rounded-3xl border p-6 md:p-8',
-                session.status === 'escalated' ? 'border-urgent bg-urgent-soft' : 'border-border bg-card',
+                'patient-section flex flex-col items-start gap-6',
+                session.status === 'escalated' && 'border-urgent/40 bg-urgent/5',
               )}
             >
-              <span
-                className={cn(
-                  'flex size-14 items-center justify-center rounded-2xl',
-                  session.status === 'escalated' ? 'bg-urgent text-urgent-foreground' : 'bg-success-soft text-success',
-                )}
-              >
-                {session.status === 'escalated' ? <Siren className="size-7" aria-hidden="true" /> : <CircleCheckBig className="size-7" aria-hidden="true" />}
-              </span>
-              <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold text-balance md:text-4xl">
+              <div className={cn(
+                'flex size-16 items-center justify-center rounded-2xl',
+                session.status === 'escalated'
+                  ? 'bg-gradient-to-br from-urgent/20 to-urgent/10 text-urgent'
+                  : 'bg-gradient-to-br from-success/20 to-success/10 text-success',
+              )}>
+                {session.status === 'escalated'
+                  ? <Siren className="size-8" aria-hidden="true" />
+                  : <CircleCheckBig className="size-8" aria-hidden="true" />}
+              </div>
+              <div className="flex flex-col gap-3">
+                <h1 className="text-3xl font-semibold leading-tight text-balance md:text-4xl">
                   {session.status === 'escalated' ? 'Help is coming' : session.status === 'sent' ? 'Your nurse has your message' : 'Cancelled'}
                 </h1>
-                <p className="text-lg leading-relaxed text-muted-foreground">
+                <p className="max-w-lg text-lg leading-relaxed text-muted-foreground">
                   {session.status === 'escalated'
                     ? 'A nurse has your message and is on the way.'
                     : session.status === 'sent'
@@ -153,14 +179,20 @@ export function TalkView() {
                       : 'You can start again whenever you need to.'}
                 </p>
               </div>
+              {session.status === 'sent' && (
+                <div className="flex items-center gap-2 text-sm text-success">
+                  <Sparkles className="size-4" aria-hidden="true" />
+                  Message delivered successfully
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex min-h-16 items-center gap-3 rounded-2xl bg-primary px-8 text-xl font-bold text-primary-foreground hover:bg-primary/90"
+                className="inline-flex min-h-16 items-center gap-3 rounded-2xl bg-primary px-8 text-xl font-semibold text-primary-foreground shadow-lg shadow-primary/15 hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/20 active:scale-[0.98]"
               >
                 Start again
               </button>
-            </section>
+            </motion.section>
           ) : step ? (
             <AnimatePresence mode="wait" initial={false}>
               <QuestionStage
@@ -178,12 +210,53 @@ export function TalkView() {
             </AnimatePresence>
           ) : null}
 
-          {busy && <p className="text-base text-muted-foreground" aria-live="polite">Sending…</p>}
-          {error && <p className="text-base text-urgent">{error}</p>}
+          {busy && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-2 text-base text-muted-foreground"
+              aria-live="polite"
+            >
+              <span className="size-4 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+              Sending…
+            </motion.p>
+          )}
+          {error && <p className="rounded-xl bg-urgent/5 px-4 py-3 text-base text-urgent">{error}</p>}
         </div>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
           {!done && session.status !== 'waiting_consult' && <VoiceInput />}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="patient-section flex flex-col gap-4 !p-5"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.35_0.09_262)] text-lg font-semibold text-primary-foreground shadow-md shadow-primary/20" aria-hidden="true">
+                {patient.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-lg font-semibold leading-tight">Hello, {patient.name.split(' ')[0]}</span>
+                <span className="eyebrow">Room {patient.room}</span>
+              </div>
+            </div>
+            <ol className="flex flex-col gap-3 border-t border-[oklch(0.92_0.01_260_/_0.5)] pt-4 text-sm">
+              {[
+                ['Tell us', 'Tap, or press Speak instead.'],
+                ['We check', 'Is that right? You can change it.'],
+                ['Nurse knows', 'Your message goes to your nurse.'],
+              ].map(([title, body], i) => (
+                <li key={title} className="flex items-start gap-3">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono text-xs font-semibold text-primary">{i + 1}</span>
+                  <span className="flex flex-col leading-snug">
+                    <span className="font-semibold">{title}</span>
+                    <span className="text-muted-foreground">{body}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </motion.div>
         </aside>
       </div>
 
@@ -197,9 +270,9 @@ export function TalkView() {
             paddingLeft: 'max(2rem, calc(env(safe-area-inset-left) + 1rem))',
             paddingRight: 'max(2rem, calc(env(safe-area-inset-right) + 1rem))',
           }}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-foreground text-center text-background"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-foreground text-center text-background"
         >
-          <span className="text-balance text-4xl font-bold leading-tight md:text-6xl">Are you okay? Tap anywhere.</span>
+          <span className="text-balance text-4xl font-semibold leading-tight md:text-6xl">Are you okay? Tap anywhere.</span>
           <span className="text-lg opacity-80">Someone asked us to check on you.</span>
           <span className="font-mono text-5xl tabular-nums opacity-70">{welfareSecondsLeft}</span>
         </button>

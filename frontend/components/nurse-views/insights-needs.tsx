@@ -49,7 +49,7 @@ export function InsightsNeeds({ data }: { data: UnitInsights }) {
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Show</span>
           <select value={patient} onChange={(e) => setPatient(e.target.value)}
-                  className="min-h-10 rounded-full border border-border bg-card px-3 font-semibold">
+                  className="min-h-10 rounded-lg border border-border bg-card px-3 font-semibold">
             <option value="all">Whole unit</option>
             {heatmap.patients.map((p) => <option key={p.patient_id} value={p.patient_id}>{p.name}</option>)}
           </select>

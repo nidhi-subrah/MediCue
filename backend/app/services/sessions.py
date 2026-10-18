@@ -96,13 +96,24 @@ class Session:
     voice_transcripts: list[str] = field(default_factory=list)   # patient's own words, confirmed only
     pending_voice_transcript: str | None = None   # a suggested transcript awaiting the patient's tap/answer confirm
     sent_as: str | None = None       # what the patient tapped when it was sent straight away ("Washroom")
+    details: list[dict] = field(default_factory=list)   # pain follow-up pages answered so far: {id, label, answer}
 
 
 # What "Back" restores. Everything else (alerts, consults, logs) is either not created yet while the patient
 # is still answering, or is an audit trail that should keep the undone input.
 # The communication mode is deliberately not undone: going back is itself a sign of difficulty (a correction),
 # and the mode reflects how the patient is managing, not what they answered. The tablet's mode follows it.
-UNDOABLE = ("status", "question_id", "options", "choice", "decision", "option_walk")
+UNDOABLE = ("status", "question_id", "options", "choice", "decision", "option_walk", "details")
+
+# Pain follow-up pages, shown after the body area and the kind of pain (big-button choices). They add detail for
+# the nurse; the engine's belief and the safety floor are untouched, and an escalated request is never held up.
+DETAIL_PAGES = [
+    {"id": "severity", "label": "How strong", "prompt": "How strong is the pain?",
+     "choices": [("mild", "Mild"), ("medium", "Medium"), ("strong", "Strong"), ("worst", "Worst I have felt")]},
+    {"id": "onset", "label": "Started", "prompt": "When did it start?",
+     "choices": [("now", "Just now"), ("today", "Earlier today"), ("days", "A few days ago"), ("long", "A long time ago")]},
+]
+DETAIL_BY_ID = {d["id"]: d for d in DETAIL_PAGES}
 CAN_GO_BACK = ("feeling", "question")
 
 class SessionService(CommunicationMixin):
@@ -350,6 +361,8 @@ class SessionService(CommunicationMixin):
         await self._note_input_method(s, "voice" if via == "voice" else "touch")
         if question_id.startswith("option:"):
             return await self._answer_option(s, question_id.removeprefix("option:"), answer, via)
+        if question_id.startswith("detail:"):
+            return await self._answer_detail(s, question_id.removeprefix("detail:"), answer, via)
         latency = self._latency_ms(s)
         self._remember(s)
         surprising = s.dialogue.apply_answer(question_id, answer)
@@ -359,6 +372,28 @@ class SessionService(CommunicationMixin):
         await self._log_belief(s)
         await self._observe(s, latency, surprising=surprising, unsure=answer == "unsure")
         return await self._advance(s)
+
+    async def _answer_detail(self, s: Session, detail_id: str, answer: str, via: str | None) -> dict:
+        page = DETAIL_BY_ID[detail_id]
+        label = dict(page["choices"]).get(answer)
+        if label is None:
+            raise ValueError("no such choice")
+        latency = self._latency_ms(s)
+        self._remember(s)
+        s.details.append({"id": detail_id, "label": page["label"], "answer": label})
+        await self._event(s, "answer", {"question": f"detail:{detail_id}", "answer": answer, "latency_ms": latency, "via": via})
+        if via == "voice":
+            await self._confirm_voice(s)
+        await self._observe(s, latency)
+        return await self._advance(s)
+
+    def _next_detail(self, s: Session, kind: str) -> dict | None:
+        """The next pain follow-up page, if one is due: only after a pain tap, only while the tablet still shows
+        choices (not yes/no), and never in place of an escalation or an instant send."""
+        if (kind in ("send", "ask") and s.dialogue.feeling == "pain" and not s.sent_as
+                and s.comm.mode < cp.Mode.BINARY and len(s.details) < len(DETAIL_PAGES)):
+            return DETAIL_PAGES[len(s.details)]
+        return None
 
     async def _confirm_voice(self, s: Session):
         """A patient confirmed a voice suggestion: keep their own words with the request (never applied
@@ -434,7 +469,10 @@ class SessionService(CommunicationMixin):
         s.question_id = None
         if kind in ("escalate", "send"):
             s.comm_offer = None   # the request has gone to the nurse: nothing left to adapt
-        if kind == "escalate":
+        detail = self._next_detail(s, kind)
+        if detail:
+            s.status, s.question_id = "question", f"detail:{detail['id']}"
+        elif kind == "escalate":
             s.status = "escalated"
             s.dialogue.attach_context()
             if s.dialogue.feeling is None and s.options is None:
@@ -485,6 +523,10 @@ class SessionService(CommunicationMixin):
                                     "concept": o["feeling"] if o["feeling"] != opts.NONE_OF_THESE else None})
             return {"kind": "feeling", "prompt": s.options["prompt"], "options": options}
         if s.status == "question" and s.question_id:
+            if s.question_id.startswith("detail:"):
+                page = DETAIL_BY_ID[s.question_id.removeprefix("detail:")]
+                return {"kind": "question", "prompt": page["prompt"],
+                        "options": [{"id": c, "label": l} for c, l in page["choices"]]}
             if s.question_id.startswith("option:"):
                 label = self._option(s, s.question_id.removeprefix("option:"))["label"]
                 prompt = f"{label}?"
@@ -579,7 +621,12 @@ class SessionService(CommunicationMixin):
         ui = await self.ui_text(s.language)
         if s.question_id:
             level = complexity(s.comm.mode, s.comm.modifiers)
-            if s.question_id.startswith("option:"):
+            choices = None
+            if s.question_id.startswith("detail:"):
+                page = DETAIL_BY_ID[s.question_id.removeprefix("detail:")]
+                full = text = page["prompt"]
+                choices = [{"id": c, "label": l} for c, l in page["choices"]]
+            elif s.question_id.startswith("option:"):
                 label = self._option(s, s.question_id.removeprefix("option:"))["label"]
                 full, text = f"{label}?", f"{self.lang.label(label, level).rstrip('?')}?"
             else:
@@ -587,7 +634,7 @@ class SessionService(CommunicationMixin):
                 text = self.lang.question(s.question_id, level)
             # The same question at every level: only `text` changes, never the id.
             question = {"id": s.question_id, "text": text, "text_full": full, "text_local": text,
-                        "wording": level}
+                        "wording": level, "choices": choices}
         consult = None
         if s.consult_id and s.status == "waiting_consult":
             c = self.consults[s.consult_id]
@@ -685,6 +732,7 @@ class SessionService(CommunicationMixin):
             "case": None,
             "choice": s.choice,
             "voice_transcripts": ctx["voice_transcripts"],
+            "details": list(s.details),
         }
         alert["sbar"] = self._labelled(alert, template_sbar(ctx))
         s.alert_id = alert["id"]
@@ -702,6 +750,7 @@ class SessionService(CommunicationMixin):
         ctx = self._alert_context(s, alert["priority"])
         alert.update({k: ctx[k] for k in ("top", "prediction_set", "p_high", "lookups", "voice_transcripts")})
         alert["choice"] = s.choice
+        alert["details"] = list(s.details)
         alert["sbar"], alert["sbar_source"] = self._labelled(alert, template_sbar(ctx)), "template"
         await self.hub.publish("nurse", {"type": "alert_updated", "alert": alert})
         self._spawn(self._enrich(alert["id"], ctx))

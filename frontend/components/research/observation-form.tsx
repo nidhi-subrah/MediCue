@@ -40,8 +40,8 @@ export function ObservationForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-5">
-      <h2 className="text-base font-bold">Add an observation</h2>
+    <form onSubmit={submit} className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
+      <h2 className="text-base font-semibold">Add an observation</h2>
       <p className="text-sm leading-relaxed text-muted-foreground">
         Your words are kept as written. It becomes a hypothesis to investigate, not a finding.
       </p>
@@ -51,7 +51,7 @@ export function ObservationForm({
           required
           value={clinician}
           onChange={(e) => setClinician(e.target.value)}
-          className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base font-normal"
+          className="min-h-11 rounded-xl border border-input bg-background px-3 text-base font-normal"
         >
           <option value="">Choose…</option>
           {staff.map((s) => (
@@ -64,7 +64,7 @@ export function ObservationForm({
         <select
           value={patient}
           onChange={(e) => setPatient(e.target.value)}
-          className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base font-normal"
+          className="min-h-11 rounded-xl border border-input bg-background px-3 text-base font-normal"
         >
           <option value="">Detect from text</option>
           {patients.map((p) => (
@@ -80,7 +80,7 @@ export function ObservationForm({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="e.g. Mr. Chen seems more anxious after his daughter leaves."
-          className="resize-none rounded-xl border-2 border-input bg-background p-3 text-base font-normal leading-relaxed"
+          className="resize-none rounded-xl border border-input bg-background p-3 text-base font-normal leading-relaxed"
         />
       </label>
       <button
