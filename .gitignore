@@ -13,3 +13,5 @@ AGENTS.md
 *.log
 *credentials*.env
 *credentials*.json
+.vercel
+.env*

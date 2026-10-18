@@ -1,0 +1,11 @@
+# Never upload these when deploying backend/ (Vercel Root Directory = backend): local virtualenv (built for this
+# machine, not Vercel's Linux), local secrets (set them in Vercel's Environment Variables instead), test caches.
+.venv
+venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.pyc
+.pytest_cache
+tests
