@@ -3,7 +3,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
+
+
+def _shared_dir() -> Path:
+    """Where catalog.json lives. The repository's `shared/` is the one source to edit; a deployment that only
+    ships `backend/` (e.g. Vercel with Root Directory = backend) has no sibling `shared/`, so it uses the copy
+    packaged at `backend/shared/` instead (tests/test_packaging.py keeps the two identical). SHARED_DIR overrides."""
+    if os.getenv("SHARED_DIR"):
+        return Path(os.environ["SHARED_DIR"])
+    for candidate in (REPO_ROOT / "shared", BACKEND_ROOT / "shared"):
+        if (candidate / "catalog.json").is_file():
+            return candidate
+    return REPO_ROOT / "shared"   # neither exists: the error names the authoritative location
 
 
 @dataclass(frozen=True)
@@ -27,7 +40,7 @@ class EngineConfig:
 
 @dataclass(frozen=True)
 class Settings:
-    shared_dir: Path = Path(os.getenv("SHARED_DIR", REPO_ROOT / "shared"))
+    shared_dir: Path = field(default_factory=_shared_dir)
     database_url: str | None = os.getenv("DATABASE_URL") or None
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY") or None
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")

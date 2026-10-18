@@ -106,7 +106,11 @@
   --tap: 5.25rem;
   --btn-min: 4.25rem;
 }
-:root:is([data-button-size='large'], [data-button-size='xl']) #main :is(button, a[class*='rounded']):not([role='switch']) {
+/* Only when a larger size is chosen: at Standard each button keeps its own minimum height (an id selector here
+   would otherwise override every min-h-* utility with 0). */
+:root:is([data-button-size='large'], [data-button-size='xl'])
+  #main :is(button, a[class*='rounded']):not([role='switch']):not(.min-tap, .min-h-14, .min-h-16, .min-h-20, .min-h-24, .min-h-32) {
+  /* buttons already designed bigger than the setting (choice cards, "Start again", urgent) keep their size */
   min-height: var(--btn-min);
 }
 

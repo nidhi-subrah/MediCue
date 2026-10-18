@@ -10,7 +10,7 @@ import { BrandMark } from './brand'
 const WORKSPACE = [
   { href: '/home', label: 'Patients', icon: Users, match: ['/home', '/family', '/profile'] },
   { href: '/nurse', label: 'Nurse station', icon: Stethoscope, match: ['/nurse'], exclude: ['/nurse/insights', '/nurse/forecast'] },
-  { href: '/research', label: 'Pattern review', icon: FlaskConical, match: ['/research'] },
+  { href: '/research', label: 'Research Agent', icon: FlaskConical, match: ['/research'] },
 ] as const
 const INTELLIGENCE = [
   { href: '/nurse/insights', label: 'Insights', icon: ChartColumn, match: ['/nurse/insights'] },
