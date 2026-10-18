@@ -45,9 +45,9 @@ def test_head_options_are_tailored_and_something_else_holds_the_rest():
         ids = [x["id"] for x in o["predicted"]] + [x["id"] for x in o["more"]]
         assert all(i.startswith("head.") for i in ids)
         assert not any(x["feeling"] == "need_toilet" for x in o["predicted"] + o["more"])
-        assert len(o["predicted"]) == 4                                 # 5 options -> top 4 shown
+        assert len(o["predicted"]) == 4                                 # 6 options -> top 4 shown
         assert [x["label"] for x in o["more"]][-1] == "None of these"   # plus what's left
-        assert len(ids) == 5 + 1
+        assert len(ids) == 6 + 1
 
 
 def test_high_risk_options_are_always_shown():
@@ -136,7 +136,7 @@ def test_session_uses_gemini_ranking_once_ready_and_never_waits_for_it():
         assert o["source"] == "gemini"
         assert [x["id"] for x in o["predicted"]][:2] == ["head.meds", "head.worried"]
         assert o["predicted"][0]["reason"] == "Analgesic overdue on chart"
-        assert len(o["predicted"]) + len(o["more"]) == 6     # missing options filled in, plus "None of these"
+        assert len(o["predicted"]) + len(o["more"]) == 7     # missing options filled in, plus "None of these"
         assert first["options"] is None                      # area step: no second-step options yet
     asyncio.run(run())
 
