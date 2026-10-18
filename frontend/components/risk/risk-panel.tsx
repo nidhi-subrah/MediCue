@@ -63,7 +63,7 @@ function Row({ p }: { p: RiskPatient }) {
   const scores = RISKS.flatMap((r) => (p.risks[r.key] ? [{ ...r, s: p.risks[r.key] as RiskScore }] : []))
   const byConcern = [...scores].sort((a, b) => LEVEL[b.s.level].rank - LEVEL[a.s.level].rank || b.s.score - a.s.score)
   return (
-    <article aria-label={`Risk for ${p.name}`} className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-5">
+    <article aria-label={`Risk for ${p.name}`} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
       <header className="flex flex-wrap items-baseline gap-2">
         <span className="font-mono text-sm text-muted-foreground">{p.room}</span>
         <span className="font-semibold">{p.name}</span>
@@ -109,7 +109,7 @@ export function RiskPanel() {
   return (
     <section aria-labelledby="risk-h" className="flex flex-col gap-4">
       <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-3">
-        <h2 id="risk-h" className="text-xl font-bold">Risk</h2>
+        <h2 id="risk-h" className="text-xl font-semibold">Risk</h2>
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <SyntheticTag />{data && `${concerning.length} on watch or elevated`}
         </p>
@@ -117,7 +117,7 @@ export function RiskPanel() {
       {error && <p className="text-sm text-urgent">{error}</p>}
       {data && <p className="text-sm text-muted-foreground">{data.notice}</p>}
       {data && concerning.length === 0 && (
-        <p className="rounded-3xl border border-border bg-card p-6 text-muted-foreground">No patient is on watch or elevated.</p>
+        <p className="rounded-2xl border border-border bg-card p-6 text-muted-foreground">No patient is on watch or elevated.</p>
       )}
       {concerning.map((p) => <Row key={p.patient_id} p={p} />)}
       {calm.length > 0 && (

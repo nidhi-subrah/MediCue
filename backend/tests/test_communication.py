@@ -391,3 +391,13 @@ def test_the_tablet_is_english_only():
         assert "language" not in c and "suggested_language" not in c and c["text"]["yes"] == "Yes"
         assert client.post(f"/api/sessions/{s['session_id']}/communication/language",
                            json={"language": "es"}).status_code in (404, 405)
+
+
+def test_taps_that_name_the_need_are_not_asked_again_as_a_question():
+    with TestClient(app) as client:
+        s = _start(client)
+        sid = s["session_id"]
+        client.post(f"/api/sessions/{sid}/tap", json={"kind": "area", "tap_id": "head"})
+        s = client.post(f"/api/sessions/{sid}/tap", json={"kind": "feeling", "tap_id": "pain"}).json()
+        q = s.get("question")
+        assert q is None or q["id"] not in ("need:pain_head", "group:pain")

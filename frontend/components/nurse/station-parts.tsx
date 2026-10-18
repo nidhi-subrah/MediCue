@@ -14,8 +14,8 @@ export function SideDrawer({ open, onClose, title, children }: {
 }) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="top-0 right-0 left-auto flex h-dvh w-full max-w-2xl translate-x-0 translate-y-0 flex-col gap-4 overflow-y-auto rounded-none bg-background p-5 sm:max-w-2xl md:p-6">
-        <DialogTitle className="pr-10 text-xl font-bold">{title}</DialogTitle>
+      <DialogContent className="top-0 right-0 left-auto flex h-dvh w-full max-w-2xl translate-x-0 translate-y-0 flex-col gap-4 overflow-y-auto rounded-none bg-background p-5 ring-0 border-l border-border shadow-2xl sm:max-w-2xl md:p-6">
+        <DialogTitle className="pr-10 text-lg font-semibold tracking-tight">{title}</DialogTitle>
         {children}
       </DialogContent>
     </Dialog>
@@ -24,20 +24,20 @@ export function SideDrawer({ open, onClose, title, children }: {
 
 const BAR = { urgent: 'border-l-urgent', routine: 'border-l-primary', checkin: 'border-l-caution' } as const
 const TAG = {
-  urgent: 'bg-urgent text-urgent-foreground', routine: 'bg-primary-soft text-primary', checkin: 'bg-caution-soft text-caution',
+  urgent: 'bg-urgent-soft text-urgent', routine: 'bg-primary-soft text-primary', checkin: 'bg-caution-soft text-caution',
 } as const
 
 function CardFrame({ kind, room, name, when, children }: {
   kind: keyof typeof BAR; room: string; name: string; when: string; children: React.ReactNode
 }) {
   return (
-    <article className={cn('flex flex-col gap-2 rounded-2xl border border-border border-l-4 bg-card p-4', BAR[kind])}>
+    <article className={cn('panel flex flex-col gap-2.5 border-l-[3px] p-5', BAR[kind])}>
       <header className="flex flex-wrap items-center gap-2">
-        <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide', TAG[kind])}>
+        <span className={cn('rounded-md px-2 py-0.5 text-xs font-semibold uppercase tracking-wide', TAG[kind])}>
           {kind === 'urgent' ? 'Urgent' : kind === 'checkin' ? 'Check-in' : 'Request'}
         </span>
-        <span className="font-mono text-sm text-muted-foreground">{room}</span>
-        <span className="font-semibold">{name}</span>
+        <span className="num text-sm text-muted-foreground">{room}</span>
+        <span className="text-sm font-semibold">{name}</span>
         <span className="ml-auto text-sm text-muted-foreground">{timeAgo(when)}</span>
       </header>
       {children}
@@ -59,9 +59,9 @@ export function QueueAlert({ alert, onConfirm, onDetails }: {
   }
   return (
     <CardFrame kind={urgent ? 'urgent' : 'routine'} room={alert.room} name={alert.patient_name} when={alert.created_at}>
-      <p className={cn('text-xl font-bold', urgent && 'text-urgent')}>
+      <p className={cn('text-lg font-semibold leading-snug tracking-tight', urgent && 'text-urgent')}>
         {headline}
-        {!alert.label && lead && <span className="ml-2 font-mono text-base font-normal text-muted-foreground">{pct(lead.p)}</span>}
+        {!alert.label && lead && <span className="num ml-2 text-sm font-normal text-muted-foreground">{pct(lead.p)}</span>}
       </p>
       <p className="text-sm text-muted-foreground">
         {alert.choice ? <>Patient chose “{alert.choice.label}”</> : next ? <>Or maybe {next.label.toLowerCase()}</> : null}
@@ -73,7 +73,7 @@ export function QueueAlert({ alert, onConfirm, onDetails }: {
             value=""
             disabled={busy}
             onChange={(e) => (e.target.value === '__other' ? onDetails() : void confirm(e.target.value))}
-            className="min-tap min-h-11 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50"
+            className="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50"
           >
             <option value="" disabled>Confirm what they needed…</option>
             {alert.prediction_set.slice(0, 4).map((n) => <option key={n} value={n}>{needLabel(n)}</option>)}
@@ -81,12 +81,12 @@ export function QueueAlert({ alert, onConfirm, onDetails }: {
           </select>
         ) : (
           <button type="button" disabled={busy} onClick={() => void confirm(null)}
-                  className="min-tap inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50">
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50">
             <Check className="size-5" aria-hidden="true" /> I&apos;m on it
           </button>
         )}
         <button type="button" onClick={onDetails}
-                className="min-tap inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-4 text-base font-semibold hover:bg-muted">
+                className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-border bg-card px-4 text-sm font-medium hover:bg-muted">
           Details <ChevronRight className="size-4" aria-hidden="true" />
         </button>
       </div>
@@ -106,12 +106,12 @@ export function QueueCheckIn({ ladder, onAcknowledge }: { ladder: SilenceLadder;
   const first = ladder.patient_name.split(' ')[0]
   return (
     <CardFrame kind="checkin" room={ladder.room} name={ladder.patient_name} when={ladder.started_at}>
-      <p className="text-xl font-bold">Hasn&apos;t tapped for longer than usual</p>
+      <p className="text-lg font-semibold leading-snug tracking-tight">Hasn&apos;t tapped for longer than usual</p>
       <p className="text-sm text-muted-foreground">{STEP_NOW[ladder.current ?? 'tablet'](ladder)}</p>
       <div>
         <button type="button" disabled={busy}
                 onClick={async () => { setBusy(true); try { await onAcknowledge() } finally { setBusy(false) } }}
-                className="min-tap inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:opacity-50">
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50">
           <Check className="size-5" aria-hidden="true" /> I&apos;ve checked on {first}
         </button>
       </div>
@@ -127,16 +127,16 @@ const DOT: Record<NurseBoardRow['state'], string> = {
 /** "Unit right now": one line per patient, most pressing first. */
 export function UnitBoard({ rows, onPick }: { rows: NurseBoardRow[]; onPick: (r: NurseBoardRow) => void }) {
   return (
-    <ul className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
+    <ul className="panel flex flex-col divide-y divide-border overflow-hidden">
       {rows.map((r) => (
         <li key={r.patient_id}>
           <button type="button" onClick={() => onPick(r)}
-                  className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-muted/60">
-            <span className={cn('mt-1.5 size-3 shrink-0 rounded-full', DOT[r.state])} aria-hidden="true" />
+                  className="flex w-full items-start gap-3 px-5 py-3.5 text-left hover:bg-muted/60">
+            <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', DOT[r.state])} aria-hidden="true" />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="flex flex-wrap items-baseline gap-2">
-                <span className="font-semibold">{r.name}</span>
-                <span className="font-mono text-xs text-muted-foreground">{r.room}</span>
+                <span className="text-sm font-semibold">{r.name}</span>
+                <span className="num text-xs text-muted-foreground">{r.room}</span>
               </span>
               <span className={cn('text-sm', r.state === 'urgent' ? 'font-semibold text-urgent' : 'text-muted-foreground')}>
                 {r.headline}{r.since && ` · ${timeAgo(r.since)}`}

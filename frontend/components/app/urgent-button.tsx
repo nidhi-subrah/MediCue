@@ -5,8 +5,6 @@ import { api } from '@/lib/services/backend'
 import { useUrgent } from '@/lib/live/urgent'
 import { cn } from '@/lib/utils'
 
-/** `patientId`: on a patient's tablet, pressing it also alerts the nurse station (the overlay says whether
- *  that worked). Without it (staff pages) it only shows the full-screen help message. */
 export function UrgentButton({
   className,
   compact = false,
@@ -20,7 +18,7 @@ export function UrgentButton({
   const setNotice = useUrgent((s) => s.setNotice)
 
   const press = async () => {
-    openUrgent()   // the screen first, whatever happens next
+    openUrgent()
     if (!patientId) return
     setNotice({ ok: true, text: 'Telling the nurse station…' })
     try {
@@ -36,7 +34,7 @@ export function UrgentButton({
       type="button"
       onClick={press}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-full bg-urgent font-semibold text-urgent-foreground shadow-sm transition-colors hover:bg-urgent/90 focus-visible:outline-urgent',
+        'inline-flex items-center justify-center gap-2 rounded-lg bg-urgent font-semibold text-urgent-foreground shadow-md shadow-urgent/20 transition-all hover:bg-urgent/90 hover:shadow-lg hover:shadow-urgent/25 focus-visible:outline-urgent active:scale-[0.97]',
         compact ? 'min-h-11 px-4 py-1.5 text-sm' : 'min-h-12 px-5 py-2 text-base',
         className,
       )}

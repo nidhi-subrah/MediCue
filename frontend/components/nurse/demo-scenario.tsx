@@ -34,7 +34,7 @@ export function DemoScenarioBar({ onAlert }: { onAlert: (alertId: string) => voi
 
   if (scenarios.length === 0) return null
   return (
-    <section aria-label="Demo scenarios" className="flex flex-col gap-2 rounded-2xl border-2 border-dashed border-border p-4">
+    <section aria-label="Demo scenarios" className="flex flex-col gap-2 rounded-2xl border border-dashed border-border p-4">
       {scenarios.map((sc) => (
         <div key={sc.id} className="flex flex-wrap items-center gap-3">
           <span className="rounded-md border border-border px-1.5 font-mono text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
@@ -42,7 +42,7 @@ export function DemoScenarioBar({ onAlert }: { onAlert: (alertId: string) => voi
           </span>
           <span className="font-semibold">{sc.title}</span>
           <button type="button" onClick={() => play(sc)} disabled={busy}
-                  className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl border-2 border-primary bg-card px-4 text-sm font-semibold text-primary disabled:opacity-50">
+                  className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary bg-card px-4 text-sm font-semibold text-primary disabled:opacity-50">
             <Play className="size-4" aria-hidden="true" />{busy ? 'Playing…' : 'Play'}
           </button>
           <p className="w-full text-sm text-muted-foreground">{sc.description}</p>

@@ -37,7 +37,7 @@ export function Segmented<T extends string>({
             aria-checked={active}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'flex min-h-12 flex-col items-start justify-center gap-0.5 rounded-xl border-2 px-4 py-2 text-left transition-colors',
+              'flex min-h-12 flex-col items-start justify-center gap-0.5 rounded-xl border px-4 py-2 text-left transition-colors',
               active
                 ? 'border-primary bg-primary-soft text-foreground'
                 : 'border-border bg-card text-foreground hover:border-primary/40',

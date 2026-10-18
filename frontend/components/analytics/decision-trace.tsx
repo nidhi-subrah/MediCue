@@ -19,14 +19,14 @@ export function DecisionTrace({ patient }: { patient: PatientAnalytics }) {
   const cycles = Array.from(new Set(actions.map((a) => a.decision_cycle)))
 
   return (
-    <section className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-6">
+    <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold">Decision trace</h2>
+        <h2 className="text-xl font-semibold">Decision trace</h2>
         {patient.recent_sessions.length > 0 ? (
           <select
             value={sessionId ?? ''}
             onChange={(e) => setSessionId(e.target.value || null)}
-            className="min-h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
+            className="min-h-10 rounded-xl border border-input bg-background px-3 text-sm"
           >
             {patient.recent_sessions.map((s) => (
               <option key={s.session_id} value={s.session_id}>

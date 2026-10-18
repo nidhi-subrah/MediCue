@@ -3,19 +3,16 @@
 import { HandHelping } from 'lucide-react'
 import type { CommunicationState } from '@/lib/types'
 
-/** Assisted communication: someone helps. Shows what is already confirmed and what is still open, so the
- *  helper starts from what the patient has said and nothing they didn't say is filled in. The question below
- *  stays answerable, and the silence timer keeps running (shorter in this mode). */
 export function AssistCard({ comm }: { comm: CommunicationState }) {
   const { summary, assist } = comm
   return (
-    <section aria-labelledby="assist-h" className="flex flex-col gap-4 rounded-3xl border-2 border-primary/40 bg-primary-soft p-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-5">
-        <span className="inline-flex size-16 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+    <section aria-labelledby="assist-h" className="patient-section flex flex-col gap-5 !border-primary/25 !bg-[oklch(0.97_0.015_262_/_0.7)]">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-5">
+        <span className="inline-flex size-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.28_0.07_259)] text-primary-foreground shadow-lg shadow-primary/15">
           <HandHelping className="size-8" aria-hidden="true" />
         </span>
-        <div className="flex flex-col gap-1">
-          <h2 id="assist-h" className="text-3xl font-bold text-balance">
+        <div className="flex flex-col gap-1.5">
+          <h2 id="assist-h" className="text-3xl font-semibold text-balance">
             {assist?.help === 'nurse_present' ? 'A nurse is helping you communicate' : 'Someone is coming to help you communicate'}
           </h2>
           <p className="text-lg leading-relaxed text-muted-foreground">
@@ -26,19 +23,29 @@ export function AssistCard({ comm }: { comm: CommunicationState }) {
           </p>
         </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Already confirmed</h3>
+      <div className="grid gap-4 border-t border-[oklch(0.92_0.01_260_/_0.4)] pt-5 md:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <h3 className="eyebrow">Already confirmed</h3>
           {summary.confirmed.length ? (
-            <ul className="mt-1 flex flex-col gap-1 text-lg">
-              {summary.confirmed.map((c) => <li key={c.field}><span className="text-muted-foreground">{c.field}:</span> <strong>{c.value}</strong></li>)}
+            <ul className="flex flex-col gap-1.5 text-lg">
+              {summary.confirmed.map((c) => (
+                <li key={c.field} className="flex items-baseline gap-2">
+                  <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
+                  <span className="text-muted-foreground">{c.field}:</span> <strong>{c.value}</strong>
+                </li>
+              ))}
             </ul>
-          ) : <p className="mt-1 text-lg text-muted-foreground">Nothing yet.</p>}
+          ) : <p className="text-lg text-muted-foreground">Nothing yet.</p>}
         </div>
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Still to find out</h3>
-          <ul className="mt-1 flex flex-col gap-1 text-lg">
-            {summary.unresolved.map((u) => <li key={u.field}>{u.field}{u.value ? ` (${u.value})` : ''}</li>)}
+        <div className="flex flex-col gap-2">
+          <h3 className="eyebrow">Still to find out</h3>
+          <ul className="flex flex-col gap-1.5 text-lg">
+            {summary.unresolved.map((u) => (
+              <li key={u.field} className="flex items-baseline gap-2">
+                <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+                {u.field}{u.value ? ` (${u.value})` : ''}
+              </li>
+            ))}
           </ul>
         </div>
       </div>

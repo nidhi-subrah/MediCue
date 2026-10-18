@@ -63,7 +63,7 @@ async function copy(text: string) {
 function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <section aria-labelledby={`case-s${n}`} className="flex flex-col gap-3 border-t-2 border-border pt-4">
-      <h3 id={`case-s${n}`} className="text-xl font-bold">{title}</h3>
+      <h3 id={`case-s${n}`} className="text-xl font-semibold">{title}</h3>
       {children}
     </section>
   )
@@ -103,7 +103,7 @@ function Likely({ record }: { record: CaseRecord }) {
         <li key={n.need} className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-lg font-semibold">{n.label}</span>
-            <span className="font-mono text-2xl font-bold tabular-nums">{pct(n.p)}</span>
+            <span className="font-mono text-2xl font-semibold tabular-nums">{pct(n.p)}</span>
           </div>
           <div className="h-4 w-full rounded-full border-2 border-foreground/60 bg-card" aria-hidden="true">
             <div className="h-full rounded-full bg-foreground" style={{ width: `${Math.max(n.p * 100, 2)}%` }} />
@@ -196,7 +196,7 @@ function NextStep({ record }: { record: CaseRecord }) {
   return (
     <div className="flex items-start gap-3 rounded-2xl border-4 border-primary bg-primary-soft p-4">
       <Icon className="mt-1 size-8 shrink-0 text-primary" aria-hidden="true" />
-      <p className="text-2xl font-bold leading-snug">{record.packet.next_step.text}</p>
+      <p className="text-2xl font-semibold leading-snug">{record.packet.next_step.text}</p>
     </div>
   )
 }
@@ -260,7 +260,7 @@ function SbarCompare({ record }: { record: CaseRecord }) {
         <dl className="grid gap-2 rounded-2xl border-2 border-border bg-card p-4">
           {SBAR_ROWS.map(([k, letter]) => (
             <div key={k} className="grid grid-cols-[2rem_1fr] gap-2">
-              <dt className="font-mono text-lg font-bold">{letter}</dt>
+              <dt className="font-mono text-lg font-semibold">{letter}</dt>
               <dd className="text-lg leading-relaxed">{shown[k]}</dd>
             </div>
           ))}
@@ -305,7 +305,7 @@ export function CasePacketCard({ alert }: { alert: Alert }) {
     <article className="flex flex-col gap-5 text-foreground">
       <header className="flex flex-col gap-1 pr-10">
         <p className="font-mono text-base text-muted-foreground">{alert.room} · {light ? 'Quick packet (high-risk)' : 'Case packet'}</p>
-        <DialogTitle className="text-3xl font-bold leading-tight">{alert.patient_name}</DialogTitle>
+        <DialogTitle className="text-3xl font-semibold leading-tight">{alert.patient_name}</DialogTitle>
         <DialogDescription className="text-lg text-muted-foreground">
           What the system knows, and doesn&apos;t, about this request.
         </DialogDescription>

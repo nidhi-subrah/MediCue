@@ -36,11 +36,11 @@ export function SuggestionsPanel({
   return (
     <section aria-labelledby="sugg-h" className="flex flex-col gap-4">
       <header className="flex flex-col gap-1 border-b border-border pb-3">
-        <h2 id="sugg-h" className="text-xl font-bold">Profile suggestions</h2>
+        <h2 id="sugg-h" className="text-xl font-semibold">Profile suggestions</h2>
         <p className="text-sm text-muted-foreground">{pending.length} to review · from nurses&apos; notes</p>
       </header>
       {[...pending, ...recent].map((s) => (
-        <article key={s.id} className="flex flex-col gap-2 rounded-3xl border border-border bg-card p-5">
+        <article key={s.id} className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5">
           <p className="text-sm text-muted-foreground">
             <span className="font-mono">{s.room}</span> {s.patient_name} · {s.nurse}, {timeAgo(s.created_at)}
           </p>

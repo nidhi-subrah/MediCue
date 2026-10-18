@@ -101,6 +101,25 @@ class Dialogue:
             self.feeling = tap_id
             label = self.cat.feeling_labels[tap_id]
         self._record("tap", f"Tapped {kind}: {label}", tap_id)
+        self._skip_answered_questions()
+
+    def _skip_answered_questions(self):
+        """Once both taps are in, don't ask what they already said: area "Head" + feeling "Hurts" is the answer
+        to "Does your head hurt?" (and to "Is it about pain?"). Only skips the question; the belief update from
+        the taps is unchanged, and the question does not count toward the question limit."""
+        if self.area is None or self.feeling != "pain":   # "Hurts" is the reported case; other feelings keep their confirm question
+            return
+        matches = [n for n in self.cat.raw["needs"]
+                   if max(n["areas"], key=n["areas"].get) == self.area
+                   and max(n["feelings"], key=n["feelings"].get) == self.feeling]
+        if len(matches) == 1:   # several matches (e.g. three washroom needs) still need a question to tell them apart
+            self.asked.add(f"need:{matches[0]['id']}")
+            self.asked.add(f"group:{matches[0]['group']}")
+        if self.feeling == "pain":
+            # "Head" + "Hurts" has told us where it hurts: asking whether some other body part hurts is noise.
+            for n in self.cat.raw["needs"]:
+                if n["group"] == "pain" and self.area not in n["areas"]:
+                    self.asked.add(f"need:{n['id']}")
 
     def apply_answer(self, question_id: str, answer: str, t: float | None = None) -> bool:
         """Returns True when the answer was surprising given the belief (the ladder counts it)."""

@@ -5,13 +5,14 @@ import { Sparkline } from '@/components/nurse/sparkline'
 import { useTigerDataOverview } from '@/lib/live/analytics'
 import { DecisionTrace } from './decision-trace'
 import { StatCard } from './stat-card'
+import { PageHeader } from '@/components/app/page-header'
 
 export function AnalyticsView() {
   const [patientId, setPatientId] = useState<string | null>(null)
   const { overview, patients, error } = useTigerDataOverview(patientId)
 
   if (error) {
-    return <p className="rounded-3xl border border-urgent/30 bg-urgent-soft p-6 text-base text-urgent">{error}</p>
+    return <p className="rounded-2xl border border-urgent/30 bg-urgent-soft p-6 text-base text-urgent">{error}</p>
   }
   if (!overview) {
     return <p className="text-lg text-muted-foreground">Loading…</p>
@@ -33,15 +34,14 @@ export function AnalyticsView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-4xl font-bold tracking-tight">Tiger Data intelligence</h1>
-        <p className="text-lg text-muted-foreground">
-          {overview.store === 'memory'
-            ? 'No Tiger Data database is connected on this server, so these numbers come from the in-memory store. '
-              + 'Hypertable and compression figures need Tiger Data (set DATABASE_URL).'
-            : 'Every number below comes from a real query against Tiger Data — no mocked analytics.'}
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Intelligence · Tiger Data"
+        title="Tiger Data intelligence"
+        description={overview.store === 'memory'
+          ? 'No Tiger Data database is connected on this server, so these numbers come from the in-memory store. '
+            + 'Hypertable and compression figures need Tiger Data (set DATABASE_URL).'
+          : 'Every number below comes from a real query against Tiger Data — no mocked analytics.'}
+      />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Interaction events" value={overview.counts.events.toLocaleString()} />
@@ -66,8 +66,8 @@ export function AnalyticsView() {
       </section>
 
       {overview.compression.some((c) => c.available) && (
-        <section className="rounded-3xl border border-border bg-card p-6">
-          <h2 className="mb-3 text-lg font-bold">Compression</h2>
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="mb-3 text-lg font-semibold">Compression</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {overview.compression.map((c) => (
               <div key={c.table} className="flex flex-col gap-0.5">
@@ -81,13 +81,13 @@ export function AnalyticsView() {
         </section>
       )}
 
-      <section className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-6">
+      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-bold">Patient trends</h2>
+          <h2 className="text-xl font-semibold">Patient trends</h2>
           <select
             value={patientId ?? ''}
             onChange={(e) => setPatientId(e.target.value || null)}
-            className="min-h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
+            className="min-h-10 rounded-xl border border-input bg-background px-3 text-sm"
           >
             <option value="">Choose a patient…</option>
             {patients.map((p) => (

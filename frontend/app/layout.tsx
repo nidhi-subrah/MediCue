@@ -1,18 +1,18 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
-import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { Providers } from '@/components/app/providers'
 import './globals.css'
 
-const atkinson = Atkinson_Hyperlegible_Next({
+const geist = Geist({
   subsets: ['latin'],
-  variable: '--font-atkinson',
+  variable: '--font-geist',
   display: 'swap',
 })
 
-const atkinsonMono = Atkinson_Hyperlegible_Mono({
+const geistMono = Geist_Mono({
   subsets: ['latin'],
-  variable: '--font-atkinson-mono',
+  variable: '--font-geist-mono',
   display: 'swap',
 })
 
@@ -39,7 +39,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: 'light',
-  themeColor: '#f7f6f3',
+  themeColor: '#f6f7f9',
+  viewportFit: 'cover',
   width: 'device-width',
   initialScale: 1,
 }
@@ -52,7 +53,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${atkinson.variable} ${atkinsonMono.variable} bg-background`}
+      className={`${geist.variable} ${geistMono.variable} bg-background`}
       suppressHydrationWarning
     >
       <body className="font-sans antialiased">

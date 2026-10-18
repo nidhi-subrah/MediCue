@@ -101,8 +101,8 @@ export function SettingsPanel({ onAudio }: { onAudio?: (on: boolean) => void }) 
 
   return (
     <div className="flex flex-col gap-6">
-      <section aria-labelledby="see" className="rounded-3xl border border-border bg-card px-6">
-        <h2 id="see" className="pt-6 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+      <section aria-labelledby="see" className="rounded-2xl border border-border bg-card px-6">
+        <h2 id="see" className="pt-6 text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Seeing
         </h2>
         <Row title="Text size" hint="Preview: the quick brown fox needs a glass of water.">
@@ -145,8 +145,8 @@ export function SettingsPanel({ onAudio }: { onAudio?: (on: boolean) => void }) 
         />
       </section>
 
-      <section aria-labelledby="hear" className="rounded-3xl border border-border bg-card px-6">
-        <h2 id="hear" className="pt-6 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+      <section aria-labelledby="hear" className="rounded-2xl border border-border bg-card px-6">
+        <h2 id="hear" className="pt-6 text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Hearing
         </h2>
         <ToggleRow
@@ -174,7 +174,7 @@ export function SettingsPanel({ onAudio }: { onAudio?: (on: boolean) => void }) 
             <button
               type="button"
               onClick={() => say('This is how I will sound.')}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted"
             >
               <Volume2 className="size-4" aria-hidden="true" /> Test
             </button>
@@ -188,7 +188,7 @@ export function SettingsPanel({ onAudio }: { onAudio?: (on: boolean) => void }) 
           s.resetAll()
           onAudio?.(false)
         }}
-        className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold hover:bg-muted"
+        className="inline-flex min-h-11 w-fit items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted"
       >
         <RotateCcw className="size-4" aria-hidden="true" /> Reset to defaults
       </button>

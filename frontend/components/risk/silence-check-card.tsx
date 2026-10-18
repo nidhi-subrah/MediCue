@@ -29,14 +29,14 @@ export function SilenceCheckCard({ ladder, personId, onChange }: {
   }
 
   return (
-    <section aria-live="assertive" className="flex flex-col gap-4 rounded-3xl border-2 border-caution bg-caution-soft p-5 md:p-8">
+    <section aria-live="assertive" className="flex flex-col gap-4 rounded-2xl border border-caution bg-caution-soft p-5 md:p-8">
       <div className="flex items-start gap-3">
         <BellRing className="mt-1 size-6 shrink-0 text-caution" aria-hidden="true" />
         <div className="flex flex-col gap-1">
           <span className="text-sm font-semibold uppercase tracking-wide text-caution">
             Inactivity check · started {timeAgo(ladder.started_at)}
           </span>
-          <p className="text-2xl font-bold leading-snug text-balance">
+          <p className="text-2xl font-semibold leading-snug text-balance">
             {first} hasn&apos;t used their tablet for longer than usual and didn&apos;t answer a check on it. Can you check on {first}?
           </p>
           <p className="text-sm text-muted-foreground">{ladder.reason}</p>
@@ -50,11 +50,11 @@ export function SilenceCheckCard({ ladder, personId, onChange }: {
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <button type="button" disabled={busy} onClick={() => answer('ok')}
-                  className="min-tap rounded-xl border-2 border-border bg-card px-4 text-lg font-semibold hover:border-primary disabled:opacity-50">
+                  className="min-tap rounded-xl border border-border bg-card px-4 text-lg font-semibold hover:border-primary disabled:opacity-50">
             I&apos;ve checked: {first} is okay
           </button>
           <button type="button" disabled={busy} onClick={() => answer('concern')}
-                  className="min-tap rounded-xl border-2 border-urgent bg-card px-4 text-lg font-semibold text-urgent disabled:opacity-50">
+                  className="min-tap rounded-xl border border-urgent bg-card px-4 text-lg font-semibold text-urgent disabled:opacity-50">
             I&apos;m worried: alert the nurse
           </button>
         </div>

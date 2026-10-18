@@ -35,6 +35,9 @@ export async function middleware(request: NextRequest) {
   }
   const user = await getUser(request)
 
+  // The front page is public and always reachable, signed in or not (the MediCue logo links to it).
+  if (pathname === '/') return NextResponse.next()
+
   if (pathname === '/login') {
     if (user) return NextResponse.redirect(new URL(homeFor(user), request.url))
     return NextResponse.next()

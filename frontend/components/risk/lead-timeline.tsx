@@ -123,7 +123,7 @@ export function LeadTimeline() {
   return (
     <section aria-labelledby="lead-h" className="flex flex-col gap-4">
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
-        <h2 id="lead-h" className="text-xl font-bold">Lead time</h2>
+        <h2 id="lead-h" className="text-xl font-semibold">Lead time</h2>
         <label className="flex flex-col gap-1 text-sm text-muted-foreground">
           <span className="sr-only">Storyline</span>
           <select value={patientId ?? ''} onChange={(e) => setPatientId(e.target.value)}
@@ -139,13 +139,13 @@ export function LeadTimeline() {
       {error && <p className="text-sm text-urgent">{error}</p>}
       {t && (
         <>
-          <p className="text-2xl font-bold tracking-tight md:text-3xl">{t.headline}</p>
+          <p className="text-2xl font-semibold tracking-tight md:text-3xl">{t.headline}</p>
           <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <SyntheticTag /> {t.name} ({t.room}) · {t.label}
             {t.flag && <> · first flag <LevelBadge level={t.flag.level} /></>} · {SPLIT[t.split]} patient
           </p>
           {t.series.length > 1 ? (
-            <div className="overflow-x-auto rounded-3xl border border-border bg-card p-4"><Chart t={t} /></div>
+            <div className="overflow-x-auto rounded-2xl border border-border bg-card p-4"><Chart t={t} /></div>
           ) : (
             <p className="text-muted-foreground">No scores for this week.</p>
           )}

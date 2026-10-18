@@ -14,9 +14,6 @@ import { ChoiceCard } from './choice-card'
 const SOFT_EASE = [0.22, 1, 0.36, 1] as const
 const EASY_PAGE = 4
 
-/** One question on the bedside tablet. Adaptive communication's Interface Renderer (layer 3): it draws what
- *  the backend's policy decided (`presentation`: button size, spacing, confirmation, read aloud) and reports
- *  what the patient did (missed taps, "Change", read-aloud presses). It never decides to adapt. */
 export function QuestionStage({
   step,
   stepNumber,
@@ -40,7 +37,7 @@ export function QuestionStage({
 }) {
   const { say, stop } = useSpeaker()
   const [page, setPage] = useState(0)
-  const [pending, setPending] = useState<ChoiceItem | null>(null)   // waiting for "Is that right?"
+  const [pending, setPending] = useState<ChoiceItem | null>(null)
   const pendingAt = useRef(0)
   const yesNo = level >= 3 && step.kind === 'yesno'
   const audio = mode === 'audio' || !!presentation?.audio
@@ -59,13 +56,11 @@ export function QuestionStage({
         if (audio) say(`${t('selected', 'You selected')} ${opt.label}. ${t('confirm', 'Is that right?')}`)
         return
       }
-      if (audio && opt.tone !== 'control') say(opt.label)   // spoken confirmation of the choice
+      if (audio && opt.tone !== 'control') say(opt.label)
       opt.onSelect()
     },
   }))
 
-  // With the mic on the patient answers out loud, so read-aloud speaks only the question: nobody in distress
-  // should have to wait through the options. A ref (not a dependency) so toggling the mic doesn't re-read.
   const micOn = useVoiceMode((s) => s.on)
   const micOnRef = useRef(micOn)
   micOnRef.current = micOn
@@ -76,16 +71,12 @@ export function QuestionStage({
   }
   const readAll = () => say(spokenText())
 
-  // Turning the mic on while the options are already being read cuts them off: restart with just the question.
   const wasMicOn = useRef(micOn)
   useEffect(() => {
     if (micOn && !wasMicOn.current && audio && isSpeaking()) say(step.prompt)
     wasMicOn.current = micOn
   }, [micOn])
 
-  // Read aloud: the question, then each numbered choice (just the question with the mic on). Yes / No reads the
-  // question. Keyed on what the question *is*, not the `step` object: that is rebuilt on every render of the
-  // page, so depending on it re-read the same question each time anything (a pending answer) re-rendered.
   useEffect(() => {
     if (!audio && !yesNo) return
     readAll()
@@ -118,12 +109,10 @@ export function QuestionStage({
   }
 
   const pageCount = Math.ceil(items.length / EASY_PAGE)
-  // Adaptive communication already trims the list from Simplified on: only page a long list in Easy Touch.
   const paged = mode === 'easy' && level === 1 && !presentation
   const visible = paged ? items.slice(page * EASY_PAGE, page * EASY_PAGE + EASY_PAGE) : items
 
   if (pending) {
-    // "You selected Chest pressure. Is that right?" [Yes] [Change]. The time spent here isn't slowness.
     const yes: ChoiceItem = {
       id: 'confirm-yes', label: t('yes', 'Yes'), tone: 'primary',
       onSelect: () => {
@@ -145,13 +134,13 @@ export function QuestionStage({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0, transition: { duration: 0.3, ease: SOFT_EASE } }}
         aria-labelledby="confirm-prompt"
-        className="flex flex-col gap-6 rounded-3xl border-2 border-primary/40 bg-card p-5 md:p-8"
+        className="patient-section flex flex-col gap-6 !border-primary/30"
       >
-        <p className="text-lg text-muted-foreground">{t('selected', 'You selected')}</p>
-        <h1 id="confirm-prompt" className="text-4xl font-bold leading-tight text-balance md:text-5xl">
+        <p className="eyebrow text-primary">{t('selected', 'You selected')}</p>
+        <h1 id="confirm-prompt" className="text-4xl font-semibold leading-tight text-balance md:text-5xl">
           {pending.label}. {t('confirm', 'Is that right?')}
         </h1>
-        <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <li><ChoiceCard item={yes} size="huge" /></li>
           <li><ChoiceCard item={change} size="huge" /></li>
         </ul>
@@ -167,14 +156,19 @@ export function QuestionStage({
       exit={{ opacity: 0, y: -10, transition: { duration: 0.16, ease: 'easeIn' } }}
       aria-labelledby="question-prompt"
       onPointerDown={onMiss}
-      className="flex flex-col gap-6 rounded-3xl border border-border bg-card p-5 md:p-8"
+      className={cn('patient-section flex flex-col', step.kind === 'body' ? 'gap-4 md:!p-6' : 'gap-6')}
     >
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Step {stepNumber} <span className="normal-case tracking-normal">· take your time</span>
-          </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/8 font-mono text-xs font-semibold text-primary">
+              {stepNumber}
+            </span>
+            <p className="text-sm font-medium text-muted-foreground">
+              Take your time
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
             {audio && (
               <button
                 type="button"
@@ -182,9 +176,9 @@ export function QuestionStage({
                   onSignal?.('read_aloud')
                   readAll()
                 }}
-                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+                className="patient-btn"
               >
-                <Volume2 className="size-5" aria-hidden="true" />
+                <Volume2 className="size-4" aria-hidden="true" />
                 {t('replay', 'Read again')}
               </button>
             )}
@@ -195,9 +189,9 @@ export function QuestionStage({
                   stop()
                   onUndo()
                 }}
-                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+                className="patient-btn"
               >
-                <ArrowLeft className="size-5" aria-hidden="true" />
+                <ArrowLeft className="size-4" aria-hidden="true" />
                 {t('back', 'Back')}
               </button>
             )}
@@ -206,33 +200,33 @@ export function QuestionStage({
         <h1
           id="question-prompt"
           className={cn(
-            'font-bold leading-tight text-balance',
-            yesNo ? 'text-5xl md:text-6xl' : big ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl',
+            'font-semibold leading-tight text-balance',
+            yesNo ? 'text-5xl md:text-6xl' : big ? 'text-4xl md:text-5xl' : step.kind === 'body' ? 'text-3xl' : 'text-3xl md:text-4xl',
           )}
         >
           {step.prompt}
         </h1>
-        {step.helper && !big && <p className="text-lg leading-relaxed text-muted-foreground">{step.helper}</p>}
+        {step.helper && !big && <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">{step.helper}</p>}
       </div>
 
       {step.kind === 'body' && mode !== 'audio' && (
-        <div className="flex justify-center rounded-2xl bg-surface p-4">
+        <div className="flex justify-center rounded-2xl bg-[oklch(0.98_0.004_260_/_0.6)] p-3 backdrop-blur-sm sm:p-4">
           <BodyMap items={items} />
         </div>
       )}
 
       {mode === 'audio' && (
-        <p className="rounded-xl bg-surface p-4 text-base leading-relaxed text-muted-foreground">
-          Press a number key to answer. Press <kbd className="font-mono font-semibold">R</kbd> to
-          repeat, <kbd className="font-mono font-semibold">Backspace</kbd> to go back.
-        </p>
+        <div className="glass-subtle rounded-xl p-4 text-base leading-relaxed text-muted-foreground">
+          Press a number key to answer. Press <kbd className="rounded bg-primary/8 px-1.5 py-0.5 font-mono font-semibold text-foreground">R</kbd> to
+          repeat, <kbd className="rounded bg-primary/8 px-1.5 py-0.5 font-mono font-semibold text-foreground">Backspace</kbd> to go back.
+        </div>
       )}
 
       {!(step.kind === 'body' && mode !== 'audio') && (
         <ul
           className={cn(
             'grid grid-cols-1',
-            roomy ? 'gap-6' : big || yesNo ? 'gap-4' : 'gap-3',
+            roomy ? 'gap-5' : big || yesNo ? 'gap-4' : 'gap-3',
             yesNo || big ? 'sm:grid-cols-2' : step.kind === 'yesno' ? 'sm:grid-cols-3' : 'sm:grid-cols-2',
           )}
         >
@@ -243,7 +237,7 @@ export function QuestionStage({
               className={yesNo && item.id === 'unsure' ? 'sm:col-span-2' : undefined}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08 + i * 0.04, duration: 0.3, ease: SOFT_EASE }}
+              transition={{ delay: 0.06 + i * 0.04, duration: 0.35, ease: SOFT_EASE }}
             >
               <ChoiceCard
                 item={item}
