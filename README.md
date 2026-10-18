@@ -101,19 +101,3 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
 | Papiers Autoresearch | `#/research`, `engine/research_decision.py`, `services/research*.py` | ✅ Clinician observations and detected patterns become hypotheses. An agent picks CHECK_DATA / ASK_CLINICIAN / WAIT by information gain − cost (scores shown), updates confidence, and sends hypotheses to mandatory lead review. Validated ones change priors; rejected ones stay rejected |
 | GoDaddy Registry domain | `infra/deploy/Caddyfile` | 🟡 Needs a registered domain + A record |
 | KAZE (conditional) | family view → "Check on …"; `start_welfare` | 🟡 Minimal: a pre-authorised caregiver asks for a check-in; no response in time → urgent nurse alert. Explicitly *not* unconsciousness detection |
-
-## Demo script (≈3 min)
-
-1. Sign in as the nurse on a laptop (lands on `/nurse`) and as the patient on a tablet, or in a private window (lands on
-   `/talk/p-chen`), with "Show engine" on. Nurses can't open the bedside tablet: it is the patient's own screen.
-2. **Emergency**: tap *Chest*. The nurse gets an urgent alert within a second, with no questions asked. Then tap
-   *Hurts*: the open alert refines in place.
-3. **Routine with clarification**: start again, tap *Washroom → Need to go*. The engine weighs asking against
-   consulting Lin. Open `#/family/fam-lin` and answer. One confirming question follows, then a routine SBAR alert.
-   Confirm it on the nurse screen in one tap.
-4. **Catch It Early**: Wei Chen's pain requests jumped after a gabapentin reduction. Rosa Alvarez is taking longer per tap and moving to switch scanning.
-5. **Research agent**: Priya's observation "Mr. Chen seems more anxious after his daughter leaves" is already a
-   hypothesis. Open its timeline and decision trace: the agent checked the data first (0.50 → 0.87), then chose to ask
-   Marcus rather than Priya. Answer **Agree** as Marcus. It crosses 0.90 and moves to Pending review, where you
-   **Validate** it. Then type a new observation and watch the agent pick its first action.
-6. **Accessibility**: on `#/patient/p-alvarez`, switch to *Switch scanning* and select with the space bar.
