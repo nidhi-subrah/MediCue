@@ -3,6 +3,9 @@
 MediCue turns a few taps from a patient who can't speak into a precise, structured clinical message, and
 says how certain it is. Behind the interface, a decision engine picks the best next move each time: ask the
 patient a yes/no question, look up their chart, consult someone who knows them, or escalate to a nurse now.
+The **Adaptive Communication Engine** decides how to ask: when answering gets harder, the tablet simplifies
+itself (fewer, bigger choices, then one yes/no question at a time, then someone to help) without losing anything
+the patient has said. See [docs/ADAPTIVE_COMMUNICATION.md](docs/ADAPTIVE_COMMUNICATION.md).
 
 Built for Hack the Valley. **Prototype with synthetic patient data. A communication aid, not a diagnostic device.**
 
@@ -14,8 +17,11 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --reload
 
 # frontend (terminal 2)
-cd frontend && npm install && npm run dev       # open http://localhost:5173
+cd frontend && npm install && npm run dev       # open http://localhost:3000
 ```
+
+Sign in with a demo account (the login page has one-tap buttons for them): nurse `nurse@medicue.demo` / `Rn-Lantern-6307!`,
+patient `patient@medicue.demo` / `Pt-Harbor-4821!`. Set `DEMO_NURSE_PASSWORD` / `DEMO_PATIENT_PASSWORD` to change them.
 
 No database or API key is needed: it falls back to an in-memory store and template text.
 Set `DATABASE_URL` (Tiger Data) and `GEMINI_API_KEY` to turn those on (see `backend/.env.example`).
@@ -28,7 +34,8 @@ flowchart LR
   P[Patient tablet<br/>taps / yes-no / scan] -->|REST| S[Session service]
   S --> B[Belief engine<br/>Bayes over 20 needs]
   B --> D{Decision engine<br/>Ask · Look up · Consult · Escalate · Send}
-  D -->|ask| P
+  D -->|ask Q| AC[Adaptive communication<br/>signals → policy → how to ask Q]
+  AC --> P
   D -->|look up| C[(Mock chart)]
   D -->|consult| F[Family / regular nurse<br/>phone view]
   D -->|escalate / send| A[Alert + SBAR]
@@ -49,6 +56,10 @@ flowchart LR
   (missing chest pain costs 12.5× confusing thirst with cold).
 - **Safety floor**: if P(any high-risk need) ≥ 25%, it escalates at once. This rule is deterministic and works
   offline, and chart data can't override a patient's own signal. Full list in `backend/README.md`.
+- **Adaptive communication** (`backend/app/engine/communication/`): signal detection (slowdown against this session's
+  or the patient's own baseline, corrections, uncertainty, silence) → a deterministic policy (Standard → Simplified →
+  Yes / No → Assisted, plus bigger targets, confirmation, simpler wording, read aloud) → the tablet renders it.
+  Escalation always comes first; Gemini only rewords, validated, with catalog fallbacks.
 - **Calibrated output**: split conformal prediction gives the smallest set of needs containing the true one 90% of the time.
 
 Synthetic evaluation (`python -m app.sim.evaluate`): on scripted scenarios, 96% top-1 accuracy, 100% of high-risk
@@ -82,9 +93,9 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
 | Track | Where | Status |
 |---|---|---|
 | PointClickCare: Catch It Early | `#/nurse` right column; `services/trends.py`; hourly continuous aggregate | ✅ Per-patient 24 h vs 7-day baseline: pain, high-risk, seconds/tap, taps/need, scan-mode share, chart-event annotations |
-| MLH Gemini | `services/gemini.py` | ✅ SBAR, translation of tiles/questions (7 languages), caregiver question wording, research hypotheses. Escalation never depends on it |
+| MLH Gemini | `services/gemini.py` | ✅ SBAR, simpler wording of questions for adaptive communication, caregiver question wording, research hypotheses. Escalation never depends on it |
 | MLH Tiger Data | `store/schema.sql`, `store/timescale.py` | ✅ Hypertables for events, belief snapshots and confirmations; `patient_hourly_signals` and `communication_hourly` continuous aggregates, re-windowed with `time_bucket` SQL. Needs a Tiger service URL |
-| AI for Social Impact | patient tablet | ✅ Grid, large-tile and single-switch scanning modes, auto-switch to large tiles on fatigue, speech output, translated UI. Patient intent is never overwritten by chart data |
+| AI for Social Impact | patient tablet | ✅ Grid, large-tile and single-switch scanning modes, auto-switch to large tiles on fatigue, speech output, adaptive communication. Patient intent is never overwritten by chart data |
 | Healthcare & Well-being | whole app | ✅ No clinical-efficacy claims; disclaimers in the UI |
 | MLH Vultr | `infra/deploy/vultr.md`, `setup-vultr.sh` | 🟡 Scripts ready; needs an instance |
 | Papiers Autoresearch | `#/research`, `engine/research_decision.py`, `services/research*.py` | ✅ Clinician observations and detected patterns become hypotheses. An agent picks CHECK_DATA / ASK_CLINICIAN / WAIT by information gain − cost (scores shown), updates confidence, and sends hypotheses to mandatory lead review. Validated ones change priors; rejected ones stay rejected |
@@ -93,7 +104,8 @@ feature/xyz ──► backend | frontend | shared | infra ──► dev ──�
 
 ## Demo script (≈3 min)
 
-1. Open `#/nurse` on a laptop and `#/patient/p-chen` on a tablet, with "Show engine" on.
+1. Sign in as the nurse on a laptop (lands on `/nurse`) and as the patient on a tablet, or in a private window (lands on
+   `/talk/p-chen`), with "Show engine" on. Nurses can't open the bedside tablet: it is the patient's own screen.
 2. **Emergency**: tap *Chest*. The nurse gets an urgent alert within a second, with no questions asked. Then tap
    *Hurts*: the open alert refines in place.
 3. **Routine with clarification**: start again, tap *Washroom → Need to go*. The engine weighs asking against

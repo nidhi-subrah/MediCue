@@ -1,8 +1,8 @@
 """Demo auth: two fixed accounts (patient / nurse), server-side sessions, httpOnly cookie.
 
 Passwords come from env vars so the real values never land in source control (see .env.example).
-Falls back to the demo credentials below when unset, since this app only ever holds synthetic data.
-The passwords are deliberately not common words, so browsers do not flag them as breached.
+Falls back to the demo passwords in DEFAULT_PASSWORDS when unset, since this app only ever holds
+synthetic data.
 """
 import hashlib
 import hmac
@@ -48,19 +48,37 @@ def _make_user(id: str, email: str, password: str, role: str, name: str, patient
 
 USERS_BY_EMAIL: dict[str, DemoUser] = {}
 
+# Deliberately not common words: "patient" / "nurse" are on breached-password lists, so browsers warn on them.
+DEFAULT_PASSWORDS = {"patient": "Pt-Harbor-4821!", "nurse": "Rn-Lantern-6307!"}
+
+
+LEGACY_DOMAIN = "@medicare.demo"   # the demo accounts' old addresses still sign in (saved logins, old docs)
+
 
 def _register(user: DemoUser) -> None:
     USERS_BY_EMAIL[user.email] = user
+    USERS_BY_EMAIL[user.email.replace("@medicue.demo", LEGACY_DOMAIN)] = user
 
 
 _register(_make_user(
-    "u-patient-demo", "patient@medicure.test", os.getenv("DEMO_PATIENT_PASSWORD", "Pt-Harbor-4821!"),
+    "u-patient-demo", "patient@medicue.demo", os.getenv("DEMO_PATIENT_PASSWORD", DEFAULT_PASSWORDS["patient"]),
     "patient", "Demo Patient", DEMO_PATIENT_ID,
 ))
 _register(_make_user(
-    "u-nurse-demo", "nurse@medicure.test", os.getenv("DEMO_NURSE_PASSWORD", "Rn-Lantern-6307!"),
+    "u-nurse-demo", "nurse@medicue.demo", os.getenv("DEMO_NURSE_PASSWORD", DEFAULT_PASSWORDS["nurse"]),
     "nurse", "Demo Nurse",
 ))
+
+
+def demo_accounts() -> list[dict]:
+    """The built-in demo logins, for the login page. Empty as soon as real passwords are set in the
+    environment, so a deployment with its own passwords never shows them."""
+    out = []
+    if not os.getenv("DEMO_NURSE_PASSWORD"):
+        out.append({"role": "nurse", "email": "nurse@medicue.demo", "password": DEFAULT_PASSWORDS["nurse"]})
+    if not os.getenv("DEMO_PATIENT_PASSWORD"):
+        out.append({"role": "patient", "email": "patient@medicue.demo", "password": DEFAULT_PASSWORDS["patient"]})
+    return out
 
 
 def verify_password(user: DemoUser, password: str) -> bool:

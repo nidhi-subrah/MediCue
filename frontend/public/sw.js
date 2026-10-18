@@ -1,3 +1,4 @@
+// Old product name kept on purpose: changing the cache name would orphan installed copies' offline cache.
 const CACHE_NAME = 'silentsignal-shell-v1'
 
 self.addEventListener('install', (event) => {

@@ -52,7 +52,7 @@ export function SuggestionsPanel({
                 type="button"
                 disabled={busy === s.id}
                 onClick={() => review(s.id, true)}
-                className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
               >
                 Approve
               </button>
@@ -60,7 +60,7 @@ export function SuggestionsPanel({
                 type="button"
                 disabled={busy === s.id}
                 onClick={() => review(s.id, false)}
-                className="h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
+                className="min-h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
               >
                 Reject
               </button>

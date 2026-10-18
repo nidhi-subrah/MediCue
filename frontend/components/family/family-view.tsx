@@ -77,7 +77,7 @@ export function FamilyView({ personId }: { personId: string }) {
           <button
             type="button"
             onClick={() => answer(c, null, true)}
-            className="inline-flex h-10 items-center gap-1.5 self-start rounded-full px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="inline-flex min-h-10 items-center gap-1.5 self-start rounded-full px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <CircleHelp className="size-4" aria-hidden="true" />
             I&apos;m not sure

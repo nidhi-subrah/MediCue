@@ -89,3 +89,17 @@ def choose(cat: Catalog, area: str, order: list[str], source: str, reasons: dict
                  "send_now": False, "reason": None})
     return {"area": area, "area_label": cat.area_labels[area], "prompt": spec["prompt"],
             "predicted": [public(i) for i in shown], "more": more, "source": source}
+
+
+def likely_taps(lik: dict[str, list[float]], belief: list[float], high_risk: list[bool], k: int = 4) -> list[str]:
+    """The k taps the patient most likely means next, P(tap) = Σ_n b(n)·P(tap | n), plus, always, the tap
+    that best signals each high-risk need, so simplifying can never hide a way to report an emergency."""
+    score = {t: sum(b * l for b, l in zip(belief, row)) for t, row in lik.items()}
+    keep = sorted(score, key=lambda t: -score[t])[:k]
+    for n, high in enumerate(high_risk):
+        if high:
+            best = max(lik, key=lambda t: lik[t][n])
+            if best not in keep:
+                keep.append(best)
+    order = list(lik)
+    return sorted(keep, key=order.index)   # catalog order, so options don't jump around between steps

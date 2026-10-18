@@ -51,7 +51,7 @@ export function ObservationForm({
           required
           value={clinician}
           onChange={(e) => setClinician(e.target.value)}
-          className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base font-normal"
+          className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base font-normal"
         >
           <option value="">Choose…</option>
           {staff.map((s) => (
@@ -64,7 +64,7 @@ export function ObservationForm({
         <select
           value={patient}
           onChange={(e) => setPatient(e.target.value)}
-          className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base font-normal"
+          className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base font-normal"
         >
           <option value="">Detect from text</option>
           {patients.map((p) => (
@@ -86,7 +86,7 @@ export function ObservationForm({
       <button
         type="submit"
         disabled={busy || !clinician || !text.trim()}
-        className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+        className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
       >
         {busy ? 'Adding…' : 'Add observation'}
       </button>

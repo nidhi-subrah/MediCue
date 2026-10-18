@@ -1,53 +1,63 @@
 'use client'
 
-import { CircleCheckBig, Eye, LogOut, Siren, X } from 'lucide-react'
+import { CircleCheckBig, Eye, LogOut, Siren, SlidersHorizontal } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
-import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/app/auth-provider'
 import { useSpeaker } from '@/hooks/use-speaker'
 import { ShowSomeone } from '@/components/app/show-someone'
 import { UrgentButton } from '@/components/app/urgent-button'
 import { useLiveSession } from '@/lib/live/session'
-import { buildStep, uiMode } from '@/lib/live/talk-adapter'
+import { buildStep, patientMessage, uiMode } from '@/lib/live/talk-adapter'
 import { useSettings } from '@/lib/store/settings'
 import { cn } from '@/lib/utils'
 import { AssistCard } from './assist-card'
 import { ConsultBanner } from './consult-banner'
-import { LevelBar, LevelTransition } from './level-bar'
+import { LevelBar, LevelTransition, OfferCard } from './level-bar'
 import { QuestionStage } from './question-stage'
-import { SummaryPanel } from './summary-panel'
+import { TabletSettings } from './tablet-settings'
 import { VoiceInput } from './voice-input'
 
 export function TalkView() {
   const { patient, session, error, busy, welfare, welfareSecondsLeft, tap, answerQuestion, skipConsult, goBack, respondWelfare,
-    signal, setLevel } = useLiveSession()
+    signal, setLevel, setAudio, answerOffer } = useLiveSession()
   const { user, logout } = useAuth()
-  const audio = useSettings((s) => s.spokenPrompts)
-  const updateSettings = useSettings((s) => s.update)
-  const [showEngine, setShowEngine] = useState(false)
+  const audioPreference = useSettings((s) => s.spokenPrompts)
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
-  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.ladder.level}` : ''
+  const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.communication.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
+  // "Read aloud" chosen in Display and sound is an explicit accessibility preference: carry it into the session once.
+  const sentPreference = useRef<string | null>(null)
+  useEffect(() => {
+    if (!session || !audioPreference || sentPreference.current === session.session_id) return
+    sentPreference.current = session.session_id
+    if (!session.communication.audio_enabled) setAudio(true)
+  }, [session, audioPreference, setAudio])
 
   // With read-aloud on, the confirmation is spoken too. (An escalation is spoken by the urgent overlay instead.)
   const { say, stop } = useSpeaker()
   const sent = session?.status === 'sent'
+  const readAloud = !!session?.communication.audio_enabled
   useEffect(() => {
-    if (!sent || !audio) return
+    if (!sent || !readAloud) return
     say("Your nurse has your message. We'll let you know if anyone needs more from you.")
     return () => stop()
-  }, [sent, audio, say, stop])
+  }, [sent, readAloud, say, stop])
   const [showToSomeone, setShowToSomeone] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   if (error && !session) {
     return (
       <div className="flex flex-col items-start gap-4 rounded-3xl border border-border bg-card p-8">
         <h1 className="text-3xl font-bold">Couldn&apos;t load this session</h1>
         <p className="text-lg leading-relaxed text-muted-foreground">{error}</p>
-        <Link href="/home" className="inline-flex h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground">
-          Back to patients
-        </Link>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground"
+        >
+          Try again
+        </button>
       </div>
     )
   }
@@ -56,34 +66,36 @@ export function TalkView() {
     return <p className="text-lg text-muted-foreground">Loading…</p>
   }
 
-  const mode = uiMode(session.mode, audio)
+  const comm = session.communication
+  const mode = uiMode(session.mode, false)   // read aloud is a modifier on any mode (comm.presentation.audio)
   const step = buildStep(session, mode, tap, answerQuestion, { open: moreOpen, setOpen: setMoreOpen })
 
-  const level = session.ladder.level
+  const level = comm.level
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
-  const lastMessage = session.trace.length > 0 ? session.trace[session.trace.length - 1].label : step?.prompt ?? 'Nothing to show yet.'
+  const lastMessage = patientMessage(session)   // what the patient said, never the engine's internal steps
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/home"
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
-          >
-            <X className="size-4" aria-hidden="true" />
-            Exit
-          </Link>
-          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
+          <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary-soft px-4 text-sm font-semibold text-primary">
             {patient.name} · {patient.room}
           </span>
           <button
             type="button"
             onClick={() => setShowToSomeone(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
           >
             <Eye className="size-4" aria-hidden="true" />
             Show to someone
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+          >
+            <SlidersHorizontal className="size-4" aria-hidden="true" />
+            Display and sound
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -91,23 +103,26 @@ export function TalkView() {
             <button
               type="button"
               onClick={() => logout()}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
             >
               <LogOut className="size-4" aria-hidden="true" />
               Log out
             </button>
           )}
-          <UrgentButton compact />
+          <UrgentButton compact patientId={patient.id} />
         </div>
       </div>
 
-      {/* Communication ladder: the backend steps the level down when answering gets harder, up when it
-          gets easier again (backend/app/engine/ladder.py). Bigger buttons come with level 2. */}
-      <LevelBar ladder={session.ladder} audio={audio} onLevel={setLevel} onAudio={(on) => updateSettings({ spokenPrompts: on })} />
-      <LevelTransition level={level} />
-      {level === 4 && !done && <AssistCard assist={session.ladder.assist} />}
+      {/* Adaptive communication: the backend decides how to ask (backend/app/engine/communication); this page
+          only renders it. Urgent help (above) stays one tap away in every mode. */}
+      <LevelBar comm={comm} onLevel={setLevel} onAudio={setAudio} />
+      <LevelTransition message={comm.message} />
+      {!done && <OfferCard comm={comm} onAnswer={answerOffer} />}
+      {level === 4 && !done && <AssistCard comm={comm} />}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      {/* The patient's screen is only the question and its answers: no step log, engine or profile (those are
+          for the care team, in the nurse station). */}
+      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-6">
           {session.status === 'waiting_consult' && session.consult ? (
             <ConsultBanner personName={session.consult.person_name} relation={session.consult.relation} onSkip={skipConsult} />
@@ -154,6 +169,8 @@ export function TalkView() {
                 stepNumber={session.taps + 1}
                 mode={mode}
                 level={level}
+                presentation={comm.presentation}
+                text={comm.text}
                 canUndo={session.can_go_back}
                 onUndo={goBack}
                 onSignal={signal}
@@ -165,9 +182,8 @@ export function TalkView() {
           {error && <p className="text-base text-urgent">{error}</p>}
         </div>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
           {!done && session.status !== 'waiting_consult' && <VoiceInput />}
-          <SummaryPanel session={session} showEngine={showEngine} onToggleEngine={() => setShowEngine((v) => !v)} />
         </aside>
       </div>
 
@@ -189,6 +205,11 @@ export function TalkView() {
         </button>
       )}
 
+      <TabletSettings
+        open={showSettings}
+        onOpenChange={setShowSettings}
+        onAudio={(on) => { if (session.communication.audio_enabled !== on) setAudio(on) }}
+      />
       <ShowSomeone open={showToSomeone} onOpenChange={setShowToSomeone} text={lastMessage} />
     </div>
   )

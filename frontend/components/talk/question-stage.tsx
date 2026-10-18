@@ -1,12 +1,12 @@
 'use client'
 
-import { ArrowLeft, ChevronsRight } from 'lucide-react'
+import { ArrowLeft, ChevronsRight, Volume2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useSpeaker } from '@/hooks/use-speaker'
 import { isSpeaking } from '@/lib/speech'
 import { useVoiceMode } from '@/lib/live/voice-mode'
-import type { ChoiceItem, InputMode, LadderLevel, Step } from '@/lib/types'
+import type { ChoiceItem, CommunicationLevel, InputMode, Presentation, Step } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BodyMap } from './body-map'
 import { ChoiceCard } from './choice-card'
@@ -14,11 +14,16 @@ import { ChoiceCard } from './choice-card'
 const SOFT_EASE = [0.22, 1, 0.36, 1] as const
 const EASY_PAGE = 4
 
+/** One question on the bedside tablet. Adaptive communication's Interface Renderer (layer 3): it draws what
+ *  the backend's policy decided (`presentation`: button size, spacing, confirmation, read aloud) and reports
+ *  what the patient did (missed taps, "Change", read-aloud presses). It never decides to adapt. */
 export function QuestionStage({
   step,
   stepNumber,
   mode,
   level = 1,
+  presentation,
+  text = {},
   canUndo,
   onUndo,
   onSignal,
@@ -26,20 +31,35 @@ export function QuestionStage({
   step: Step
   stepNumber: number
   mode: InputMode
-  level?: LadderLevel
+  level?: CommunicationLevel
+  presentation?: Presentation
+  text?: Record<string, string>
   canUndo: boolean
   onUndo: () => void
-  /** A missed tap: the backend's communication ladder counts it (backend/app/engine/ladder.py). */
-  onSignal?: (kind: 'miss') => void
+  onSignal?: (kind: 'miss' | 'correction' | 'read_aloud') => void
 }) {
   const { say, stop } = useSpeaker()
   const [page, setPage] = useState(0)
+  const [pending, setPending] = useState<ChoiceItem | null>(null)   // waiting for "Is that right?"
+  const pendingAt = useRef(0)
   const yesNo = level >= 3 && step.kind === 'yesno'
+  const audio = mode === 'audio' || !!presentation?.audio
+  const confirm = !!presentation?.confirm_selections && step.kind !== 'yesno'
+  const big = presentation?.button_size === 'large' || presentation?.button_size === 'huge' || mode === 'easy'
+  const roomy = presentation?.spacing === 'extra'
+  const t = (key: string, fallback: string) => text[key] ?? fallback
 
   const items: ChoiceItem[] = step.options.map((opt) => ({
     ...opt,
     onSelect: () => {
       stop()
+      if (confirm && opt.tone !== 'control') {
+        pendingAt.current = performance.now()
+        setPending(opt)
+        if (audio) say(`${t('selected', 'You selected')} ${opt.label}. ${t('confirm', 'Is that right?')}`)
+        return
+      }
+      if (audio && opt.tone !== 'control') say(opt.label)   // spoken confirmation of the choice
       opt.onSelect()
     },
   }))
@@ -50,33 +70,31 @@ export function QuestionStage({
   const micOnRef = useRef(micOn)
   micOnRef.current = micOn
   const spokenText = () => {
-    if (micOnRef.current) return step.prompt
+    if (yesNo || micOnRef.current) return step.prompt
     const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
     return `${step.prompt}. ${list}`
   }
+  const readAll = () => say(spokenText())
 
   // Turning the mic on while the options are already being read cuts them off: restart with just the question.
   const wasMicOn = useRef(micOn)
   useEffect(() => {
-    if (micOn && !wasMicOn.current && mode === 'audio' && isSpeaking()) say(step.prompt)
+    if (micOn && !wasMicOn.current && audio && isSpeaking()) say(step.prompt)
     wasMicOn.current = micOn
   }, [micOn])
 
-  // Audio First speaks the question, then each numbered choice. Yes / No level reads the question aloud.
+  // Read aloud: the question, then each numbered choice (just the question with the mic on). Yes / No reads the
+  // question. Keyed on what the question *is*, not the `step` object: that is rebuilt on every render of the
+  // page, so depending on it re-read the same question each time anything (a pending answer) re-rendered.
   useEffect(() => {
-    if (yesNo && mode !== 'audio') {
-      say(`${step.prompt}`)
-      return () => stop()
-    }
-    if (mode !== 'audio') return
-    say(spokenText())
+    if (!audio && !yesNo) return
+    readAll()
     return () => stop()
-    // Keyed on what the question *is*, not the `step` object: that is rebuilt on every render of the page,
-    // so depending on it re-read the same question each time anything (a pending answer, a toast) re-rendered.
-  }, [step.id, step.prompt, mode, yesNo, say, stop])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.id, step.prompt, audio, yesNo, say, stop])
 
   useEffect(() => {
-    if (mode !== 'audio') return
+    if (!audio) return
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input, textarea')) return
       const n = Number.parseInt(e.key, 10)
@@ -84,7 +102,8 @@ export function QuestionStage({
         e.preventDefault()
         items[n - 1]?.onSelect()
       } else if (e.key.toLowerCase() === 'r') {
-        say(spokenText())
+        onSignal?.('read_aloud')
+        readAll()
       } else if (e.key === 'Backspace' && canUndo) {
         onUndo()
       }
@@ -99,9 +118,46 @@ export function QuestionStage({
   }
 
   const pageCount = Math.ceil(items.length / EASY_PAGE)
-  // The ladder already trims the list from level 2, so only page a long list the patient chose Easy for.
-  const paged = mode === 'easy' && level === 1
+  // Adaptive communication already trims the list from Simplified on: only page a long list in Easy Touch.
+  const paged = mode === 'easy' && level === 1 && !presentation
   const visible = paged ? items.slice(page * EASY_PAGE, page * EASY_PAGE + EASY_PAGE) : items
+
+  if (pending) {
+    // "You selected Chest pressure. Is that right?" [Yes] [Change]. The time spent here isn't slowness.
+    const yes: ChoiceItem = {
+      id: 'confirm-yes', label: t('yes', 'Yes'), tone: 'primary',
+      onSelect: () => {
+        const p = pending
+        setPending(null)
+        p.onSelect(performance.now() - pendingAt.current)
+      },
+    }
+    const change: ChoiceItem = {
+      id: 'confirm-change', label: t('change', 'Change'), tone: 'control',
+      onSelect: () => {
+        setPending(null)
+        onSignal?.('correction')
+      },
+    }
+    return (
+      <motion.section
+        key={`confirm-${pending.id}`}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.3, ease: SOFT_EASE } }}
+        aria-labelledby="confirm-prompt"
+        className="flex flex-col gap-6 rounded-3xl border-2 border-primary/40 bg-card p-5 md:p-8"
+      >
+        <p className="text-lg text-muted-foreground">{t('selected', 'You selected')}</p>
+        <h1 id="confirm-prompt" className="text-4xl font-bold leading-tight text-balance md:text-5xl">
+          {pending.label}. {t('confirm', 'Is that right?')}
+        </h1>
+        <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <li><ChoiceCard item={yes} size="huge" /></li>
+          <li><ChoiceCard item={change} size="huge" /></li>
+        </ul>
+      </motion.section>
+    )
+  }
 
   return (
     <motion.section
@@ -118,32 +174,45 @@ export function QuestionStage({
           <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Step {stepNumber} <span className="normal-case tracking-normal">· take your time</span>
           </p>
-          {canUndo && (
-            <button
-              type="button"
-              onClick={() => {
-                stop()
-                onUndo()
-              }}
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
-            >
-              <ArrowLeft className="size-5" aria-hidden="true" />
-              Back
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {audio && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSignal?.('read_aloud')
+                  readAll()
+                }}
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+              >
+                <Volume2 className="size-5" aria-hidden="true" />
+                {t('replay', 'Read again')}
+              </button>
+            )}
+            {canUndo && (
+              <button
+                type="button"
+                onClick={() => {
+                  stop()
+                  onUndo()
+                }}
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 text-base font-semibold hover:bg-muted"
+              >
+                <ArrowLeft className="size-5" aria-hidden="true" />
+                {t('back', 'Back')}
+              </button>
+            )}
+          </div>
         </div>
         <h1
           id="question-prompt"
           className={cn(
             'font-bold leading-tight text-balance',
-            yesNo ? 'text-5xl md:text-6xl' : mode === 'easy' ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl',
+            yesNo ? 'text-5xl md:text-6xl' : big ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl',
           )}
         >
           {step.prompt}
         </h1>
-        {step.helper && mode !== 'easy' && (
-          <p className="text-lg leading-relaxed text-muted-foreground">{step.helper}</p>
-        )}
+        {step.helper && !big && <p className="text-lg leading-relaxed text-muted-foreground">{step.helper}</p>}
       </div>
 
       {step.kind === 'body' && mode !== 'audio' && (
@@ -161,19 +230,16 @@ export function QuestionStage({
 
       {!(step.kind === 'body' && mode !== 'audio') && (
         <ul
-          className={
-            yesNo
-              ? 'grid grid-cols-1 gap-4 sm:grid-cols-2'
-              : mode === 'easy'
-                ? 'grid grid-cols-1 gap-4 sm:grid-cols-2'
-                : step.kind === 'yesno'
-                  ? 'grid grid-cols-1 gap-3 sm:grid-cols-3'
-                  : 'grid grid-cols-1 gap-3 sm:grid-cols-2'
-          }
+          className={cn(
+            'grid grid-cols-1',
+            roomy ? 'gap-6' : big || yesNo ? 'gap-4' : 'gap-3',
+            yesNo || big ? 'sm:grid-cols-2' : step.kind === 'yesno' ? 'sm:grid-cols-3' : 'sm:grid-cols-2',
+          )}
         >
           {visible.map((item, i) => (
             <motion.li
               key={`${page}-${item.id}`}
+              layout
               className={yesNo && item.id === 'unsure' ? 'sm:col-span-2' : undefined}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -181,7 +247,7 @@ export function QuestionStage({
             >
               <ChoiceCard
                 item={item}
-                size={yesNo && item.id !== 'unsure' ? 'huge' : mode === 'easy' || yesNo ? 'large' : 'regular'}
+                size={yesNo && item.id !== 'unsure' ? 'huge' : big || yesNo ? 'large' : 'regular'}
                 number={mode === 'audio' ? items.indexOf(item) + 1 : undefined}
               />
             </motion.li>

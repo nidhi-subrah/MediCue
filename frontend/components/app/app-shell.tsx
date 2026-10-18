@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, ActivitySquare, FlaskConical, LogOut, Settings2, Stethoscope, Users } from 'lucide-react'
+import { FlaskConical, LogOut, Stethoscope, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -9,12 +9,9 @@ import { Brand } from './brand'
 import { UrgentButton } from './urgent-button'
 
 const NAV = [
-  { href: '/home', label: 'Patients', icon: Users, match: ['/home', '/talk', '/family'] },
+  { href: '/home', label: 'Patients', icon: Users, match: ['/home', '/family'] },
   { href: '/nurse', label: 'Nurse station', icon: Stethoscope, match: ['/nurse'] },
   { href: '/research', label: 'Pattern review', icon: FlaskConical, match: ['/research'] },
-  { href: '/analytics', label: 'Tiger Data', icon: ActivitySquare, match: ['/analytics'] },
-  { href: '/early-warning', label: 'Early warning', icon: Activity, match: ['/early-warning'] },
-  { href: '/settings', label: 'Settings', icon: Settings2, match: ['/settings'] },
 ] as const
 
 export function AppShell({
@@ -37,7 +34,7 @@ export function AppShell({
       </a>
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur-md">
         {/* Full width; on tablets the nav drops its icons and the wordmark so every label fits on one line. */}
-        <div className="flex h-16 w-full items-center justify-between gap-3 px-4 md:px-6 lg:gap-6">
+        <div className="flex min-h-16 w-full items-center justify-between gap-3 px-4 md:px-6 lg:gap-6">
           <Brand compact />
           <nav aria-label="Main" className="hidden min-w-0 flex-1 md:block">
             <ul className="flex w-full items-center gap-1 rounded-full border border-border bg-card p-1">
@@ -50,7 +47,7 @@ export function AppShell({
                       href={item.href}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full px-2 text-sm font-medium transition-colors lg:px-4',
+                        'flex min-h-10 items-center justify-center gap-2 rounded-full px-2 py-1 text-center text-sm font-medium leading-tight transition-colors lg:px-4',
                         active
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -69,7 +66,7 @@ export function AppShell({
             <button
               type="button"
               onClick={() => logout()}
-              className="inline-flex h-10 items-center gap-2 rounded-full border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <LogOut className="size-4" aria-hidden="true" />
               <span className="hidden lg:inline">Log out</span>
@@ -92,7 +89,7 @@ export function AppShell({
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       >
-        <ul className="mx-auto grid max-w-xl grid-cols-6 gap-1 px-3 py-2">
+        <ul className="mx-auto grid max-w-xl grid-cols-4 gap-1 px-3 py-2">
           {NAV.map((item) => {
             const active = item.match.some((m) => pathname.startsWith(m))
             const Icon = item.icon
@@ -109,7 +106,7 @@ export function AppShell({
                   )}
                 >
                   <Icon className="size-5 shrink-0" aria-hidden="true" />
-                  <span className="flex h-8 items-center justify-center text-center leading-tight">
+                  <span className="flex min-h-8 items-center justify-center text-center leading-tight">
                     {item.label}
                   </span>
                 </Link>

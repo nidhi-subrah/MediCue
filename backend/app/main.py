@@ -1,10 +1,12 @@
-"""SilentSignal API.
+"""MediCue API.
 
     uvicorn app.main:app --reload        (from backend/)
 """
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,17 +17,19 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .auth import (
-    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session,
+    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session, demo_accounts,
     current_user, destroy_session, require_nurse, user_for_session_id, verify_password,
 )
 from .catalog import get_catalog
 from .config import settings
 from .data import seed
+from .data.unit_history import ensure_unit_history
 from .data.patients import CLINICAL_LEAD, PATIENT_BY_ID, PATIENTS, PERSON_BY_ID, STAFF
 from .risk import router as risk_router, start as start_risk, start_silence
 from .services.analytics import get_belief_evolution, get_decision_action_history, tigerdata_overview
 from .services.gemini import Gemini
 from .services.handoff import build_handoff
+from .services.nurse_views import RANGES, NurseViews
 from .services.hub import Hub
 from .services.predictions import PredictionService
 from .services.profiles import ProfileService
@@ -35,8 +39,13 @@ from .services.trends import build_trends
 from .sim.simulator import calibrate
 from .store import make_store
 
+if sys.platform == "win32":
+    # psycopg's async driver (Tiger Data) can't run on Windows' default Proactor loop. This covers scripts and
+    # the test client; uvicorn picks its loop before importing the app, so run it with --reload on Windows.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("silentsignal")
+log = logging.getLogger("medicue")
 
 
 @asynccontextmanager
@@ -53,6 +62,8 @@ async def lifespan(app: FastAPI):
         await store.bulk_seed(rows, events)
         log.info("seeded %d synthetic confirmations", len(rows))
     app.state.risk = await start_risk(store)
+    if settings.seed_demo_data:   # the unit patients' taps, chart events and risk scores (data/unit_history.py)
+        await ensure_unit_history(store, app.state.risk, cat)
     conformal = await asyncio.to_thread(calibrate, cat, settings.engine)
     log.info("conformal q̂ = %.3f from %d calibration dialogues", conformal.qhat, conformal.n_calibration)
     gemini = Gemini()
@@ -65,6 +76,7 @@ async def lifespan(app: FastAPI):
                                    app.state.predictions)
     app.state.silence = start_silence(app.state.svc, app.state.risk)
     app.state.research = ResearchAgent(cat, store, gemini, app.state.hub)
+    app.state.nurse_views = NurseViews(cat, store, app.state.risk, gemini, app.state.profiles)
 
     # Profiles (one Gemini request for the whole unit), then the first research cycle. With Gemini on this
     # runs in the background so rate-limit retries never delay startup; sessions use whatever profile is
@@ -75,9 +87,9 @@ async def lifespan(app: FastAPI):
         except Exception:
             log.exception("profile extraction failed")
         try:
-            await app.state.svc.warm_simple()
+            await app.state.svc.lang.warm()
         except Exception:
-            log.exception("ladder wording failed (original wording kept)")
+            log.exception("adaptive wording failed (catalog wording kept)")
         try:
             await app.state.research.ensure_demo_observation()
             await app.state.research.cycle()
@@ -109,7 +121,7 @@ async def _research_ticker(agent: ResearchAgent):
             log.exception("research cycle failed")
 
 
-app = FastAPI(title="SilentSignal", lifespan=lifespan)
+app = FastAPI(title="MediCue", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
 app.include_router(risk_router)
 
@@ -168,6 +180,12 @@ async def logout(request: Request, response: Response):
     return {"ok": True}
 
 
+@app.get("/api/auth/demo-accounts")
+async def auth_demo_accounts():
+    """Demo logins shown on the login page, only while the built-in demo passwords are in use."""
+    return demo_accounts()
+
+
 @app.get("/api/auth/me")
 async def me(user: DemoUser = Depends(current_user)):
     return user.public()
@@ -176,6 +194,15 @@ async def me(user: DemoUser = Depends(current_user)):
 @app.get("/api/patients")
 async def patients(user: DemoUser = Depends(require_nurse)):
     return [await svc().patient_view(p["id"]) for p in PATIENTS]
+
+
+@app.post("/api/patients/{pid}/urgent")
+async def patient_urgent(pid: str, user: DemoUser = Depends(current_user)):
+    """Urgent help pressed on this patient's tablet: alerts the nurse station at once."""
+    if pid not in PATIENT_BY_ID:
+        raise HTTPException(404, "unknown patient")
+    check_patient_access(pid, user)
+    return await svc().patient_urgent(pid, user.email)
 
 
 @app.get("/api/patients/{pid}")
@@ -207,6 +234,7 @@ class TapBody(BaseModel):
     kind: str          # "area" | "feeling"
     tap_id: str
     option_id: str | None = None   # which tailored option sent this feeling tap (engine/options.py)
+    confirm_ms: int = 0            # time spent on an "Is that right?" confirmation (not counted as slowness)
     via: str | None = None         # "voice" if this confirms a transcribed suggestion
 
 
@@ -221,7 +249,17 @@ class ModeBody(BaseModel):
 
 
 class SignalBody(BaseModel):
-    kind: Literal["miss", "correction", "deletion"]
+    kind: Literal["miss", "correction", "deletion", "read_aloud"]
+
+
+class AudioBody(BaseModel):
+    enabled: bool
+    by: Literal["patient", "nurse"] = "patient"
+
+
+class OfferBody(BaseModel):
+    offer: Literal["audio_first", "assisted"]
+    choice: Literal["accept", "decline", "get_nurse", "ask_caregiver", "keep_trying"]
 
 
 class LevelBody(BaseModel):
@@ -261,7 +299,7 @@ async def get_session(sid: str, user: DemoUser = Depends(_require_session_access
 
 @app.post("/api/sessions/{sid}/tap")
 async def tap(sid: str, body: TapBody, user: DemoUser = Depends(_require_session_access)):
-    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id, body.via))
+    return await _call(svc().tap(sid, body.kind, body.tap_id, body.option_id, body.confirm_ms, body.via))
 
 
 @app.post("/api/sessions/{sid}/answer")
@@ -295,20 +333,32 @@ async def mode(sid: str, body: ModeBody, user: DemoUser = Depends(_require_sessi
 
 @app.post("/api/sessions/{sid}/signal")
 async def signal(sid: str, body: SignalBody, user: DemoUser = Depends(_require_session_access)):
-    """A missed tap or a correction the tablet noticed; feeds the communication ladder."""
+    """A missed tap, a correction or a "read aloud" press: adaptive communication's signal detection."""
     return await _call(svc().signal(sid, body.kind))
 
 
 @app.post("/api/sessions/{sid}/level")
 async def set_level(sid: str, body: LevelBody, user: DemoUser = Depends(_require_session_access)):
-    """Manual "make it easier / harder" from the patient or a nurse."""
+    """Manual "make it easier / harder" from the patient or a nurse (communication mode 1-4)."""
     return await _call(svc().set_level(sid, body.level, body.by))
 
 
-@app.get("/api/ladder")
-async def ladder(hours: int = 12, user: DemoUser = Depends(require_nurse)):
-    """Each patient's communication level and today's level changes, for the nurse station."""
-    return await svc().ladder_overview(hours)
+@app.post("/api/sessions/{sid}/communication/audio")
+async def set_audio(sid: str, body: AudioBody, user: DemoUser = Depends(_require_session_access)):
+    """Read aloud on or off (audio-first), by the patient's or a nurse's explicit choice."""
+    return await _call(svc().set_audio(sid, body.enabled, body.by))
+
+
+@app.post("/api/sessions/{sid}/communication/offer")
+async def answer_offer(sid: str, body: OfferBody, user: DemoUser = Depends(_require_session_access)):
+    """The patient's answer to an adaptation that needs their yes: audio-first, or help communicating."""
+    return await _call(svc().respond_offer(sid, body.offer, body.choice))
+
+
+@app.get("/api/communication")
+async def communication(hours: int = 12, user: DemoUser = Depends(require_nurse)):
+    """Each patient's communication mode, why it changed (signals, policy, renderer), and this shift's changes."""
+    return await svc().communication_overview(hours)
 
 
 @app.post("/api/sessions/{sid}/skip_consult")
@@ -326,7 +376,7 @@ async def back(sid: str, user: DemoUser = Depends(_require_session_access)):
 
 class ConfirmBody(BaseModel):
     need_id: str | None = None
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
     note: str | None = None      # optional observation; Gemini suggests profile changes from it
     case_helpful: bool | None = None   # verdict on the alert's case packet, if it has one
 
@@ -342,17 +392,17 @@ async def alerts(status: str | None = None, user: DemoUser = Depends(require_nur
 async def confirm(aid: str, body: ConfirmBody, user: DemoUser = Depends(require_nurse)):
     if body.need_id and body.need_id not in app.state.cat.index:
         raise HTTPException(422, "unknown need")
-    return await _call(svc().confirm(aid, body.need_id, body.nurse, body.note, body.case_helpful))
+    return await _call(svc().confirm(aid, body.need_id, user.name, body.note, body.case_helpful))
 
 
 class CaseAckBody(BaseModel):
-    nurse: str = "nurse"
+    nurse: str = "nurse"          # ignored: the logged-in nurse is recorded
 
 
 @app.post("/api/cases/{cid}/acknowledge")
 async def case_acknowledge(cid: str, body: CaseAckBody, user: DemoUser = Depends(require_nurse)):
     """"I've read this case packet and I'm on it." The alert stays open until the need is confirmed."""
-    return await _call(svc().acknowledge_case(cid, body.nurse))
+    return await _call(svc().acknowledge_case(cid, user.name))
 
 
 @app.post("/api/cases/{cid}/gemini")
@@ -398,6 +448,36 @@ async def _trends():
     rows = await store.window_signals(8)
     changes = await store.mode_changes(24)
     return build_trends(rows, PATIENTS, changes)
+
+
+# ---- nurse views: Unit insights (past) and Care forecast (ahead) --------------------------------------
+
+@app.get("/api/nurse/insights")
+async def nurse_insights(range: str = "24h", timeline_hours: int = 12, user: DemoUser = Depends(require_nurse)):
+    if range not in RANGES:
+        raise HTTPException(422, f"range must be one of {', '.join(RANGES)}")
+    return await app.state.nurse_views.insights(range, timeline_hours)
+
+
+@app.get("/api/nurse/insights/cell")
+async def nurse_insights_cell(patient_id: str, start: datetime, bucket: str = "1 hour",
+                              user: DemoUser = Depends(require_nurse)):
+    if patient_id not in PATIENT_BY_ID or bucket not in ("1 hour", "1 day"):
+        raise HTTPException(422, "unknown patient or bucket")
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    return await app.state.nurse_views.cell(patient_id, start, bucket)
+
+
+@app.get("/api/nurse/board")
+async def nurse_board(user: DemoUser = Depends(require_nurse)):
+    """Each unit patient's state right now, most pressing first (the nurse station's "Unit right now")."""
+    return await app.state.nurse_views.board(svc(), app.state.silence)
+
+
+@app.get("/api/nurse/forecast")
+async def nurse_forecast(user: DemoUser = Depends(require_nurse)):
+    return await app.state.nurse_views.forecast()
 
 
 @app.get("/api/analytics/tigerdata")

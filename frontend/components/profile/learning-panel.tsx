@@ -22,7 +22,7 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
       <header className="flex flex-col gap-1 border-b border-border pb-3">
         <h2 id="learn-h" className="text-xl font-bold">Learned from confirmations</h2>
         <p className="text-sm text-muted-foreground">
-          Each time a nurse confirms what {firstName} needed, SilentSignal remembers the taps that led there and reads
+          Each time a nurse confirms what {firstName} needed, MediCue remembers the taps that led there and reads
           them that way next time. Learning only changes the interpretation. The urgent-escalation check always reads
           taps the standard way.
         </p>
@@ -62,20 +62,20 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-sm text-muted-foreground">
             Taps
-            <select value={area} onChange={(e) => setArea(e.target.value)} className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
+            <select value={area} onChange={(e) => setArea(e.target.value)} className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
               {catalog.areas.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
             </select>
           </label>
           <span className="pb-2.5 text-base">+</span>
           <label className="flex flex-col gap-1 text-sm text-muted-foreground">
             <span className="sr-only">Feeling</span>&nbsp;
-            <select value={feeling} onChange={(e) => setFeeling(e.target.value)} aria-label="Feeling" className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
+            <select value={feeling} onChange={(e) => setFeeling(e.target.value)} aria-label="Feeling" className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
               {catalog.feelings.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm text-muted-foreground">
             to mean
-            <select value={need} onChange={(e) => setNeed(e.target.value)} className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
+            <select value={need} onChange={(e) => setNeed(e.target.value)} className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base text-foreground">
               {catalog.needs.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
             </select>
           </label>
@@ -83,7 +83,7 @@ export function LearningPanel({ patientId, firstName }: { patientId: string; fir
             type="button"
             disabled={running}
             onClick={() => runDemo(area, feeling, need, 5)}
-            className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
           >
             {running ? 'Replaying…' : 'Replay 5 sessions'}
           </button>

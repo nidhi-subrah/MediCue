@@ -1,13 +1,19 @@
 """Shared test helpers. Most of this suite exercises nurse-station flows against the real session
 service, so tests log in as the demo nurse account unless they are specifically testing auth itself."""
-from fastapi.testclient import TestClient
+import os
+
+# The app no longer seeds Mai's 22 synthetic residents (it shows only the 6 unit patients), but the risk
+# engine's backtest and API tests need them. Set before anything imports app.config.
+os.environ.setdefault("SEED_SYNTHETIC_COHORT", "1")
+
+from fastapi.testclient import TestClient  # noqa: E402
 
 
 def login_as_nurse(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"email": "nurse@medicure.test", "password": "Rn-Lantern-6307!"})
+    r = client.post("/api/auth/login", json={"email": "nurse@medicue.demo", "password": "Rn-Lantern-6307!"})
     assert r.status_code == 200, r.text
 
 
 def login_as_patient(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"email": "patient@medicure.test", "password": "Pt-Harbor-4821!"})
+    r = client.post("/api/auth/login", json={"email": "patient@medicue.demo", "password": "Pt-Harbor-4821!"})
     assert r.status_code == 200, r.text

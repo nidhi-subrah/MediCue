@@ -9,8 +9,11 @@ export type { ModeId, RiskLevel, GroupId, Tile, Need, Catalog, Person, Patient, 
   HandoffPatient, HandoffSummary, LearnedSignal, PatientLearning, LearningSession, LearningDemo,
   CasePacket, StopReason, NextStepCode, CaseFeedback, CaseRecord, DecisionActionRow,
   BeliefEvolutionPoint, CompressionStat, HypertableStat, PatientAnalytics, TigerDataOverview,
-  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, LadderLevel, LadderChange, LadderState, LadderPatient,
-  VoiceResult, VoiceConfirmAction } from '@shared/types'
+  FeelingOption, FeelingOptions, OptionChoice, DemoScenario, DemoRun, CommunicationLevel, CommunicationState, CommunicationChange, CommunicationPatient,
+  CommunicationHistoryItem, CommunicationSummary, Presentation, InteractionSignals, AdaptationDecision,
+  CommunicationModifier,
+  GaugeLevel, UnitPatientRef, NeedGroupRef, HeatCell, InsightsGauge, UnitInsights, InsightsCell,
+  ForecastHour, RiskProjection, ForecastPatient, CareForecast, NurseBoardRow, VoiceResult, VoiceConfirmAction } from '@shared/types'
 
 /** The UI's own notion of "how the person is answering right now". `standard` and `easy` map to
  *  the backend's grid / large; `audio` is client-only (the `spokenPrompts` setting) and is sent to
@@ -27,7 +30,8 @@ export interface ChoiceItem {
   icon?: LucideIcon
   tone?: 'default' | 'urgent' | 'unsure' | 'primary' | 'control'
   selected?: boolean
-  onSelect: () => void
+  /** confirmMs: time spent confirming this choice ("Is that right?"), when a confirmation was shown. */
+  onSelect: (confirmMs?: number) => void
 }
 
 export type StepKind = 'body' | 'choice' | 'yesno' | 'single'

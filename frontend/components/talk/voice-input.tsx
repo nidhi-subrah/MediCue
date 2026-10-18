@@ -18,6 +18,7 @@ import type { VoiceConfirmAction, VoiceResult } from '@/lib/types'
 export function VoiceInput() {
   const { voiceEnabled, voiceTranscript, voiceCorrection, tap, answerQuestion } = useLiveSession()
   const openUrgent = useUrgent((s) => s.openUrgent)
+  const setNotice = useUrgent((s) => s.setNotice)
   const speaking = useSpeaking()
   const voiceOn = useVoiceMode((s) => s.on)
   const setVoiceOn = useVoiceMode((s) => s.setOn)
@@ -35,7 +36,7 @@ export function VoiceInput() {
   }
 
   const applyConfirm = (c: VoiceConfirmAction) => {
-    if (c.action === 'tap' && c.tap_id) tap(c.kind === 'feeling' ? 'feeling' : 'area', c.tap_id, c.option_id, 'voice')
+    if (c.action === 'tap' && c.tap_id) tap(c.kind === 'feeling' ? 'feeling' : 'area', c.tap_id, c.option_id, 0, 'voice')
     else if (c.action === 'answer' && c.answer) answerQuestion(c.answer as 'yes' | 'no' | 'unsure', 'voice')
   }
 
@@ -59,6 +60,7 @@ export function VoiceInput() {
       // Opened right here, not from an effect: the backend has already escalated the request, which hides
       // this panel, and an effect inside it would never get to run.
       openUrgent(undefined, `“${r.transcript}”`, 'voice')
+      setNotice({ ok: true, text: 'The nurse station has been alerted.' })   // the backend already did that
       clearReview()
       return
     }

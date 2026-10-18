@@ -1,14 +1,14 @@
-# SilentSignal — Product Requirements Document
+# MediCue — Product Requirements Document
 
 Oct 16, 2026 · @Anni
 
 ## Overview
 
-SilentSignal turns a few taps from a patient who cannot speak into a precise, structured clinical message, and states how certain it is. Behind the interface, a decision engine chooses the best next move each time: ask the patient a question, look up their chart, consult someone who knows them, or escalate to a nurse immediately.
+MediCue turns a few taps from a patient who cannot speak into a precise, structured clinical message, and states how certain it is. Behind the interface, a decision engine chooses the best next move each time: ask the patient a question, look up their chart, consult someone who knows them, or escalate to a nurse immediately.
 
 **Problem.** Patients after a stroke, with ALS, intubated or recovering from surgery, or with significant communication barriers often cannot say what they need. Picture boards and AAC apps make them assemble words slowly, and nurses are left guessing. Misread needs mean unmanaged pain, missed deterioration, falls while trying to reach the washroom alone, and distress.
 
-**What is new.** SilentSignal treats communication as inference under uncertainty, not typing:
+**What is new.** MediCue treats communication as inference under uncertainty, not typing:
 
 - A Bayesian belief model keeps probabilities over possible needs and updates them with every tap and every piece of context.
 - A decision engine weighs the value of more information against patient fatigue, delay and clinical risk, so a likely cardiac problem is escalated at once while a likely washroom request is clarified first.
@@ -49,7 +49,7 @@ SilentSignal turns a few taps from a patient who cannot speak into a precise, st
 
 ## Personas and user stories
 
-| Persona | Situation | What they need from SilentSignal |
+| Persona | Situation | What they need from MediCue |
 | --- | --- | --- |
 | Mr. Chen, 74, patient | 2 days after a stroke, right-side weakness, cannot speak clearly, tires quickly | Be understood with minimal effort; get help fast when something is wrong |
 | Priya, RN | Night shift, 6 residents, interrupted constantly | Know what the patient needs, how sure the system is, and how urgent it is, at a glance |
@@ -162,7 +162,7 @@ P0 is required for the demo, P1 strengthens judging, P2 is a stretch goal.
 
 All decisions are made in a Python core the team writes; Tiger Data stores every signal over time, and Gemini only turns structured results into language.
 
-[Embedded diagram: SilentSignal architecture · inputs, core engines, outputs, storage]
+[Embedded diagram: MediCue architecture · inputs, core engines, outputs, storage]
 
 Inputs flow into the core, the decision engine picks the next action, and outputs go to the nurse and, through Gemini, into words. The research loop reads from Tiger Data and sends validated patterns back as new priors.
 
@@ -203,7 +203,7 @@ Gemini receives structured JSON and returns structured JSON or text. It never se
 
 ## Prize track alignment
 
-SilentSignal targets six tracks. PointClickCare and Healthcare are the strongest fits; Papiers is the one to argue carefully, through the research loop.
+MediCue targets six tracks. PointClickCare and Healthcare are the strongest fits; Papiers is the one to argue carefully, through the research loop.
 
 | Track | Fit | What to show judges |
 | --- | --- | --- |
@@ -215,7 +215,7 @@ SilentSignal targets six tracks. PointClickCare and Healthcare are the strongest
 | \[MLH\] Best Domain Name from GoDaddy Registry | Easy | Register a short, memorable domain and host the demo on it |
 | Best AI for Social Impact Hack (optional extra) | Strong | The decision engine and calibrated uncertainty are the AI story |
 
-**Domain candidates** (availability not checked yet): silentsignal.care, silentsignal.health, saysilent.ca, silentsig.net. Register one early on Saturday and point it at the Vercel deployment.
+**Domain candidates** (availability not checked yet): medicue.care, medicue.health, getmedicue.ca. Register one early on Saturday and point it at the Vercel deployment.
 
 ## Demo script (4 minutes)
 

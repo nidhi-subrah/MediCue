@@ -17,11 +17,11 @@ const atkinsonMono = Atkinson_Hyperlegible_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'SilentSignal — Communication that adapts to you',
+  title: 'MediCue — Communication that adapts to you',
   description:
-    'SilentSignal helps people communicate when speaking, typing, seeing, or touching a screen becomes difficult. Switch input methods at any time without losing your place.',
+    'MediCue helps people communicate when speaking, typing, seeing, or touching a screen becomes difficult. Switch input methods at any time without losing your place.',
   generator: 'v0.app',
-  applicationName: 'SilentSignal',
+  applicationName: 'MediCue',
   icons: {
     icon: [
       { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'SilentSignal',
+    title: 'MediCue',
   },
 }
 

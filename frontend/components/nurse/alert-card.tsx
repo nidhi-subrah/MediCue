@@ -29,7 +29,6 @@ export function AlertCard({
   const [other, setOther] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [helpful, setHelpful] = useState<boolean | null>(null)   // verdict on the case packet, sent with the confirmation
   const urgent = alert.priority === 'urgent'
   const open = alert.status === 'open'
   const [lead, ...rest] = alert.top
@@ -37,7 +36,7 @@ export function AlertCard({
   const confirm = async (needId: string | null) => {
     setBusy(true)
     try {
-      await onConfirm(needId, note.trim() || null, helpful)
+      await onConfirm(needId, note.trim() || null, null)
     } finally {
       setBusy(false)
     }
@@ -101,7 +100,7 @@ export function AlertCard({
         </details>
       )}
 
-      {alert.case && <CaseSummary alert={alert} helpful={helpful} onHelpful={setHelpful} initiallyOpen={openCase} />}
+      {alert.case && <CaseSummary alert={alert} initiallyOpen={openCase} />}
 
       <dl className="grid gap-1.5">
         {SBAR_ROWS.map(([k, label]) => (
@@ -111,6 +110,27 @@ export function AlertCard({
           </div>
         ))}
       </dl>
+
+      {alert.communication && (
+        // Assisted communication: the patient couldn't finish. What they did say, and what is still open.
+        <div className="grid gap-3 rounded-2xl border border-primary/30 bg-primary-soft p-4 text-sm sm:grid-cols-3">
+          <p className="sm:col-span-3 font-semibold">{alert.reason}</p>
+          <div>
+            <p className="font-semibold">Confirmed</p>
+            {alert.communication.confirmed.length
+              ? alert.communication.confirmed.map((c) => <p key={c.field}>{c.field}: {c.value}</p>)
+              : <p className="text-muted-foreground">Nothing yet</p>}
+          </div>
+          <div>
+            <p className="font-semibold">Unresolved</p>
+            {alert.communication.unresolved.map((u) => <p key={u.field}>{u.field}</p>)}
+          </div>
+          <div>
+            <p className="font-semibold">Current belief</p>
+            {alert.communication.belief.map((b) => <p key={b.label}>{b.label}: {pct(b.p)}</p>)}
+          </div>
+        </div>
+      )}
 
       {alert.kind === 'need' && (
         <details className="text-sm">
@@ -201,7 +221,7 @@ export function AlertCard({
                 setOther(e.target.value)
                 if (e.target.value) confirm(e.target.value)
               }}
-              className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
+              className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
             >
               <option value="">Something else…</option>
               {catalog.needs.map((n) => (

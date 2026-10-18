@@ -1,4 +1,4 @@
--- SilentSignal schema for Tiger Data (TimescaleDB). Applied idempotently at backend startup.
+-- MediCue schema for Tiger Data (TimescaleDB). Applied idempotently at backend startup.
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- Every patient input, question, lookup, consult, mode change, escalation and confirmation.
@@ -207,3 +207,19 @@ CREATE TABLE IF NOT EXISTS research_inquiries (
     status     TEXT NOT NULL,
     body       JSONB NOT NULL
 );
+
+-- Requests per patient, need type and hour (services/nurse_views.py). Hourly so the nurse views can
+-- re-bucket into the unit's local days, and build each patient's hour-of-day profile for the forecast.
+CREATE MATERIALIZED VIEW IF NOT EXISTS patient_hourly_needs
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT time_bucket('1 hour', time) AS bucket,
+       patient_id, confirmed_group,
+       count(*)                          AS n,
+       count(*) FILTER (WHERE escalated) AS urgent
+FROM confirmations
+GROUP BY bucket, patient_id, confirmed_group
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('patient_hourly_needs',
+    start_offset => INTERVAL '60 days', end_offset => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '15 minutes', if_not_exists => TRUE);

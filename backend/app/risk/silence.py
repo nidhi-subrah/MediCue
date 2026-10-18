@@ -3,8 +3,8 @@
 Mode A, mid-dialogue timeout. A patient who has started a request (status `feeling` or `question`)
 and then stops responding is escalated at once with the current belief. The timeout is
 max(30 s, 4 x the patient's recent median tap latency x a fatigue factor), capped so it never grows
-without bound, and halved at communication ladder level 4. Halfway through, the ladder steps the
-tablet down one level (an easier screen) without restarting the timer.
+without bound, and halved in assisted communication. Halfway through, adaptive communication counts a missed response (an
+easier screen, engine/communication) without restarting the timer.
 
 Mode B, abnormal inactivity. Time since the patient's last interaction is compared with how long it
 usually has been at this clock time on each of the previous 7 days. No ladder starts in quiet hours.
@@ -41,8 +41,8 @@ class SilenceConfig:
     mid_max_fatigue_factor: float = 1.5
     mid_cap_s: float = 180.0
     mid_recent_taps: int = 20
-    mid_idle_step_fraction: float = 0.5   # communication ladder: step down once at this share of the timeout
-    mid_assisted_factor: float = 0.5      # ladder level 4 (assisted): the timeout shrinks by this factor
+    mid_idle_step_fraction: float = 0.5   # adaptive communication: count a missed response at this share
+    mid_assisted_factor: float = 0.5      # assisted communication: the timeout shrinks by this factor
     # Mode B
     quiet_start_hour: int = 22          # local; no new ladder starts from here ...
     quiet_end_hour: int = 7             # ... until here
@@ -62,8 +62,8 @@ class SilenceConfig:
 # ---- Mode A ---------------------------------------------------------------------------------------
 
 def mid_dialogue_timeout(latencies_ms: list[float], fatigue: float, cfg: SilenceConfig, level: int = 1) -> float:
-    """level: communication ladder level (engine/ladder.py). At level 4 the patient has already shown
-    they are struggling, so silence is escalated sooner. The ladder can only shorten this timeout."""
+    """level: communication mode (engine/communication/policy.py, 1-4). In assisted mode (4) the patient has
+    already shown they are struggling, so silence is escalated sooner. Adaptation can only shorten this."""
     recent = latencies_ms[-cfg.mid_recent_taps:]
     median_s = statistics.median(recent) / 1000 if recent else 0.0
     factor = min(max(fatigue, 1.0), cfg.mid_max_fatigue_factor)

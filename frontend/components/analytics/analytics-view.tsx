@@ -36,7 +36,10 @@ export function AnalyticsView() {
       <header className="flex flex-col gap-2">
         <h1 className="text-4xl font-bold tracking-tight">Tiger Data intelligence</h1>
         <p className="text-lg text-muted-foreground">
-          Every number below comes from a real query against Tiger Data — no mocked analytics.
+          {overview.store === 'memory'
+            ? 'No Tiger Data database is connected on this server, so these numbers come from the in-memory store. '
+              + 'Hypertable and compression figures need Tiger Data (set DATABASE_URL).'
+            : 'Every number below comes from a real query against Tiger Data — no mocked analytics.'}
         </p>
       </header>
 
@@ -84,7 +87,7 @@ export function AnalyticsView() {
           <select
             value={patientId ?? ''}
             onChange={(e) => setPatientId(e.target.value || null)}
-            className="h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
+            className="min-h-10 rounded-xl border-2 border-input bg-background px-3 text-sm"
           >
             <option value="">Choose a patient…</option>
             {patients.map((p) => (

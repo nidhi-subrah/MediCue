@@ -51,7 +51,7 @@ export function BodyMap({ items }: { items: ChoiceItem[] }) {
                   ? 'fill-primary stroke-primary'
                   : 'fill-primary-soft stroke-primary/30',
             )
-            const props = { className, onClick: item.onSelect, onPointerEnter: () => setHover(item.id) }
+            const props = { className, onClick: () => item.onSelect(), onPointerEnter: () => setHover(item.id) }
             return REGIONS[item.id].map((shape, i) =>
               shape.kind === 'circle' ? (
                 <circle key={`${item.id}-${i}`} cx={shape.cx} cy={shape.cy} r={shape.r} {...props} />

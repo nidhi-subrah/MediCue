@@ -73,6 +73,7 @@ def test_washroom_area_sends_straight_away():
         assert s["status"] == "sent" and s["questions_asked"] == 0
         alert = next(a for a in client.get("/api/alerts").json() if a["id"] == s["alert_id"])
         assert alert["priority"] == "routine" and "Sent straight away" in alert["reason"]
+        assert alert["label"] == "Washroom"     # what the patient tapped, not the engine's guess between needs
 
 
 def test_pain_medicine_option_sends_straight_away_and_alert_names_the_choice():

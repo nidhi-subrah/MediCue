@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { api, useChannel } from '@/lib/services/backend'
 import type { Alert, PatientTrend, ProfileSuggestion } from '@/lib/types'
 
@@ -23,14 +24,16 @@ export function useNurseStation() {
   const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([])
 
   const loadTrends = useCallback(() => api.get<PatientTrend[]>('/api/trends').then(setTrends), [])
+  // The whole list from the backend, replacing what's on screen: on load and on every reconnect.
+  const loadAlerts = useCallback(() => api.get<Alert[]>('/api/alerts').then(setAlerts).catch(() => {}), [])
 
   useEffect(() => {
-    api.get<Alert[]>('/api/alerts').then(setAlerts)
+    void loadAlerts()
     api.get<ProfileSuggestion[]>('/api/suggestions').then(setSuggestions)
     void loadTrends()
     const t = window.setInterval(loadTrends, 60000)
     return () => window.clearInterval(t)
-  }, [loadTrends])
+  }, [loadTrends, loadAlerts])
 
   useChannel('nurse', (m) => {
     if (m.type === 'alert') {
@@ -54,14 +57,20 @@ export function useNurseStation() {
         )
       })
     }
-  })
+  }, loadAlerts)
 
   /** `note` is the nurse's optional observation; Gemini proposes profile changes from it for approval.
    *  `caseHelpful` is the verdict on the alert's case packet, if it has one. */
   const confirm = useCallback(async (alertId: string, needId: string | null, note: string | null,
                                      caseHelpful: boolean | null = null) => {
-    await api.post(`/api/alerts/${alertId}/confirm`, { need_id: needId, note, case_helpful: caseHelpful })
-  }, [])
+    try {
+      await api.post(`/api/alerts/${alertId}/confirm`, { need_id: needId, note, case_helpful: caseHelpful })
+    } catch {
+      // Already handled at another station, or gone after a backend restart: show the real list, and say so.
+      toast('That request is no longer open', { description: 'The list has been refreshed.' })
+      void loadAlerts()
+    }
+  }, [loadAlerts])
 
   const reviewSuggestion = useCallback(async (id: string, approve: boolean) => {
     const s = await api.post<ProfileSuggestion>(`/api/suggestions/${id}/review`, { approve })

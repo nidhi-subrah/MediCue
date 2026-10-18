@@ -36,14 +36,14 @@ export function InquiryCard({
         placeholder="Add a note (optional)"
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        className="h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
+        className="min-h-11 rounded-xl border-2 border-input bg-background px-3 text-base"
       />
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           disabled={busy}
           onClick={() => answer('agree')}
-          className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
         >
           Agree
         </button>
@@ -51,7 +51,7 @@ export function InquiryCard({
           type="button"
           disabled={busy}
           onClick={() => answer('disagree')}
-          className="h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
+          className="min-h-11 rounded-xl border-2 border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
         >
           Disagree
         </button>
@@ -59,7 +59,7 @@ export function InquiryCard({
           type="button"
           disabled={busy}
           onClick={() => answer('unsure')}
-          className="h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
+          className="min-h-11 rounded-xl px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
         >
           Unsure
         </button>

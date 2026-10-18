@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api, useChannel } from '@/lib/services/backend'
-import type { LadderLevel, ModeId, Patient, SessionState, VoiceResult } from '@/lib/types'
+import type { CommunicationLevel, ModeId, Patient, SessionState, VoiceResult } from '@/lib/types'
 
 interface Welfare { id: string; requestedBy: string; expiresIn: number; startedAt: number; respondPath?: string }
 
@@ -15,14 +15,19 @@ interface LiveSessionValue {
   welfareSecondsLeft: number
   voiceEnabled: boolean
   start: (mode?: ModeId) => Promise<void>
-  tap: (kind: 'area' | 'feeling', tapId: string, optionId?: string, via?: 'voice') => void
+  /** confirmMs: time spent on an "Is that right?" confirmation, so confirming doesn't count as slowness.
+   *  via: "voice" when this confirms what the mic heard. */
+  tap: (kind: 'area' | 'feeling', tapId: string, optionId?: string, confirmMs?: number, via?: 'voice') => void
   answerQuestion: (answer: 'yes' | 'no' | 'unsure', via?: 'voice') => void
   setMode: (mode: ModeId) => void
   skipConsult: () => void
   goBack: () => void
-  /** A missed tap: feeds the communication ladder. Never blocked by a pending request. */
-  signal: (kind: 'miss') => void
-  setLevel: (level: LadderLevel) => void
+  /** What the tablet noticed (a missed tap, a "Change" on a confirmation, a read-aloud press): adaptive
+   *  communication's signal detection. Never blocked by a pending request. */
+  signal: (kind: 'miss' | 'correction' | 'read_aloud') => void
+  setLevel: (level: CommunicationLevel) => void
+  setAudio: (enabled: boolean) => void
+  answerOffer: (offer: 'audio_first' | 'assisted', choice: string) => void
   respondWelfare: () => Promise<void>
   /** A transcript from the browser's own speech recognition; never applies anything itself (see VoiceResult). */
   voiceTranscript: (transcript: string, retryCount: number) => Promise<VoiceResult | null>
@@ -101,7 +106,8 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
     welfareSecondsLeft: welfare ? Math.max(0, Math.ceil(welfare.expiresIn - (now - welfare.startedAt) / 1000)) : 0,
     voiceEnabled,
     start,
-    tap: (kind, tapId, optionId, via) => void act('tap', { kind, tap_id: tapId, option_id: optionId, via }),
+    tap: (kind, tapId, optionId, confirmMs = 0, via) =>
+      void act('tap', { kind, tap_id: tapId, option_id: optionId, confirm_ms: Math.round(confirmMs), via }),
     answerQuestion: (answer, via) => {
       const q = session?.question
       if (q) void act('answer', { question_id: q.id, answer, via })
@@ -114,9 +120,11 @@ export function LiveSessionProvider({ patientId, children }: { patientId: string
       api
         .post<SessionState>(`/api/sessions/${session.session_id}/signal`, { kind })
         .then(setSession)
-        .catch(() => {})   // a lost hint is harmless; the ladder also watches timing and answers
+        .catch(() => {})   // a lost hint is harmless; timing and answers are measured on the backend too
     },
     setLevel: (level) => void act('level', { level, by: 'patient' }),
+    setAudio: (enabled) => void act('communication/audio', { enabled, by: 'patient' }),
+    answerOffer: (offer, choice) => void act('communication/offer', { offer, choice }),
     respondWelfare: async () => {
       if (!welfare) return
       await api.post(welfare.respondPath ?? `/api/welfare/${welfare.id}/respond`)
