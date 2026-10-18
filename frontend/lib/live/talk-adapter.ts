@@ -142,3 +142,36 @@ export function buildStep(
 
   return null
 }
+
+// ---- "Show someone": the patient's message in their own words ------------------------------------------
+
+/** How each body area reads at the start of the patient's sentence. */
+const AREA_PHRASE: Record<string, string> = {
+  head: 'My head', chest: 'My chest', belly: 'My belly', back: 'My back', arms_legs: 'My arms or legs',
+  surgical_site: 'Where I had surgery', mouth_throat: 'My mouth or throat', whole_body: 'My whole body',
+  toilet: 'I need the washroom', people: 'How I feel',
+}
+
+const lowerFirst = (s: string) => (s ? s[0].toLowerCase() + s.slice(1) : s)
+
+/** What a person standing at the bedside should read: built only from the patient's own taps (never the
+ *  engine's internal steps), plus where their request has got to. */
+export function patientMessage(s: SessionState): string {
+  const tapOf = (kind: 'area' | 'feeling') =>
+    [...s.trace].reverse().find((t) => t.kind === 'tap' && t.label.startsWith(`Tapped ${kind}:`))?.detail
+  const area = tapOf('area')
+  const feelingId = tapOf('feeling')
+  const what = s.choice?.label ?? (feelingId ? catalog.feelings.find((f) => f.id === feelingId)?.label : undefined)
+
+  let text: string
+  if (!area) {
+    text = "I'm trying to tell you something. Please stay with me."
+  } else {
+    const phrase = AREA_PHRASE[area] ?? catalog.areas.find((a) => a.id === area)?.label ?? 'Something'
+    text = what && area !== 'toilet' ? `${phrase}: ${lowerFirst(what)}.` : `${phrase}.`
+  }
+  if (s.status === 'escalated') text += ' A nurse is on the way.'
+  else if (s.status === 'sent') text += ' My nurse has been told.'
+  else if (s.status === 'waiting_consult' && s.consult) text += ` We're asking ${s.consult.person_name}.`
+  return text
+}

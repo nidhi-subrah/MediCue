@@ -7,14 +7,13 @@ import { useAuth } from '@/components/app/auth-provider'
 import { ShowSomeone } from '@/components/app/show-someone'
 import { UrgentButton } from '@/components/app/urgent-button'
 import { useLiveSession } from '@/lib/live/session'
-import { buildStep, uiMode } from '@/lib/live/talk-adapter'
+import { buildStep, patientMessage, uiMode } from '@/lib/live/talk-adapter'
 import { useSettings } from '@/lib/store/settings'
 import { cn } from '@/lib/utils'
 import { AssistCard } from './assist-card'
 import { ConsultBanner } from './consult-banner'
 import { LevelBar, LevelTransition, OfferCard } from './level-bar'
 import { QuestionStage } from './question-stage'
-import { SummaryPanel } from './summary-panel'
 import { TabletSettings } from './tablet-settings'
 
 export function TalkView() {
@@ -22,7 +21,6 @@ export function TalkView() {
     signal, setLevel, setAudio, answerOffer } = useLiveSession()
   const { user, logout } = useAuth()
   const audioPreference = useSettings((s) => s.spokenPrompts)
-  const [showEngine, setShowEngine] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)   // "Something else" on the tailored second step
   const stepKey = session ? `${session.session_id}-${session.status}-${session.taps}-${session.communication.level}` : ''
   useEffect(() => setMoreOpen(false), [stepKey])
@@ -62,7 +60,7 @@ export function TalkView() {
 
   const level = comm.level
   const done = session.status === 'escalated' || session.status === 'sent' || session.status === 'cancelled'
-  const lastMessage = session.trace.length > 0 ? session.trace[session.trace.length - 1].label : step?.prompt ?? 'Nothing to show yet.'
+  const lastMessage = patientMessage(session)   // what the patient said, never the engine's internal steps
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,7 +108,9 @@ export function TalkView() {
       {!done && <OfferCard comm={comm} onAnswer={answerOffer} />}
       {level === 4 && !done && <AssistCard comm={comm} />}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      {/* The patient's screen is only the question and its answers: no step log, engine or profile (those are
+          for the care team, in the nurse station). */}
+      <div className="mx-auto grid w-full max-w-4xl gap-6">
         <div className="flex flex-col gap-6">
           {session.status === 'waiting_consult' && session.consult ? (
             <ConsultBanner personName={session.consult.person_name} relation={session.consult.relation} onSkip={skipConsult} />
@@ -170,9 +170,6 @@ export function TalkView() {
           {error && <p className="text-base text-urgent">{error}</p>}
         </div>
 
-        <aside className="flex flex-col gap-4">
-          <SummaryPanel session={session} showEngine={showEngine} onToggleEngine={() => setShowEngine((v) => !v)} />
-        </aside>
       </div>
 
       {welfare && (
