@@ -17,8 +17,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .auth import (
-    DemoUser, SESSION_COOKIE, SESSION_TTL_S, USERS_BY_EMAIL, check_patient_access, create_session, demo_accounts,
-    current_user, destroy_session, require_nurse, user_for_session_id, verify_password,
+    SESSION_COOKIE, SESSION_SECRET_CONFIGURED, SESSION_TTL_S, USERS_BY_EMAIL, DemoUser, check_patient_access,
+    create_session, current_user, demo_accounts, destroy_session, require_nurse, user_for_session_id,
+    verify_password,
 )
 from .catalog import get_catalog
 from .config import settings
@@ -144,7 +145,9 @@ async def health():
     return {"ok": True, "gemini": app.state.gemini.enabled, "gemini_paused_s": round(app.state.gemini.paused_for),
             "store": type(app.state.store).__name__,
             "conformal_qhat": svc().conformal.qhat,
-            "voice_enabled": app.state.gemini.enabled}
+            "voice_enabled": app.state.gemini.enabled,
+            # False means SESSION_SECRET is missing: logins then only work on the instance that issued them.
+            "shared_sessions": SESSION_SECRET_CONFIGURED}
 
 
 @app.get("/api/catalog")
