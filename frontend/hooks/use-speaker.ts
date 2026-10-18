@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback } from 'react'
-import { SPEECH_LANG, canSpeak, speak, stopSpeaking } from '@/lib/speech'
+import { useCallback, useSyncExternalStore } from 'react'
+import { SPEECH_LANG, canSpeak, isSpeaking, speak, stopSpeaking, subscribeSpeaking } from '@/lib/speech'
 import { useSettings } from '@/lib/store/settings'
 
 export function useSpeaker() {
@@ -13,4 +13,9 @@ export function useSpeaker() {
   )
 
   return { say, stop: stopSpeaking, supported: canSpeak }
+}
+
+/** True while read-aloud is speaking (used to keep the microphone off so it doesn't hear the speakers). */
+export function useSpeaking() {
+  return useSyncExternalStore(subscribeSpeaking, isSpeaking, () => false)
 }

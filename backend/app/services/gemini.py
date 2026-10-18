@@ -196,6 +196,11 @@ class Gemini:
                 return None
         return None
 
+    # Voice input (services/sessions.py voice_utterance) uses neither transcription nor intent-matching
+    # here: speech-to-text runs free in the browser (Web Speech API), and matching the transcript onto
+    # the patient's current step is free local word/synonym matching (engine/voice_match.py) - no
+    # external call, no quota. Nothing in Gemini is on that path.
+
     # ---- SBAR ------------------------------------------------------------------------------------
 
     async def sbar(self, ctx: dict) -> tuple[dict, str]:

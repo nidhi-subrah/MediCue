@@ -276,7 +276,7 @@ def test_yes_no_walks_the_areas_options_and_a_yes_is_that_tap():
         assert s["question"]["id"].startswith("option:mouth_throat.") and s["question"]["wording"] == "binary"
         spec = {o["id"]: o for o in cat.raw["area_options"]["mouth_throat"]["options"]}
         assert spec[s["question"]["id"].removeprefix("option:")].get("high_risk")   # choking screened first
-        for _ in range(6):
+        for _ in range(len(spec)):   # every option of the area can be asked before the "yes"
             oid = s["question"]["id"].removeprefix("option:")
             yes = spec[oid]["feeling"] == "thirsty"
             s = client.post(f"/api/sessions/{sid}/answer", json={"question_id": s["question"]["id"],

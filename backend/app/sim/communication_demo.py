@@ -19,7 +19,7 @@ import sys
 import time
 import urllib.request
 
-NURSE = {"email": "nurse@medicue.demo", "password": "nurse"}
+NURSE = {"email": "nurse@medicue.demo", "password": "Rn-Lantern-6307!"}
 
 
 class Client:

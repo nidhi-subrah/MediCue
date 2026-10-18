@@ -73,6 +73,26 @@ export interface SessionState {
   can_go_back: boolean;               // "Back" undoes the last input (only while nothing has been sent)
 }
 
+/** POST /api/sessions/{sid}/voice response. Never applies anything by itself — "suggested" needs an
+ *  explicit follow-up tap/answer with via:"voice" to confirm; "urgent" opens the urgent-help overlay. */
+export interface VoiceConfirmAction {
+  action: "tap" | "answer";
+  kind?: "area" | "feeling";          // action: "tap"
+  tap_id?: string;                    // action: "tap"
+  option_id?: string;                 // action: "tap", kind: "feeling"
+  question_id?: string;               // action: "answer"
+  answer?: string;                    // action: "answer"
+}
+
+export interface VoiceResult {
+  outcome: "empty" | "transcribed" | "suggested" | "partial" | "unclear" | "urgent";
+  transcript?: string;
+  label?: string;                     // outcome: "suggested" | "partial" - the matched choice's label
+  confirm?: VoiceConfirmAction;       // outcome: "suggested" | "partial"
+  clarifying_question?: string | null; // outcome: "unclear"
+  session: SessionState;
+}
+
 export interface SBAR { situation: string; background: string; assessment: string; recommendation: string }
 
 export interface Alert {
@@ -97,6 +117,7 @@ export interface Alert {
   communication?: CommunicationSummary | null;
   case?: CaseRecord | null;
   choice?: OptionChoice | null;       // what the patient picked at the second step
+  voice_transcripts?: string[];       // patient's own words (voice), confirmed only - not an AI inference
 }
 
 export interface ConsultRequest {

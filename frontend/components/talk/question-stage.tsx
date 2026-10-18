@@ -4,6 +4,8 @@ import { ArrowLeft, ChevronsRight, Volume2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useSpeaker } from '@/hooks/use-speaker'
+import { isSpeaking } from '@/lib/speech'
+import { useVoiceMode } from '@/lib/live/voice-mode'
 import type { ChoiceItem, CommunicationLevel, InputMode, Presentation, Step } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BodyMap } from './body-map'
@@ -62,18 +64,34 @@ export function QuestionStage({
     },
   }))
 
-  const readAll = () => {
+  // With the mic on the patient answers out loud, so read-aloud speaks only the question: nobody in distress
+  // should have to wait through the options. A ref (not a dependency) so toggling the mic doesn't re-read.
+  const micOn = useVoiceMode((s) => s.on)
+  const micOnRef = useRef(micOn)
+  micOnRef.current = micOn
+  const spokenText = () => {
+    if (yesNo || micOnRef.current) return step.prompt
     const list = step.options.map((o, i) => `${i + 1}: ${o.label}.`).join(' ')
-    say(yesNo ? step.prompt : `${step.prompt}. ${list}`)
+    return `${step.prompt}. ${list}`
   }
+  const readAll = () => say(spokenText())
 
-  // Read aloud: the question, then each numbered choice. Yes / No reads the question.
+  // Turning the mic on while the options are already being read cuts them off: restart with just the question.
+  const wasMicOn = useRef(micOn)
+  useEffect(() => {
+    if (micOn && !wasMicOn.current && audio && isSpeaking()) say(step.prompt)
+    wasMicOn.current = micOn
+  }, [micOn])
+
+  // Read aloud: the question, then each numbered choice (just the question with the mic on). Yes / No reads the
+  // question. Keyed on what the question *is*, not the `step` object: that is rebuilt on every render of the
+  // page, so depending on it re-read the same question each time anything (a pending answer) re-rendered.
   useEffect(() => {
     if (!audio && !yesNo) return
     readAll()
     return () => stop()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, audio, yesNo, say, stop])
+  }, [step.id, step.prompt, audio, yesNo, say, stop])
 
   useEffect(() => {
     if (!audio) return
